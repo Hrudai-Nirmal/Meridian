@@ -1,0 +1,315 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum EndpointStatus {
+  ACTIVE
+  DEGRADED
+  DOWN
+  UNKNOWN
+}
+
+enum EdgeKind {
+  VISUAL
+}
+
+enum ApiAuthType {
+  NONE
+  API_KEY_HEADER
+  BEARER_TOKEN
+  BASIC
+  CUSTOM_HEADERS
+}
+
+enum VisualizationKind {
+  NUMBER
+  LINE
+  BAR
+  TABLE
+  STATUS
+  ALERT_LIST
+  HEATMAP
+  SANKEY
+  CORRELATION
+  FORECAST
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+model User {
+  id            String                   @id @default(cuid())
+  name          String?
+  email         String                   @unique
+  image         String?
+  memberships   Membership[]
+  notifications NotificationPreference[]
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+}
+
+model Organization {
+  id          String       @id @default(cuid())
+  name        String
+  slug        String       @unique
+  memberships Membership[]
+  projects    Project[]
+  auditLogs   AuditLog[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model Membership {
+  id             String         @id @default(cuid())
+  role           MembershipRole
+  userId         String
+  organizationId String
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime       @default(now())
+
+  @@unique([userId, organizationId])
+}
+
+model Project {
+  id             String            @id @default(cuid())
+  name           String
+  slug           String
+  organizationId String
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  categories     ProjectCategory[]
+  nodes          EndpointNode[]
+  edges          GraphEdge[]
+  secrets        ProjectSecret[]
+  alertRules     AlertRule[]
+  auditLogs      AuditLog[]
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@unique([organizationId, slug])
+}
+
+model ProjectCategory {
+  id        String   @id @default(cuid())
+  name      String
+  position  Int
+  enabled   Boolean  @default(true)
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model EndpointNode {
+  id             String                 @id @default(cuid())
+  label          String
+  description    String?
+  iconKind       String
+  status         EndpointStatus         @default(UNKNOWN)
+  statusReason   String?
+  x              Float
+  y              Float
+  projectId      String
+  iconId         String?
+  project        Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  icon           NodeIcon?              @relation(fields: [iconId], references: [id])
+  override       NodeStatusOverride?
+  endpointConfig ApiEndpointConfig?
+  mappings       ParameterMapping[]
+  visualizations VisualizationConfig[]
+  runs           WorkflowRun[]
+  samples        MetricSample[]
+  alertEvents    AlertEvent[]
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+}
+
+model GraphEdge {
+  id        String   @id @default(cuid())
+  label     String?
+  kind      EdgeKind @default(VISUAL)
+  sourceId  String
+  targetId  String
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model NodeIcon {
+  id        String         @id @default(cuid())
+  name      String
+  mimeType  String
+  data      Bytes
+  nodes     EndpointNode[]
+  createdAt DateTime       @default(now())
+}
+
+model NodeStatusOverride {
+  id        String         @id @default(cuid())
+  status    EndpointStatus
+  reason    String
+  expiresAt DateTime?
+  nodeId    String         @unique
+  node      EndpointNode   @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  createdAt DateTime       @default(now())
+}
+
+model ApiEndpointConfig {
+  id          String          @id @default(cuid())
+  url         String
+  method      String          @default("GET")
+  authType    ApiAuthType     @default(NONE)
+  headersJson Json?
+  cadenceMin  Int             @default(15)
+  timeoutMs   Int             @default(10000)
+  nodeId      String          @unique
+  secretId    String?
+  node        EndpointNode    @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  secret      ProjectSecret?  @relation(fields: [secretId], references: [id])
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+}
+
+model ProjectSecret {
+  id         String              @id @default(cuid())
+  name       String
+  encrypted  String
+  projectId  String
+  project    Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  apiConfigs ApiEndpointConfig[]
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+}
+
+model ParameterMapping {
+  id        String          @id @default(cuid())
+  label     String
+  jsonPath  String
+  transform String?
+  unit      String?
+  threshold Json?
+  nodeId    String
+  node      EndpointNode    @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  samples   MetricSample[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+}
+
+model VisualizationConfig {
+  id        String            @id @default(cuid())
+  title     String
+  kind      VisualizationKind
+  config    Json
+  nodeId    String
+  node      EndpointNode      @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+}
+
+model WorkflowRun {
+  id         String         @id @default(cuid())
+  externalId String?
+  status     String
+  startedAt  DateTime
+  finishedAt DateTime?
+  costUsd    Decimal?
+  tokens     Int?
+  nodeId     String
+  node       EndpointNode   @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  steps      WorkflowStep[]
+}
+
+model WorkflowStep {
+  id        String      @id @default(cuid())
+  name      String
+  status    String
+  latencyMs Int?
+  toolName  String?
+  runId     String
+  run       WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+}
+
+model MetricSample {
+  id        String            @id @default(cuid())
+  value     Float
+  rawJson   Json?
+  sampledAt DateTime
+  nodeId    String
+  mappingId String?
+  node      EndpointNode      @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  mapping   ParameterMapping? @relation(fields: [mappingId], references: [id], onDelete: SetNull)
+}
+
+model MetricRollup {
+  id        String   @id @default(cuid())
+  scope     String
+  metricKey String
+  bucket    String
+  value     Float
+  startedAt DateTime
+  endedAt   DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([scope, metricKey, bucket, startedAt])
+}
+
+model AlertRule {
+  id         String        @id @default(cuid())
+  name       String
+  expression String
+  severity   AlertSeverity
+  enabled    Boolean       @default(true)
+  projectId  String
+  project    Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  events     AlertEvent[]
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+}
+
+model AlertEvent {
+  id         String         @id @default(cuid())
+  title      String
+  message    String
+  severity   AlertSeverity
+  resolvedAt DateTime?
+  nodeId     String?
+  ruleId     String?
+  node       EndpointNode?  @relation(fields: [nodeId], references: [id], onDelete: SetNull)
+  rule       AlertRule?     @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  createdAt  DateTime       @default(now())
+}
+
+model NotificationPreference {
+  id       String  @id @default(cuid())
+  channel  String
+  severity String
+  enabled  Boolean @default(true)
+  userId   String
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id             String        @id @default(cuid())
+  action         String
+  entity         String
+  entityId       String?
+  metadata       Json?
+  organizationId String
+  projectId      String?
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project        Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  createdAt      DateTime      @default(now())
+}
