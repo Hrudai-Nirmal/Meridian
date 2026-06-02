@@ -20,6 +20,7 @@ import {
   Bot,
   ChevronDown,
   CircleDollarSign,
+  CheckCircle2,
   Edit3,
   Gauge,
   HardDriveUpload,
@@ -32,6 +33,8 @@ import {
   ShieldCheck,
   Sparkles,
   Sun,
+  Trash2,
+  Users,
   Wand2,
 } from "lucide-react"
 import { signOut } from "next-auth/react"
@@ -40,15 +43,26 @@ import type { Session } from "next-auth"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { CostQualityChart, IncidentHeatmap, LatencyChart, RelationshipSankey } from "@/components/argusgrid/charts"
 import { EndpointGraphNode } from "@/components/argusgrid/endpoint-node"
 import {
+  allEndpointNodes,
   iconRegistry,
   statusCopy,
   type EndpointNodeData,
@@ -95,6 +109,7 @@ function toFlowEdge(edge: WorkspacePayload["edges"][number]): Edge {
 }
 
 type SaveState = "saved" | "saving" | "error"
+type ProjectMode = "blank" | "demo"
 
 export function ArgusGridDashboard({
   initialWorkspace,
@@ -107,15 +122,29 @@ export function ArgusGridDashboard({
   const [editMode, setEditMode] = useState(false)
   const [theme, setTheme] = useState<"light" | "dark">("light")
   const [saveState, setSaveState] = useState<SaveState>("saved")
+  const [newProjectName, setNewProjectName] = useState("New AI workflow")
+  const [newProjectMode, setNewProjectMode] = useState<ProjectMode>("blank")
+  const [projectName, setProjectName] = useState(initialWorkspace.project.name)
+  const [inviteEmail, setInviteEmail] = useState("")
+  const [inviteRole, setInviteRole] = useState("MEMBER")
+  const [teamMessage, setTeamMessage] = useState("")
   const [nodes, setNodes, onNodesChange] = useNodesState(initialWorkspace.nodes.map(toFlowNode))
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialWorkspace.edges.map(toFlowEdge))
   const didMountRef = useRef(false)
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const selectedNode = useMemo(
-    () => (nodes.find((node) => node.id === selectedId)?.data as unknown as EndpointNodeData) ?? initialWorkspace.nodes[0],
+  const selectedNode = useMemo<EndpointNodeData | undefined>(
+    () => (nodes.find((node) => node.id === selectedId)?.data as unknown as EndpointNodeData | undefined) ?? initialWorkspace.nodes[0],
     [initialWorkspace.nodes, nodes, selectedId]
   )
+  const statusCounts = useMemo(() => {
+    const values = nodes.map((node) => node.data as unknown as EndpointNodeData)
+    return {
+      active: values.filter((node) => (node.override ?? node.status) === "active").length,
+      degraded: values.filter((node) => (node.override ?? node.status) === "degraded").length,
+      down: values.filter((node) => (node.override ?? node.status) === "down").length,
+    }
+  }, [nodes])
 
   const persistGraph = useCallback(async () => {
     setSaveState("saving")
@@ -200,8 +229,9 @@ export function ArgusGridDashboard({
 
   const addEndpointNode = () => {
     const id = crypto.randomUUID()
+    const seed = initialWorkspace.nodes[0] ?? allEndpointNodes[0]
     const newNode: EndpointNodeData = {
-      ...initialWorkspace.nodes[0],
+      ...seed,
       id,
       label: `Endpoint ${nodes.length + 1}`,
       description: "New user-labelled endpoint ready for API mapping.",
@@ -218,6 +248,47 @@ export function ArgusGridDashboard({
     setNodes((currentNodes) => currentNodes.concat(toFlowNode(newNode)))
     setSelectedId(id)
     setEditMode(true)
+  }
+
+  const createProject = async () => {
+    const response = await fetch("/api/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newProjectName, mode: newProjectMode }),
+    })
+    const payload = await response.json()
+    if (response.ok && payload.project?.id) {
+      window.location.href = `/?project=${payload.project.id}`
+    }
+  }
+
+  const renameProject = async () => {
+    const response = await fetch(`/api/projects/${initialWorkspace.project.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: projectName }),
+    })
+    if (response.ok) {
+      window.location.href = `/?project=${initialWorkspace.project.id}`
+    }
+  }
+
+  const archiveProject = async () => {
+    const response = await fetch(`/api/projects/${initialWorkspace.project.id}`, { method: "DELETE" })
+    if (response.ok) {
+      window.location.href = "/"
+    }
+  }
+
+  const inviteMember = async () => {
+    setTeamMessage("")
+    const response = await fetch("/api/organization/members", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
+    })
+    setTeamMessage(response.ok ? "Invitation saved." : "Invitation failed.")
+    if (response.ok) setInviteEmail("")
   }
 
   const setStatusOverride = (status: NodeStatus) => {
@@ -257,14 +328,112 @@ export function ArgusGridDashboard({
           </div>
         </div>
 
+        <div className="mt-3 rounded-xl border bg-background/70 p-3">
+          <div className="text-xs text-muted-foreground">Project</div>
+          <select
+            className="mt-2 h-9 w-full rounded-lg border bg-background px-2 text-sm"
+            value={initialWorkspace.project.id}
+            onChange={(event) => {
+              window.location.href = `/?project=${event.target.value}`
+            }}
+          >
+            {initialWorkspace.projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
+          </select>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <Dialog>
+              <DialogTrigger render={<Button variant="outline" size="sm" />}>New</DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Create project</DialogTitle>
+                  <DialogDescription>Add a deployed project workspace.</DialogDescription>
+                </DialogHeader>
+                <Input value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} />
+                <div className="grid grid-cols-2 gap-2">
+                  <Button variant={newProjectMode === "blank" ? "default" : "outline"} onClick={() => setNewProjectMode("blank")}>
+                    Blank
+                  </Button>
+                  <Button variant={newProjectMode === "demo" ? "default" : "outline"} onClick={() => setNewProjectMode("demo")}>
+                    Demo
+                  </Button>
+                </div>
+                <DialogFooter>
+                  <Button onClick={createProject}>Create</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            <Dialog>
+              <DialogTrigger render={<Button variant="outline" size="sm" />}>Manage</DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Manage project</DialogTitle>
+                  <DialogDescription>Rename or archive this project.</DialogDescription>
+                </DialogHeader>
+                <Input value={projectName} onChange={(event) => setProjectName(event.target.value)} />
+                <DialogFooter>
+                  <Button variant="destructive" onClick={archiveProject}>
+                    <Trash2 data-icon="inline-start" />
+                    Archive
+                  </Button>
+                  <Button onClick={renameProject}>Rename</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </div>
+
         <nav className="mt-5 grid grid-cols-2 gap-1 sm:grid-cols-3 lg:flex lg:flex-1 lg:flex-col">
           <SidebarItem icon={LayoutDashboard} active label="Project Map" />
           <SidebarItem icon={Activity} label="Runs & Steps" />
           <SidebarItem icon={CircleDollarSign} label="Cost & Usage" />
           <SidebarItem icon={Gauge} label="Quality & Evals" />
-          <SidebarItem icon={Bell} label="Alerts" count="3" />
+          <SidebarItem icon={Bell} label="Alerts" count={String(initialWorkspace.alerts.filter((alert) => !alert.resolvedAt).length)} />
           <SidebarItem icon={ShieldCheck} label="Security" />
         </nav>
+
+        <Dialog>
+          <DialogTrigger render={<Button variant="outline" className="mb-3 justify-start" />}>
+            <Users data-icon="inline-start" />
+            Team
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Team access</DialogTitle>
+              <DialogDescription>Invite collaborators and review current workspace members.</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-2 sm:grid-cols-[1fr_130px]">
+              <Input value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="teammate@example.com" />
+              <select className="h-9 rounded-lg border bg-background px-2 text-sm" value={inviteRole} onChange={(event) => setInviteRole(event.target.value)}>
+                <option value="ADMIN">Admin</option>
+                <option value="MEMBER">Member</option>
+                <option value="VIEWER">Viewer</option>
+              </select>
+            </div>
+            <Button onClick={inviteMember}>Save invitation</Button>
+            {teamMessage ? <div className="text-sm text-muted-foreground">{teamMessage}</div> : null}
+            <Separator />
+            <div className="max-h-72 overflow-y-auto">
+              {initialWorkspace.members.map((member) => (
+                <div key={member.id} className="flex items-center justify-between gap-3 border-b py-2 text-sm">
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{member.name}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{member.email}</span>
+                  </span>
+                  <Badge variant="secondary">{member.role}</Badge>
+                </div>
+              ))}
+              {initialWorkspace.invitations.map((invitation) => (
+                <div key={invitation.id} className="flex items-center justify-between gap-3 border-b py-2 text-sm">
+                  <span className="truncate">{invitation.email}</span>
+                  <Badge variant="outline">{invitation.role} pending</Badge>
+                </div>
+              ))}
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <div className="rounded-xl border bg-background/70 p-3">
           <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
@@ -316,15 +485,15 @@ export function ArgusGridDashboard({
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="outline" className="gap-1.5">
                   <span className="size-2 rounded-full bg-emerald-500" />
-                  {initialWorkspace.summary.activeNodes} active
+                  {statusCounts.active} active
                 </Badge>
                 <Badge variant="outline" className="gap-1.5">
                   <span className="size-2 rounded-full bg-amber-500" />
-                  {initialWorkspace.summary.degradedNodes} degraded
+                  {statusCounts.degraded} degraded
                 </Badge>
                 <Badge variant="outline" className="gap-1.5">
                   <span className="size-2 rounded-full bg-rose-500" />
-                  {initialWorkspace.summary.downNodes} down
+                  {statusCounts.down} down
                 </Badge>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -332,10 +501,10 @@ export function ArgusGridDashboard({
                   <HardDriveUpload data-icon="inline-start" />
                   Upload icon
                 </Button>
-                <Button variant="outline" size="sm">
+                <Badge variant="outline">
                   <Wand2 data-icon="inline-start" />
-                  API wizard
-                </Button>
+                  API setup in inspector
+                </Badge>
                 <Button variant={saveState === "error" ? "destructive" : "secondary"} size="sm">
                   <Save data-icon="inline-start" />
                   {saveState === "saving" ? "Autosaving" : saveState === "error" ? "Save failed" : "Autosaved"}
@@ -381,10 +550,14 @@ export function ArgusGridDashboard({
             </div>
           </div>
 
-          <NodeInspector
-            selectedNode={selectedNode}
+          {selectedNode ? (
+            <NodeInspector
+              key={selectedNode.id}
+              selectedNode={selectedNode}
             currentUser={currentUser}
             categories={initialWorkspace.categories}
+            projectId={initialWorkspace.project.id}
+            alerts={initialWorkspace.alerts}
             onOverride={setStatusOverride}
             onPatch={(patch) => {
               setNodes((currentNodes) =>
@@ -395,7 +568,10 @@ export function ArgusGridDashboard({
                 })
               )
             }}
-          />
+            />
+          ) : (
+            <EmptyInspector currentUser={currentUser} onAddNode={addEndpointNode} />
+          )}
         </section>
       </main>
     </div>
@@ -433,17 +609,74 @@ function NodeInspector({
   selectedNode,
   currentUser,
   categories,
+  projectId,
+  alerts,
   onOverride,
   onPatch,
 }: {
   selectedNode: EndpointNodeData
   currentUser: NonNullable<Session["user"]>
   categories: string[]
+  projectId: string
+  alerts: WorkspacePayload["alerts"]
   onOverride: (status: NodeStatus) => void
   onPatch: (patch: Partial<EndpointNodeData>) => void
 }) {
   const Icon = iconRegistry[selectedNode.icon] ?? iconRegistry.api
   const effectiveStatus = selectedNode.override ?? selectedNode.status
+  const [apiUrl, setApiUrl] = useState(selectedNode.apiUrl)
+  const [authType, setAuthType] = useState("NONE")
+  const [secretValue, setSecretValue] = useState("")
+  const [cadenceMin, setCadenceMin] = useState("15")
+  const [mappingLabel, setMappingLabel] = useState("Primary metric")
+  const [jsonPath, setJsonPath] = useState("$.value")
+  const [unit, setUnit] = useState("")
+  const [threshold, setThreshold] = useState("> 90")
+  const [visualization, setVisualization] = useState("NUMBER")
+  const [apiMessage, setApiMessage] = useState("")
+
+  const saveApiConfig = async () => {
+    setApiMessage("Saving API configuration...")
+    const response = await fetch(`/api/projects/${projectId}/nodes/${selectedNode.id}/api-config`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url: apiUrl,
+        method: "GET",
+        authType,
+        secretName: `${selectedNode.label} credential`,
+        secretValue,
+        cadenceMin,
+        mappings: [
+          {
+            label: mappingLabel,
+            jsonPath,
+            unit,
+            threshold,
+            visualization,
+          },
+        ],
+      }),
+    })
+
+    if (!response.ok) {
+      setApiMessage("API configuration failed.")
+      return
+    }
+
+    onPatch({
+      apiUrl,
+      auth: authType === "NONE" ? "None" : authType.replaceAll("_", " ").toLowerCase(),
+      cadence: `Every ${cadenceMin} min`,
+    })
+    setSecretValue("")
+    setApiMessage("API configuration saved.")
+  }
+
+  const resolveAlert = async (alertId: string) => {
+    await fetch(`/api/alerts/${alertId}`, { method: "PATCH" })
+    window.location.reload()
+  }
 
   return (
     <aside className="min-h-0 overflow-y-auto border-l bg-background">
@@ -601,7 +834,7 @@ function NodeInspector({
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
                 <Input value={selectedNode.label} onChange={(event) => onPatch({ label: event.target.value })} aria-label="Node label" />
-                <Input
+                <Textarea
                   value={selectedNode.description}
                   onChange={(event) => onPatch({ description: event.target.value })}
                   aria-label="Node description"
@@ -610,13 +843,46 @@ function NodeInspector({
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle>REST Configuration</CardTitle>
-                <CardDescription>Guided API wizard target for this endpoint</CardDescription>
+                <CardTitle>API Configuration</CardTitle>
+                <CardDescription>Save a deployed polling target and metric mapping</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
-                <ConfigRow label="Endpoint URL" value={selectedNode.apiUrl} />
-                <ConfigRow label="Auth" value={selectedNode.auth} />
-                <ConfigRow label="Cadence" value={selectedNode.cadence} />
+                <Input value={apiUrl} onChange={(event) => setApiUrl(event.target.value)} aria-label="Endpoint URL" />
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <select className="h-9 rounded-lg border bg-background px-2 text-sm" value={authType} onChange={(event) => setAuthType(event.target.value)}>
+                    <option value="NONE">No auth</option>
+                    <option value="API_KEY_HEADER">API key header</option>
+                    <option value="BEARER_TOKEN">Bearer token</option>
+                    <option value="BASIC">Basic auth</option>
+                    <option value="CUSTOM_HEADERS">Custom headers</option>
+                  </select>
+                  <Input value={cadenceMin} onChange={(event) => setCadenceMin(event.target.value)} aria-label="Cadence minutes" />
+                </div>
+                <Input
+                  value={secretValue}
+                  onChange={(event) => setSecretValue(event.target.value)}
+                  placeholder="Secret value, encrypted before storage"
+                  type="password"
+                />
+                <Separator />
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Input value={mappingLabel} onChange={(event) => setMappingLabel(event.target.value)} aria-label="Mapping label" />
+                  <Input value={unit} onChange={(event) => setUnit(event.target.value)} placeholder="Unit" />
+                </div>
+                <Input value={jsonPath} onChange={(event) => setJsonPath(event.target.value)} aria-label="JSONPath" />
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Input value={threshold} onChange={(event) => setThreshold(event.target.value)} aria-label="Threshold" />
+                  <select className="h-9 rounded-lg border bg-background px-2 text-sm" value={visualization} onChange={(event) => setVisualization(event.target.value)}>
+                    <option value="NUMBER">Number</option>
+                    <option value="LINE">Line</option>
+                    <option value="BAR">Bar</option>
+                    <option value="TABLE">Table</option>
+                    <option value="STATUS">Status</option>
+                    <option value="HEATMAP">Heatmap</option>
+                  </select>
+                </div>
+                <Button onClick={saveApiConfig}>Save API setup</Button>
+                {apiMessage ? <div className="text-xs text-muted-foreground">{apiMessage}</div> : null}
                 <Separator />
                 {selectedNode.parameters.map((parameter) => (
                   <div key={parameter.label} className="rounded-lg border bg-muted/20 p-3">
@@ -632,6 +898,36 @@ function NodeInspector({
             </Card>
           </TabsContent>
         </Tabs>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Alert Center</CardTitle>
+            <CardDescription>In-app alerts from cron polling</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2">
+            {alerts.length ? (
+              alerts.map((alert) => (
+                <div key={alert.id} className="flex items-start justify-between gap-2 rounded-lg border p-3 text-sm">
+                  <div className="min-w-0">
+                    <div className="font-medium">{alert.title}</div>
+                    <div className="text-xs text-muted-foreground">{alert.nodeLabel ?? "Project"} · {alert.severity}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{alert.message}</div>
+                  </div>
+                  {alert.resolvedAt ? (
+                    <Badge variant="secondary">Resolved</Badge>
+                  ) : (
+                    <Button variant="outline" size="sm" onClick={() => resolveAlert(alert.id)}>
+                      <CheckCircle2 data-icon="inline-start" />
+                      Resolve
+                    </Button>
+                  )}
+                </div>
+              ))
+            ) : (
+              <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">No cron-generated alerts yet.</div>
+            )}
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>
@@ -652,11 +948,30 @@ function NodeInspector({
   )
 }
 
-function ConfigRow({ label, value }: { label: string; value: string }) {
+function EmptyInspector({
+  currentUser,
+  onAddNode,
+}: {
+  currentUser: NonNullable<Session["user"]>
+  onAddNode: () => void
+}) {
   return (
-    <div className="flex items-start justify-between gap-3 rounded-lg border bg-muted/20 p-3">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="max-w-64 text-right text-xs font-medium">{value}</span>
-    </div>
+    <aside className="min-h-0 overflow-y-auto border-l bg-background">
+      <div className="flex flex-col gap-4 p-5">
+        <Card>
+          <CardHeader>
+            <CardTitle>Start The Project Map</CardTitle>
+            <CardDescription>Create the first endpoint node for this blank project.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <Button onClick={onAddNode}>
+              <Plus data-icon="inline-start" />
+              Add endpoint node
+            </Button>
+            <div className="text-xs text-muted-foreground">Signed in as {currentUser.email ?? currentUser.name ?? "GitHub user"}</div>
+          </CardContent>
+        </Card>
+      </div>
+    </aside>
   )
 }

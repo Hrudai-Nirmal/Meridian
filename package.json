@@ -9,6 +9,7 @@
     "lint": "node ./node_modules/eslint/bin/eslint.js .",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed"
   },
   "prisma": {

@@ -61,6 +61,7 @@ model User {
   accounts      Account[]
   sessions      Session[]
   memberships   Membership[]
+  invitations   TeamInvitation[]
   notifications NotificationPreference[]
   createdAt     DateTime                 @default(now())
   updatedAt     DateTime                 @updatedAt
@@ -104,14 +105,16 @@ model VerificationToken {
 }
 
 model Organization {
-  id          String       @id @default(cuid())
-  name        String
-  slug        String       @unique
-  memberships Membership[]
-  projects    Project[]
-  auditLogs   AuditLog[]
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id                  String           @id @default(cuid())
+  name                String
+  slug                String           @unique
+  onboardingCompleted Boolean          @default(false)
+  memberships         Membership[]
+  invitations         TeamInvitation[]
+  projects            Project[]
+  auditLogs           AuditLog[]
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
 }
 
 model Membership {
@@ -128,6 +131,21 @@ model Membership {
   @@index([userId])
 }
 
+model TeamInvitation {
+  id             String         @id @default(cuid())
+  email          String
+  role           MembershipRole
+  status         String         @default("PENDING")
+  organizationId String
+  invitedById    String
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy      User           @relation(fields: [invitedById], references: [id], onDelete: Cascade)
+  createdAt      DateTime       @default(now())
+
+  @@index([organizationId])
+  @@index([email])
+}
+
 model Project {
   id             String            @id @default(cuid())
   name           String
@@ -140,11 +158,13 @@ model Project {
   secrets        ProjectSecret[]
   alertRules     AlertRule[]
   auditLogs      AuditLog[]
+  archivedAt     DateTime?
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 
   @@unique([organizationId, slug])
   @@index([organizationId])
+  @@index([organizationId, archivedAt])
 }
 
 model ProjectCategory {
@@ -306,6 +326,9 @@ model MetricSample {
   mappingId String?
   node      EndpointNode      @relation(fields: [nodeId], references: [id], onDelete: Cascade)
   mapping   ParameterMapping? @relation(fields: [mappingId], references: [id], onDelete: SetNull)
+
+  @@index([nodeId, sampledAt])
+  @@index([mappingId, sampledAt])
 }
 
 model MetricRollup {
@@ -345,6 +368,9 @@ model AlertEvent {
   node       EndpointNode? @relation(fields: [nodeId], references: [id], onDelete: SetNull)
   rule       AlertRule?    @relation(fields: [ruleId], references: [id], onDelete: SetNull)
   createdAt  DateTime      @default(now())
+
+  @@index([nodeId, resolvedAt])
+  @@index([ruleId, createdAt])
 }
 
 model NotificationPreference {

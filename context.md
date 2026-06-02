@@ -12,7 +12,8 @@ ArgusGrid is a PC-first Next.js dashboard for monitoring AI workflow automations
 - Added autosaved React Flow graph state for node positions, node basics, visual edges, endpoint metadata, and node status overrides.
 - Added authenticated route handlers for workspace bootstrap, project list/detail loading, graph autosave batches, and direct node/edge CRUD.
 - Added Neon-ready environment docs, `.env.example`, Prisma generation/migration scripts, and an idempotent seed command.
-- Added secured cron route scaffolding for polling and alert evaluation.
+- Added deployed-first onboarding, project create/rename/archive controls, team member/invitation UI, encrypted API configuration, cron polling, metric sample persistence, hourly rollups, and in-app alert resolution.
+- Added secured Vercel cron configuration for `/api/cron/poll`; Hobby-compatible schedule is daily.
 - Added API stubs for project state and REST endpoint test/mapping behavior.
 - If database or GitHub OAuth env vars are missing, the app shows a setup-required screen instead of trying to start Auth.js against incomplete config.
 - Neon Postgres has been connected locally, initial Prisma migration `20260602131024_init` has been applied, and the demo workspace seed has run successfully on 2026-06-02.
@@ -28,9 +29,7 @@ ArgusGrid is a PC-first Next.js dashboard for monitoring AI workflow automations
 - Node status is computed from health rules but supports admin overrides.
 
 ## Next Priorities
-- Set the same environment variables in Vercel with production `NEXTAUTH_URL`.
-- Add the deployed Vercel callback URL to the GitHub OAuth app.
-- Browser-test the full GitHub login and autosave flow against Neon.
-- Add encrypted project secret storage and real REST polling execution.
-- Add metric samples, rollups, and retention jobs.
+- Set/verify `ENCRYPTION_KEY` in Vercel before storing customer API credentials.
+- Browser-test onboarding, project switching, team invites, API setup, cron polling, and alert resolution on the deployed site.
+- Add retention cleanup for old raw metric samples.
 - Add email provider configuration for alert delivery.

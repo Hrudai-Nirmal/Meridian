@@ -1,6 +1,6 @@
 import "server-only"
 
-import type { EndpointNode, GraphEdge, Project, ProjectCategory } from "@prisma/client"
+import type { EndpointNode, GraphEdge, MembershipRole, Project, ProjectCategory } from "@prisma/client"
 
 import {
   allEndpointNodes,
@@ -22,6 +22,17 @@ type DbProject = Project & {
   categories: ProjectCategory[]
   nodes: DbNode[]
   edges: GraphEdge[]
+  alertRules: {
+    events: {
+      id: string
+      title: string
+      message: string
+      severity: string
+      createdAt: Date
+      resolvedAt: Date | null
+      node: { label: string } | null
+    }[]
+  }[]
 }
 
 export type WorkspacePayload = {
@@ -29,6 +40,7 @@ export type WorkspacePayload = {
     id: string
     name: string
     slug: string
+    onboardingCompleted: boolean
   }
   projects: {
     id: string
@@ -40,6 +52,27 @@ export type WorkspacePayload = {
     name: string
     slug: string
   }
+  members: {
+    id: string
+    name: string
+    email: string
+    role: string
+  }[]
+  invitations: {
+    id: string
+    email: string
+    role: string
+    status: string
+  }[]
+  alerts: {
+    id: string
+    title: string
+    message: string
+    severity: string
+    createdAt: string
+    resolvedAt: string | null
+    nodeLabel: string | null
+  }[]
   summary: typeof projectSummary
   categories: string[]
   nodes: EndpointNodeData[]
@@ -132,14 +165,29 @@ function dbNodeToEndpointNode(node: DbNode): EndpointNodeData {
 }
 
 function projectToWorkspace(
-  organization: { id: string; name: string; slug: string },
+  organization: { id: string; name: string; slug: string; onboardingCompleted: boolean },
   projects: { id: string; name: string; slug: string }[],
-  project: DbProject
+  project: DbProject,
+  members: WorkspacePayload["members"],
+  invitations: WorkspacePayload["invitations"]
 ): WorkspacePayload {
   const nodes = project.nodes.map(dbNodeToEndpointNode)
   const activeNodes = nodes.filter((node) => (node.override ?? node.status) === "active").length
   const degradedNodes = nodes.filter((node) => (node.override ?? node.status) === "degraded").length
   const downNodes = nodes.filter((node) => (node.override ?? node.status) === "down").length
+  const alerts = project.alertRules
+    .flatMap((rule) => rule.events)
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, 20)
+    .map((event) => ({
+      id: event.id,
+      title: event.title,
+      message: event.message,
+      severity: event.severity,
+      createdAt: event.createdAt.toISOString(),
+      resolvedAt: event.resolvedAt?.toISOString() ?? null,
+      nodeLabel: event.node?.label ?? null,
+    }))
 
   return {
     organization,
@@ -149,6 +197,9 @@ function projectToWorkspace(
       name: project.name,
       slug: project.slug,
     },
+    members,
+    invitations,
+    alerts,
     summary: {
       ...projectSummary,
       organization: organization.name,
@@ -168,13 +219,13 @@ function projectToWorkspace(
   }
 }
 
-async function createSeedProject(organizationId: string) {
+export async function createSeedProject(organizationId: string, name = projectSummary.project) {
   const prisma = getPrisma()
 
   const project = await prisma.project.create({
     data: {
-      name: projectSummary.project,
-      slug: "support-automation-grid",
+      name,
+      slug: await uniqueProjectSlug(organizationId, name),
       organizationId,
       categories: {
         create: projectCategories.map((name, position) => ({
@@ -236,6 +287,24 @@ async function createSeedProject(organizationId: string) {
   return project
 }
 
+export async function createBlankProject(organizationId: string, name: string) {
+  const prisma = getPrisma()
+
+  return prisma.project.create({
+    data: {
+      name,
+      slug: await uniqueProjectSlug(organizationId, name),
+      organizationId,
+      categories: {
+        create: projectCategories.map((category, position) => ({
+          name: category,
+          position,
+        })),
+      },
+    },
+  })
+}
+
 async function uniqueOrganizationSlug(base: string) {
   const prisma = getPrisma()
   const root = slugify(base)
@@ -243,6 +312,20 @@ async function uniqueOrganizationSlug(base: string) {
   let suffix = 2
 
   while (await prisma.organization.findUnique({ where: { slug } })) {
+    slug = `${root}-${suffix}`
+    suffix += 1
+  }
+
+  return slug
+}
+
+async function uniqueProjectSlug(organizationId: string, base: string) {
+  const prisma = getPrisma()
+  const root = slugify(base)
+  let slug = root
+  let suffix = 2
+
+  while (await prisma.project.findUnique({ where: { organizationId_slug: { organizationId, slug } } })) {
     slug = `${root}-${suffix}`
     suffix += 1
   }
@@ -258,6 +341,7 @@ export async function ensureWorkspaceForUser(user: { id: string; name?: string |
       organization: {
         include: {
           projects: {
+            where: { archivedAt: null },
             orderBy: { createdAt: "asc" },
             select: { id: true, name: true, slug: true },
           },
@@ -269,7 +353,7 @@ export async function ensureWorkspaceForUser(user: { id: string; name?: string |
 
   if (existingMembership) {
     if (!existingMembership.organization.projects.length) {
-      await createSeedProject(existingMembership.organizationId)
+      return null
     }
 
     return getWorkspaceForUser(user.id)
@@ -278,7 +362,7 @@ export async function ensureWorkspaceForUser(user: { id: string; name?: string |
   const organizationName = user.name ? `${user.name}'s Workspace` : "Personal Workspace"
   const slug = await uniqueOrganizationSlug(user.email ?? user.name ?? user.id)
 
-  const organization = await prisma.organization.create({
+  await prisma.organization.create({
     data: {
       name: organizationName,
       slug,
@@ -291,9 +375,7 @@ export async function ensureWorkspaceForUser(user: { id: string; name?: string |
     },
   })
 
-  await createSeedProject(organization.id)
-
-  return getWorkspaceForUser(user.id)
+  return null
 }
 
 export async function getWorkspaceForUser(userId: string, projectId?: string) {
@@ -306,9 +388,21 @@ export async function getWorkspaceForUser(userId: string, projectId?: string) {
           id: true,
           name: true,
           slug: true,
+          onboardingCompleted: true,
           projects: {
+            where: { archivedAt: null },
             orderBy: { createdAt: "asc" },
             select: { id: true, name: true, slug: true },
+          },
+          memberships: {
+            include: {
+              user: true,
+            },
+            orderBy: { createdAt: "asc" },
+          },
+          invitations: {
+            where: { status: "PENDING" },
+            orderBy: { createdAt: "desc" },
           },
         },
       },
@@ -325,6 +419,7 @@ export async function getWorkspaceForUser(userId: string, projectId?: string) {
     where: {
       id: selectedProjectId,
       organizationId: membership.organizationId,
+      archivedAt: null,
     },
     include: {
       categories: true,
@@ -338,12 +433,84 @@ export async function getWorkspaceForUser(userId: string, projectId?: string) {
       edges: {
         orderBy: { createdAt: "asc" },
       },
+      alertRules: {
+        include: {
+          events: {
+            include: {
+              node: true,
+            },
+            orderBy: { createdAt: "desc" },
+            take: 20,
+          },
+        },
+      },
     },
   })
 
   if (!project) return null
 
-  return projectToWorkspace(membership.organization, membership.organization.projects, project)
+  const members = membership.organization.memberships.map((member) => ({
+    id: member.id,
+    name: member.user.name ?? "Pending user",
+    email: member.user.email ?? "No email",
+    role: member.role,
+  }))
+  const invitations = membership.organization.invitations.map((invitation) => ({
+    id: invitation.id,
+    email: invitation.email,
+    role: invitation.role,
+    status: invitation.status,
+  }))
+
+  return projectToWorkspace(membership.organization, membership.organization.projects, project, members, invitations)
+}
+
+export async function getOnboardingState(userId: string) {
+  const prisma = getPrisma()
+  const membership = await prisma.membership.findFirst({
+    where: { userId },
+    include: {
+      organization: {
+        include: {
+          projects: {
+            where: { archivedAt: null },
+            select: { id: true },
+          },
+        },
+      },
+    },
+    orderBy: { createdAt: "asc" },
+  })
+
+  return membership
+    ? {
+        organization: {
+          id: membership.organization.id,
+          name: membership.organization.name,
+          slug: membership.organization.slug,
+          onboardingCompleted: membership.organization.onboardingCompleted,
+        },
+        hasProjects: membership.organization.projects.length > 0,
+      }
+    : null
+}
+
+export async function assertOrganizationRole(userId: string, organizationId: string, allowed: MembershipRole[] = ["OWNER", "ADMIN"]) {
+  const prisma = getPrisma()
+  const membership = await prisma.membership.findFirst({
+    where: {
+      userId,
+      organizationId,
+      role: { in: allowed },
+    },
+    select: { id: true, role: true },
+  })
+
+  if (!membership) {
+    throw new Error("Organization access denied.")
+  }
+
+  return membership
 }
 
 export async function assertProjectAccess(userId: string, projectId: string) {

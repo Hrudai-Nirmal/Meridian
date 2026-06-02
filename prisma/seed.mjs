@@ -127,6 +127,7 @@ async function main() {
     create: {
       name: "Northstar AI Ops",
       slug: "northstar-ai-ops-demo",
+      onboardingCompleted: true,
     },
   })
 
