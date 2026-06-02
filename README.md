@@ -1,36 +1,57 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ArgusGrid
 
-## Getting Started
+ArgusGrid is a PC-first Next.js dashboard for monitoring AI workflow automations. Projects open to a graph-first endpoint map; selecting a node shows health, API metadata, alerts, recent runs, costs, and quality signals.
 
-First, run the development server:
+## Stack
+
+- Next.js App Router, React, TypeScript, Tailwind CSS, shadcn/ui
+- Auth.js with GitHub OAuth and Prisma adapter
+- Prisma + Neon Postgres
+- React Flow for project maps
+- Apache ECharts for dashboard visualizations
+
+## Environment
+
+Create `.env.local` from `.env.example`:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+DATABASE_URL="postgresql://USER:PASSWORD@HOST/argusgrid?sslmode=require"
+NEXTAUTH_URL="http://localhost:3000"
+NEXTAUTH_SECRET="replace-with-a-long-random-secret"
+GITHUB_ID="replace-with-github-oauth-client-id"
+GITHUB_SECRET="replace-with-github-oauth-client-secret"
+CRON_SECRET="replace-with-a-long-random-cron-secret"
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+For GitHub OAuth local development, set the callback URL to:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```text
+http://localhost:3000/api/auth/callback/github
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Development
 
-## Learn More
+```bash
+npm install
+npm run prisma:generate
+npm run prisma:migrate
+npm run db:seed
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+Open [http://localhost:3000](http://localhost:3000).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Database Bootstrap
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+On first GitHub login, ArgusGrid creates:
 
-## Deploy on Vercel
+- one personal organization;
+- an owner membership for the signed-in user;
+- the seeded “Support Automation Grid” project;
+- default monitoring categories, endpoint nodes, visual graph edges, endpoint metadata, and node overrides.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+The seed command creates a separate local demo workspace and is idempotent.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Current Scope
+
+This milestone includes real auth, organization/project persistence, DB-backed graph loading, autosaved node/edge graph state, node basics, status overrides, and endpoint metadata. Real polling, encrypted project secrets, metric samples, rollups, alert delivery, and custom icon uploads are still intentionally deferred.

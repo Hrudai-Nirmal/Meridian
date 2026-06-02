@@ -6,10 +6,17 @@ ArgusGrid is a PC-first Next.js dashboard for monitoring AI workflow automations
 ## Current Implementation State
 - Scaffolded with Next.js App Router, TypeScript, Tailwind CSS v4, and shadcn/ui base components.
 - Added React Flow for the endpoint graph and Apache ECharts for analytics visuals.
-- Added Prisma schema for the planned Neon Postgres backend. The runnable UI currently uses seeded in-app data while the database is wired later.
+- Added Auth.js GitHub OAuth with Prisma adapter models for users, accounts, sessions, and verification tokens.
+- Added database-backed organization, membership, project, category, endpoint node, graph edge, status override, and endpoint metadata loading.
+- Added first-login workspace bootstrap that creates a personal organization and seeds the “Support Automation Grid” demo project exactly once per new workspace.
+- Added autosaved React Flow graph state for node positions, node basics, visual edges, endpoint metadata, and node status overrides.
+- Added authenticated route handlers for workspace bootstrap, project list/detail loading, graph autosave batches, and direct node/edge CRUD.
+- Added Neon-ready environment docs, `.env.example`, Prisma generation/migration scripts, and an idempotent seed command.
 - Added secured cron route scaffolding for polling and alert evaluation.
 - Added API stubs for project state and REST endpoint test/mapping behavior.
-- Verified build, lint, Prisma schema validation, desktop browser flow, and mobile no-overflow fallback on 2026-05-31.
+- If database or GitHub OAuth env vars are missing, the app shows a setup-required screen instead of trying to start Auth.js against incomplete config.
+- Neon Postgres has been connected locally, initial Prisma migration `20260602131024_init` has been applied, and the demo workspace seed has run successfully on 2026-06-02.
+- Local GitHub OAuth configuration is set for `http://localhost:3001`; production deployment still needs Vercel env vars and a deployed callback URL.
 
 ## Key Product Decisions
 - Team-first account model with owner/admin/member/viewer roles.
@@ -21,8 +28,9 @@ ArgusGrid is a PC-first Next.js dashboard for monitoring AI workflow automations
 - Node status is computed from health rules but supports admin overrides.
 
 ## Next Priorities
-- Connect Auth.js sessions and role checks to real organization/project data.
-- Run Prisma generation/migrations in a database-ready environment.
-- Replace seeded data with database-backed graph persistence and metric samples.
+- Set the same environment variables in Vercel with production `NEXTAUTH_URL`.
+- Add the deployed Vercel callback URL to the GitHub OAuth app.
+- Browser-test the full GitHub login and autosave flow against Neon.
 - Add encrypted project secret storage and real REST polling execution.
+- Add metric samples, rollups, and retention jobs.
 - Add email provider configuration for alert delivery.

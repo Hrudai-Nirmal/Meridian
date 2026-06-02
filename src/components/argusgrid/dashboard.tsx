@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   addEdge,
   Background,
@@ -34,6 +34,8 @@ import {
   Sun,
   Wand2,
 } from "lucide-react"
+import { signOut } from "next-auth/react"
+import type { Session } from "next-auth"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -47,16 +49,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { CostQualityChart, IncidentHeatmap, LatencyChart, RelationshipSankey } from "@/components/argusgrid/charts"
 import { EndpointGraphNode } from "@/components/argusgrid/endpoint-node"
 import {
-  allEndpointNodes,
-  graphEdges,
   iconRegistry,
-  projectCategories,
-  projectSummary,
   statusCopy,
   type EndpointNodeData,
   type NodeStatus,
 } from "@/lib/argusgrid-data"
 import { cn } from "@/lib/utils"
+import type { WorkspacePayload } from "@/lib/workspace"
 
 const nodeTypes = { endpoint: EndpointGraphNode }
 
@@ -83,7 +82,7 @@ function toFlowNode(node: EndpointNodeData): Node {
   }
 }
 
-function toFlowEdge(edge: (typeof graphEdges)[number]): Edge {
+function toFlowEdge(edge: WorkspacePayload["edges"][number]): Edge {
   return {
     id: edge.id,
     source: edge.source,
@@ -95,17 +94,91 @@ function toFlowEdge(edge: (typeof graphEdges)[number]): Edge {
   }
 }
 
-export function ArgusGridDashboard() {
-  const [selectedId, setSelectedId] = useState(allEndpointNodes[0].id)
+type SaveState = "saved" | "saving" | "error"
+
+export function ArgusGridDashboard({
+  initialWorkspace,
+  currentUser,
+}: {
+  initialWorkspace: WorkspacePayload
+  currentUser: NonNullable<Session["user"]>
+}) {
+  const [selectedId, setSelectedId] = useState(initialWorkspace.nodes[0]?.id ?? "")
   const [editMode, setEditMode] = useState(false)
   const [theme, setTheme] = useState<"light" | "dark">("light")
-  const [nodes, setNodes, onNodesChange] = useNodesState(allEndpointNodes.map(toFlowNode))
-  const [edges, setEdges, onEdgesChange] = useEdgesState(graphEdges.map(toFlowEdge))
+  const [saveState, setSaveState] = useState<SaveState>("saved")
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialWorkspace.nodes.map(toFlowNode))
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialWorkspace.edges.map(toFlowEdge))
+  const didMountRef = useRef(false)
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const selectedNode = useMemo(
-    () => (nodes.find((node) => node.id === selectedId)?.data as unknown as EndpointNodeData) ?? allEndpointNodes[0],
-    [nodes, selectedId]
+    () => (nodes.find((node) => node.id === selectedId)?.data as unknown as EndpointNodeData) ?? initialWorkspace.nodes[0],
+    [initialWorkspace.nodes, nodes, selectedId]
   )
+
+  const persistGraph = useCallback(async () => {
+    setSaveState("saving")
+
+    const response = await fetch(`/api/projects/${initialWorkspace.project.id}/graph`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        nodes: nodes.map((node) => {
+          const data = node.data as unknown as EndpointNodeData
+
+          return {
+            id: node.id,
+            label: data.label,
+            description: data.description,
+            icon: data.icon,
+            status: data.status,
+            statusReason: data.statusReason,
+            override: data.override ?? null,
+            category: data.category,
+            apiUrl: data.apiUrl,
+            cadence: data.cadence,
+            auth: data.auth,
+            position: node.position,
+          }
+        }),
+        edges: edges.map((edge) => ({
+          id: edge.id,
+          source: edge.source,
+          target: edge.target,
+          label: typeof edge.label === "string" ? edge.label : "visual link",
+        })),
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error("Autosave failed")
+    }
+
+    setSaveState("saved")
+  }, [edges, initialWorkspace.project.id, nodes])
+
+  useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true
+      return
+    }
+
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current)
+    }
+
+    setSaveState("saving")
+    autosaveTimerRef.current = setTimeout(() => {
+      persistGraph().catch(() => setSaveState("error"))
+    }, 800)
+
+    return () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current)
+      }
+    }
+  }, [edges, nodes, persistGraph])
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -126,9 +199,9 @@ export function ArgusGridDashboard() {
   )
 
   const addEndpointNode = () => {
-    const id = `endpoint-${nodes.length + 1}`
+    const id = crypto.randomUUID()
     const newNode: EndpointNodeData = {
-      ...allEndpointNodes[0],
+      ...initialWorkspace.nodes[0],
       id,
       label: `Endpoint ${nodes.length + 1}`,
       description: "New user-labelled endpoint ready for API mapping.",
@@ -179,7 +252,7 @@ export function ArgusGridDashboard() {
         <div className="mt-5 rounded-xl border bg-background/70 p-3">
           <div className="text-xs text-muted-foreground">Organization</div>
           <div className="mt-1 flex items-center justify-between gap-2 text-sm font-medium">
-            {projectSummary.organization}
+            {initialWorkspace.organization.name}
             <ChevronDown className="size-4 text-muted-foreground" />
           </div>
         </div>
@@ -207,7 +280,7 @@ export function ArgusGridDashboard() {
         <header className="flex min-h-16 flex-col gap-3 border-b px-5 py-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-w-0 flex-wrap items-center gap-3">
             <div>
-              <h1 className="truncate text-lg font-semibold">{projectSummary.project}</h1>
+              <h1 className="truncate text-lg font-semibold">{initialWorkspace.project.name}</h1>
               <p className="text-xs text-muted-foreground">Graph-first endpoint monitoring workspace</p>
             </div>
             <Badge variant="secondary">Vercel Hobby + Neon Free prototype</Badge>
@@ -231,6 +304,9 @@ export function ArgusGridDashboard() {
               <Plus data-icon="inline-start" />
               Add node
             </Button>
+            <Button variant="ghost" onClick={() => signOut({ callbackUrl: "/" })}>
+              Sign out
+            </Button>
           </div>
         </header>
 
@@ -240,15 +316,15 @@ export function ArgusGridDashboard() {
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="outline" className="gap-1.5">
                   <span className="size-2 rounded-full bg-emerald-500" />
-                  {projectSummary.activeNodes} active
+                  {initialWorkspace.summary.activeNodes} active
                 </Badge>
                 <Badge variant="outline" className="gap-1.5">
                   <span className="size-2 rounded-full bg-amber-500" />
-                  {projectSummary.degradedNodes} degraded
+                  {initialWorkspace.summary.degradedNodes} degraded
                 </Badge>
                 <Badge variant="outline" className="gap-1.5">
                   <span className="size-2 rounded-full bg-rose-500" />
-                  {projectSummary.downNodes} down
+                  {initialWorkspace.summary.downNodes} down
                 </Badge>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -260,9 +336,9 @@ export function ArgusGridDashboard() {
                   <Wand2 data-icon="inline-start" />
                   API wizard
                 </Button>
-                <Button variant="secondary" size="sm">
+                <Button variant={saveState === "error" ? "destructive" : "secondary"} size="sm">
                   <Save data-icon="inline-start" />
-                  Save graph
+                  {saveState === "saving" ? "Autosaving" : saveState === "error" ? "Save failed" : "Autosaved"}
                 </Button>
               </div>
             </div>
@@ -305,7 +381,21 @@ export function ArgusGridDashboard() {
             </div>
           </div>
 
-          <NodeInspector selectedNode={selectedNode} onOverride={setStatusOverride} />
+          <NodeInspector
+            selectedNode={selectedNode}
+            currentUser={currentUser}
+            categories={initialWorkspace.categories}
+            onOverride={setStatusOverride}
+            onPatch={(patch) => {
+              setNodes((currentNodes) =>
+                currentNodes.map((node) => {
+                  if (node.id !== selectedId) return node
+                  const data = node.data as unknown as EndpointNodeData
+                  return { ...node, data: { ...data, ...patch } as unknown as Record<string, unknown> }
+                })
+              )
+            }}
+          />
         </section>
       </main>
     </div>
@@ -341,10 +431,16 @@ function SidebarItem({
 
 function NodeInspector({
   selectedNode,
+  currentUser,
+  categories,
   onOverride,
+  onPatch,
 }: {
   selectedNode: EndpointNodeData
+  currentUser: NonNullable<Session["user"]>
+  categories: string[]
   onOverride: (status: NodeStatus) => void
+  onPatch: (patch: Partial<EndpointNodeData>) => void
 }) {
   const Icon = iconRegistry[selectedNode.icon] ?? iconRegistry.api
   const effectiveStatus = selectedNode.override ?? selectedNode.status
@@ -500,6 +596,20 @@ function NodeInspector({
           <TabsContent value="api" className="mt-3 flex flex-col gap-4">
             <Card>
               <CardHeader>
+                <CardTitle>Node Basics</CardTitle>
+                <CardDescription>Changes autosave into the project graph</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3">
+                <Input value={selectedNode.label} onChange={(event) => onPatch({ label: event.target.value })} aria-label="Node label" />
+                <Input
+                  value={selectedNode.description}
+                  onChange={(event) => onPatch({ description: event.target.value })}
+                  aria-label="Node description"
+                />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
                 <CardTitle>REST Configuration</CardTitle>
                 <CardDescription>Guided API wizard target for this endpoint</CardDescription>
               </CardHeader>
@@ -529,13 +639,14 @@ function NodeInspector({
             <CardDescription>Curated AI-ops taxonomy, editable per project</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
-            {projectCategories.map((category) => (
+            {categories.map((category) => (
               <Badge key={category} variant={category === selectedNode.category ? "default" : "secondary"}>
                 {category}
               </Badge>
             ))}
           </CardContent>
         </Card>
+        <div className="text-xs text-muted-foreground">Signed in as {currentUser.email ?? currentUser.name ?? "GitHub user"}</div>
       </div>
     </aside>
   )
