@@ -11,6 +11,7 @@ import {
   type IconKind,
   type NodeStatus,
 } from "@/lib/argusgrid-data"
+import { getReadinessStatus, type ReadinessStatus } from "@/lib/health"
 import { getPrisma } from "@/lib/prisma"
 
 type DbNode = EndpointNode & {
@@ -73,6 +74,7 @@ export type WorkspacePayload = {
     resolvedAt: string | null
     nodeLabel: string | null
   }[]
+  diagnostics: ReadinessStatus
   summary: typeof projectSummary
   categories: string[]
   nodes: EndpointNodeData[]
@@ -169,7 +171,8 @@ function projectToWorkspace(
   projects: { id: string; name: string; slug: string }[],
   project: DbProject,
   members: WorkspacePayload["members"],
-  invitations: WorkspacePayload["invitations"]
+  invitations: WorkspacePayload["invitations"],
+  diagnostics: ReadinessStatus
 ): WorkspacePayload {
   const nodes = project.nodes.map(dbNodeToEndpointNode)
   const activeNodes = nodes.filter((node) => (node.override ?? node.status) === "active").length
@@ -200,6 +203,7 @@ function projectToWorkspace(
     members,
     invitations,
     alerts,
+    diagnostics,
     summary: {
       ...projectSummary,
       organization: organization.name,
@@ -462,7 +466,9 @@ export async function getWorkspaceForUser(userId: string, projectId?: string) {
     status: invitation.status,
   }))
 
-  return projectToWorkspace(membership.organization, membership.organization.projects, project, members, invitations)
+  const diagnostics = await getReadinessStatus()
+
+  return projectToWorkspace(membership.organization, membership.organization.projects, project, members, invitations, diagnostics)
 }
 
 export async function getOnboardingState(userId: string) {

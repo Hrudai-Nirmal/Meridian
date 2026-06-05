@@ -128,6 +128,7 @@ export function ArgusGridDashboard({
   const [inviteEmail, setInviteEmail] = useState("")
   const [inviteRole, setInviteRole] = useState("MEMBER")
   const [teamMessage, setTeamMessage] = useState("")
+  const [actionMessage, setActionMessage] = useState("")
   const [nodes, setNodes, onNodesChange] = useNodesState(initialWorkspace.nodes.map(toFlowNode))
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialWorkspace.edges.map(toFlowEdge))
   const didMountRef = useRef(false)
@@ -251,6 +252,7 @@ export function ArgusGridDashboard({
   }
 
   const createProject = async () => {
+    setActionMessage("Creating project...")
     const response = await fetch("/api/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -259,10 +261,13 @@ export function ArgusGridDashboard({
     const payload = await response.json()
     if (response.ok && payload.project?.id) {
       window.location.href = `/?project=${payload.project.id}`
+      return
     }
+    setActionMessage(payload.error ?? "Project creation failed.")
   }
 
   const renameProject = async () => {
+    setActionMessage("Renaming project...")
     const response = await fetch(`/api/projects/${initialWorkspace.project.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -270,14 +275,19 @@ export function ArgusGridDashboard({
     })
     if (response.ok) {
       window.location.href = `/?project=${initialWorkspace.project.id}`
+      return
     }
+    setActionMessage("Project rename failed.")
   }
 
   const archiveProject = async () => {
+    setActionMessage("Archiving project...")
     const response = await fetch(`/api/projects/${initialWorkspace.project.id}`, { method: "DELETE" })
     if (response.ok) {
       window.location.href = "/"
+      return
     }
+    setActionMessage("Project archive failed.")
   }
 
   const inviteMember = async () => {
@@ -435,6 +445,42 @@ export function ArgusGridDashboard({
           </DialogContent>
         </Dialog>
 
+        <Dialog>
+          <DialogTrigger render={<Button variant="outline" className="mb-3 justify-start" />}>
+            <ShieldCheck data-icon="inline-start" />
+            Deployment
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Deployment readiness</DialogTitle>
+              <DialogDescription>Safe production checks for the deployed demo. Secret values are never shown.</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-2">
+              <ReadinessItem label="Database connected" ready={initialWorkspace.diagnostics.checks.database} />
+              <ReadinessItem label="GitHub OAuth ready" ready={initialWorkspace.diagnostics.checks.auth} />
+              <ReadinessItem label="Encryption enabled" ready={initialWorkspace.diagnostics.checks.encryption} />
+              <ReadinessItem label="Cron secret configured" ready={initialWorkspace.diagnostics.checks.cron} />
+            </div>
+            <Separator />
+            {initialWorkspace.diagnostics.latestPoll ? (
+              <div className="rounded-lg border bg-muted/20 p-3 text-sm">
+                <div className="font-medium">Latest poll: {initialWorkspace.diagnostics.latestPoll.status}</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {initialWorkspace.diagnostics.latestPoll.sampledNodes} nodes, {initialWorkspace.diagnostics.latestPoll.createdSamples} samples,{" "}
+                  {initialWorkspace.diagnostics.latestPoll.evaluatedAlerts} alerts, {initialWorkspace.diagnostics.latestPoll.deletedSamples} old samples cleaned.
+                </div>
+                {initialWorkspace.diagnostics.latestPoll.errorSummary ? (
+                  <div className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
+                    {initialWorkspace.diagnostics.latestPoll.errorSummary}
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">No cron poll has run yet.</div>
+            )}
+          </DialogContent>
+        </Dialog>
+
         <div className="rounded-xl border bg-background/70 p-3">
           <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
             <span>Free-tier guardrail</span>
@@ -477,6 +523,7 @@ export function ArgusGridDashboard({
               Sign out
             </Button>
           </div>
+          {actionMessage ? <div className="text-xs text-muted-foreground">{actionMessage}</div> : null}
         </header>
 
         <section className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(640px,1fr)_420px]">
@@ -605,6 +652,15 @@ function SidebarItem({
   )
 }
 
+function ReadinessItem({ label, ready }: { label: string; ready: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border p-3 text-sm">
+      <span className="font-medium">{label}</span>
+      <Badge variant={ready ? "secondary" : "destructive"}>{ready ? "Ready" : "Missing"}</Badge>
+    </div>
+  )
+}
+
 function NodeInspector({
   selectedNode,
   currentUser,
@@ -634,6 +690,7 @@ function NodeInspector({
   const [threshold, setThreshold] = useState("> 90")
   const [visualization, setVisualization] = useState("NUMBER")
   const [apiMessage, setApiMessage] = useState("")
+  const [visibleAlerts, setVisibleAlerts] = useState(alerts)
 
   const saveApiConfig = async () => {
     setApiMessage("Saving API configuration...")
@@ -660,7 +717,8 @@ function NodeInspector({
     })
 
     if (!response.ok) {
-      setApiMessage("API configuration failed.")
+      const payload = await response.json().catch(() => null)
+      setApiMessage(payload?.error ?? "API configuration failed.")
       return
     }
 
@@ -674,8 +732,11 @@ function NodeInspector({
   }
 
   const resolveAlert = async (alertId: string) => {
-    await fetch(`/api/alerts/${alertId}`, { method: "PATCH" })
-    window.location.reload()
+    const response = await fetch(`/api/alerts/${alertId}`, { method: "PATCH" })
+    if (!response.ok) return
+    setVisibleAlerts((currentAlerts) =>
+      currentAlerts.map((alert) => (alert.id === alertId ? { ...alert, resolvedAt: new Date().toISOString() } : alert))
+    )
   }
 
   return (
@@ -905,12 +966,12 @@ function NodeInspector({
             <CardDescription>In-app alerts from cron polling</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-2">
-            {alerts.length ? (
-              alerts.map((alert) => (
+            {visibleAlerts.length ? (
+              visibleAlerts.map((alert) => (
                 <div key={alert.id} className="flex items-start justify-between gap-2 rounded-lg border p-3 text-sm">
                   <div className="min-w-0">
                     <div className="font-medium">{alert.title}</div>
-                    <div className="text-xs text-muted-foreground">{alert.nodeLabel ?? "Project"} · {alert.severity}</div>
+                    <div className="text-xs text-muted-foreground">{alert.nodeLabel ?? "Project"} / {alert.severity}</div>
                     <div className="mt-1 text-xs text-muted-foreground">{alert.message}</div>
                   </div>
                   {alert.resolvedAt ? (

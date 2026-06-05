@@ -5,12 +5,17 @@ import { JSONPath } from "jsonpath-plus"
 import { decryptSecret } from "@/lib/crypto"
 import { getPrisma } from "@/lib/prisma"
 
+type JsonDocument = string | number | boolean | object | unknown[] | null
+
 export type PollingResult = {
   checkedAt: string
   sampledNodes: number
   createdSamples: number
   evaluatedAlerts: number
   rollupsQueued: number
+  deletedSamples: number
+  status: string
+  errorSummary?: string
 }
 
 function applyTransform(value: unknown, transform?: string | null) {
@@ -67,6 +72,12 @@ function bucketHour(date: Date) {
 export async function runProjectPolling(): Promise<PollingResult> {
   const prisma = getPrisma()
   const checkedAt = new Date()
+  const execution = await prisma.pollExecution.create({
+    data: {
+      status: "RUNNING",
+      startedAt: checkedAt,
+    },
+  })
   const nodes = await prisma.endpointNode.findMany({
     where: {
       endpointConfig: {
@@ -89,6 +100,18 @@ export async function runProjectPolling(): Promise<PollingResult> {
   let createdSamples = 0
   let evaluatedAlerts = 0
   let rollupsQueued = 0
+  const errors: string[] = []
+
+  const retentionCutoff = new Date(checkedAt.getTime() - 14 * 24 * 60 * 60 * 1000)
+  const deletedSamples = (
+    await prisma.metricSample.deleteMany({
+      where: {
+        sampledAt: {
+          lt: retentionCutoff,
+        },
+      },
+    })
+  ).count
 
   for (const node of nodes) {
     const config = node.endpointConfig
@@ -112,7 +135,14 @@ export async function runProjectPolling(): Promise<PollingResult> {
         signal: controller.signal,
       })
 
-      const json = await response.json()
+      const responseText = await response.text()
+      let json: JsonDocument
+      try {
+        json = responseText ? (JSON.parse(responseText) as JsonDocument) : {}
+      } catch {
+        json = { body: responseText }
+      }
+
       const samples = []
       let degraded = !response.ok
 
@@ -131,15 +161,27 @@ export async function runProjectPolling(): Promise<PollingResult> {
 
         if (thresholdExceeded(value, mapping.threshold)) {
           degraded = true
-          evaluatedAlerts += 1
-          await prisma.alertEvent.create({
-            data: {
-              title: `${mapping.label} threshold crossed`,
-              message: `${mapping.label} is ${value}${mapping.unit ? ` ${mapping.unit}` : ""}`,
-              severity: "WARNING",
+          const title = `${mapping.label} threshold crossed`
+          const existing = await prisma.alertEvent.findFirst({
+            where: {
               nodeId: node.id,
+              title,
+              resolvedAt: null,
             },
+            select: { id: true },
           })
+
+          if (!existing) {
+            evaluatedAlerts += 1
+            await prisma.alertEvent.create({
+              data: {
+                title,
+                message: `${mapping.label} is ${value}${mapping.unit ? ` ${mapping.unit}` : ""}`,
+                severity: "WARNING",
+                nodeId: node.id,
+              },
+            })
+          }
         }
       }
 
@@ -196,26 +238,58 @@ export async function runProjectPolling(): Promise<PollingResult> {
         }
       }
     } catch (error) {
-      evaluatedAlerts += 1
+      const message = error instanceof Error ? error.message : "Endpoint polling failed."
+      errors.push(`${node.label}: ${message}`)
       await prisma.endpointNode.update({
         where: { id: node.id },
         data: {
           status: "DOWN",
-          statusReason: error instanceof Error ? error.message : "Endpoint polling failed.",
+          statusReason: message,
         },
       })
-      await prisma.alertEvent.create({
-        data: {
-          title: "Endpoint polling failed",
-          message: error instanceof Error ? error.message : "Endpoint polling failed.",
-          severity: "CRITICAL",
+      const existing = await prisma.alertEvent.findFirst({
+        where: {
           nodeId: node.id,
+          title: "Endpoint polling failed",
+          resolvedAt: null,
         },
+        select: { id: true },
       })
+
+      if (!existing) {
+        evaluatedAlerts += 1
+        await prisma.alertEvent.create({
+          data: {
+            title: "Endpoint polling failed",
+            message,
+            severity: "CRITICAL",
+            nodeId: node.id,
+          },
+        })
+      }
     } finally {
       clearTimeout(timeout)
     }
   }
+
+  const finishedAt = new Date()
+  const status = errors.length ? "PARTIAL" : "SUCCESS"
+  const errorSummary = errors.length ? errors.slice(0, 5).join(" | ") : undefined
+
+  await prisma.pollExecution.update({
+    where: { id: execution.id },
+    data: {
+      status,
+      finishedAt,
+      durationMs: finishedAt.getTime() - checkedAt.getTime(),
+      sampledNodes: nodes.length,
+      createdSamples,
+      evaluatedAlerts,
+      rollupsQueued,
+      deletedSamples,
+      errorSummary,
+    },
+  })
 
   return {
     checkedAt: checkedAt.toISOString(),
@@ -223,6 +297,9 @@ export async function runProjectPolling(): Promise<PollingResult> {
     createdSamples,
     evaluatedAlerts,
     rollupsQueued,
+    deletedSamples,
+    status,
+    errorSummary,
   }
 }
 

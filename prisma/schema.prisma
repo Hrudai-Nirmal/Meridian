@@ -344,6 +344,24 @@ model MetricRollup {
   @@unique([scope, metricKey, bucket, startedAt])
 }
 
+model PollExecution {
+  id              String    @id @default(cuid())
+  status          String
+  startedAt       DateTime  @default(now())
+  finishedAt      DateTime?
+  durationMs      Int?
+  sampledNodes    Int       @default(0)
+  createdSamples  Int       @default(0)
+  evaluatedAlerts Int       @default(0)
+  rollupsQueued   Int       @default(0)
+  deletedSamples  Int       @default(0)
+  errorSummary    String?
+  createdAt       DateTime  @default(now())
+
+  @@index([startedAt])
+  @@index([status, startedAt])
+}
+
 model AlertRule {
   id         String        @id @default(cuid())
   name       String
