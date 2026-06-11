@@ -282,6 +282,7 @@ export function ArgusGridDashboard({
   const [latestPoll, setLatestPoll] = useState(initialWorkspace.diagnostics.latestPoll)
   const [latestEmail, setLatestEmail] = useState(initialWorkspace.diagnostics.latestEmail)
   const [pollMessage, setPollMessage] = useState("")
+  const [isRefreshingProject, setIsRefreshingProject] = useState(false)
   const [iconMessage, setIconMessage] = useState("")
   const [ingestionTokens, setIngestionTokens] = useState<IngestionTokenRecord[]>([])
   const [ingestionTokenName, setIngestionTokenName] = useState("Workflow telemetry token")
@@ -317,6 +318,39 @@ export function ArgusGridDashboard({
       }),
     [alertSeverityFilter, alertStatusFilter, alerts]
   )
+
+  const refreshProjectData = useCallback(async () => {
+    setIsRefreshingProject(true)
+    setActionMessage("Refreshing project telemetry...")
+    try {
+      const response = await fetch(`/api/projects/${initialWorkspace.project.id}`)
+      const payload = (await response.json()) as WorkspacePayload & { error?: string }
+
+      if (!response.ok) {
+        setActionMessage(payload.error ?? "Could not refresh project telemetry.")
+        return
+      }
+
+      const freshNodes = new Map(payload.nodes.map((node) => [node.id, node]))
+      setNodes((currentNodes) =>
+        currentNodes.map((node) => {
+          const freshNode = freshNodes.get(node.id)
+          if (!freshNode) return node
+          return {
+            ...node,
+            data: { ...freshNode, position: node.position } as unknown as Record<string, unknown>,
+          }
+        })
+      )
+      setAlerts(payload.alerts)
+      setAlertRules(payload.alertRules)
+      setActionMessage("Project telemetry refreshed.")
+    } catch {
+      setActionMessage("Could not refresh project telemetry.")
+    } finally {
+      setIsRefreshingProject(false)
+    }
+  }, [initialWorkspace.project.id, setNodes])
 
   const persistGraph = useCallback(async () => {
     setSaveState("saving")
@@ -920,152 +954,154 @@ export function ArgusGridDashboard({
             <ShieldCheck data-icon="inline-start" />
             Deployment
           </DialogTrigger>
-          <DialogContent className="sm:max-w-2xl">
+          <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-5xl">
             <DialogHeader>
               <DialogTitle>Deployment readiness</DialogTitle>
               <DialogDescription>Safe production checks for the deployed demo. Secret values are never shown.</DialogDescription>
             </DialogHeader>
-            <div className="grid gap-2">
-              <ReadinessItem label="Database connected" ready={initialWorkspace.diagnostics.checks.database} />
-              <ReadinessItem label="GitHub OAuth ready" ready={initialWorkspace.diagnostics.checks.auth} />
-              <ReadinessItem label="Encryption enabled" ready={initialWorkspace.diagnostics.checks.encryption} />
-              <ReadinessItem label="Cron secret configured" ready={initialWorkspace.diagnostics.checks.cron} />
-              <ReadinessItem label="Email provider configured" ready={initialWorkspace.diagnostics.checks.email} />
-            </div>
-            <Separator />
-            <div className="rounded-lg border bg-muted/20 p-3 text-sm">
-              <div className="flex items-center gap-2 font-medium">
-                <MailCheck className="size-4" />
-                Email notifications
-              </div>
-              <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_150px]">
-                <label className="flex items-center gap-2 rounded-lg border bg-background/70 px-3 py-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={emailEnabled}
-                    onChange={(event) => setEmailEnabled(event.target.checked)}
-                  />
-                  Receive alert emails
-                </label>
-                <select
-                  className="h-10 rounded-lg border bg-background px-2 text-sm"
-                  value={emailSeverity}
-                  onChange={(event) => setEmailSeverity(event.target.value)}
-                >
-                  <option value="INFO">Info and above</option>
-                  <option value="WARNING">Warning and above</option>
-                  <option value="CRITICAL">Critical only</option>
-                </select>
-              </div>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                <Button variant="outline" onClick={saveNotificationPreference}>
-                  Save preference
-                </Button>
-                <Button onClick={sendTestEmail} disabled={!canManageOrganization}>
-                  <Send data-icon="inline-start" />
-                  Send test email
-                </Button>
-              </div>
-              {emailMessage ? <div className="mt-2 text-xs text-muted-foreground">{emailMessage}</div> : null}
-              {latestEmail ? (
-                <div className="mt-3 rounded-md border bg-background/70 p-2 text-xs text-muted-foreground">
-                  Latest email: {latestEmail.status} via {latestEmail.provider} at {new Date(latestEmail.attemptedAt).toLocaleString()}
+            <div className="grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">
+              <div className="grid content-start gap-4">
+                <div className="grid gap-2">
+                  <ReadinessItem label="Database connected" ready={initialWorkspace.diagnostics.checks.database} />
+                  <ReadinessItem label="GitHub OAuth ready" ready={initialWorkspace.diagnostics.checks.auth} />
+                  <ReadinessItem label="Encryption enabled" ready={initialWorkspace.diagnostics.checks.encryption} />
+                  <ReadinessItem label="Cron secret configured" ready={initialWorkspace.diagnostics.checks.cron} />
+                  <ReadinessItem label="Email provider configured" ready={initialWorkspace.diagnostics.checks.email} />
                 </div>
-              ) : (
-                <div className="mt-3 rounded-md border border-dashed p-2 text-xs text-muted-foreground">No email delivery has been attempted yet.</div>
-              )}
-            </div>
-            <Separator />
-            <div className="rounded-lg border bg-muted/20 p-3 text-sm">
-              <div className="flex items-center gap-2 font-medium">
-                <KeyRound className="size-4" />
-                Workflow telemetry
+                <div className="grid gap-2 rounded-lg border bg-muted/20 p-3 text-sm">
+                  <Button onClick={runPollNow} disabled={!canManageOrganization}>
+                    <Activity data-icon="inline-start" />
+                    Run poll now
+                  </Button>
+                  {pollMessage ? <div className="text-xs text-muted-foreground">{pollMessage}</div> : null}
+                </div>
+                {latestPoll ? (
+                  <div className="rounded-lg border bg-muted/20 p-3 text-sm">
+                    <div className="font-medium">Latest poll: {latestPoll.status}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {latestPoll.sampledNodes} nodes, {latestPoll.createdSamples} samples, {latestPoll.evaluatedAlerts} alerts,{" "}
+                      {latestPoll.deletedSamples} old samples cleaned.
+                    </div>
+                    {latestPoll.errorSummary ? (
+                      <div className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
+                        {latestPoll.errorSummary}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">No cron poll has run yet.</div>
+                )}
               </div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                Project-scoped ingestion tokens let external automations post workflow runs to ArgusGrid.
-              </div>
-              <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
-                <Input
-                  value={ingestionTokenName}
-                  onChange={(event) => setIngestionTokenName(event.target.value)}
-                  aria-label="Ingestion token name"
-                  disabled={!canManageOrganization}
-                />
-                <Button onClick={createWorkflowToken} disabled={!canManageOrganization}>
-                  Create token
-                </Button>
-              </div>
-              {generatedIngestionToken ? (
-                <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
-                  <div className="font-medium">Copy this token now. It will not be shown again.</div>
-                  <div className="mt-2 flex items-center gap-2">
-                    <code className="min-w-0 flex-1 overflow-x-auto rounded bg-background px-2 py-1 text-[11px] text-foreground">
-                      {generatedIngestionToken}
-                    </code>
-                    <Button variant="outline" size="sm" onClick={() => copyText(generatedIngestionToken, "Token copied.")}>
-                      <Copy data-icon="inline-start" />
-                      Copy
+              <div className="grid content-start gap-4 lg:grid-cols-2 xl:grid-cols-1">
+                <div className="rounded-lg border bg-muted/20 p-3 text-sm">
+                  <div className="flex items-center gap-2 font-medium">
+                    <MailCheck className="size-4" />
+                    Email notifications
+                  </div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_150px]">
+                    <label className="flex items-center gap-2 rounded-lg border bg-background/70 px-3 py-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={emailEnabled}
+                        onChange={(event) => setEmailEnabled(event.target.checked)}
+                      />
+                      Receive alert emails
+                    </label>
+                    <select
+                      className="h-10 rounded-lg border bg-background px-2 text-sm"
+                      value={emailSeverity}
+                      onChange={(event) => setEmailSeverity(event.target.value)}
+                    >
+                      <option value="INFO">Info and above</option>
+                      <option value="WARNING">Warning and above</option>
+                      <option value="CRITICAL">Critical only</option>
+                    </select>
+                  </div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <Button variant="outline" onClick={saveNotificationPreference}>
+                      Save preference
+                    </Button>
+                    <Button onClick={sendTestEmail} disabled={!canManageOrganization}>
+                      <Send data-icon="inline-start" />
+                      Send test email
                     </Button>
                   </div>
-                </div>
-              ) : null}
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <Button variant="outline" size="sm" onClick={loadIngestionTokens} disabled={!canManageOrganization}>
-                  Refresh tokens
-                </Button>
-                {ingestionTokenMessage ? <span className="text-xs text-muted-foreground">{ingestionTokenMessage}</span> : null}
-              </div>
-              {ingestionTokens.length ? (
-                <div className="mt-3 grid gap-2">
-                  {ingestionTokens.map((token) => (
-                    <div key={token.id} className="flex items-center justify-between gap-3 rounded-md border bg-background/70 p-2 text-xs">
-                      <div className="min-w-0">
-                        <div className="truncate font-medium">{token.name}</div>
-                        <div className="mt-1 text-muted-foreground">
-                          {token.prefix}... / {token.revokedAt ? "Revoked" : token.lastUsedAt ? `Last used ${new Date(token.lastUsedAt).toLocaleString()}` : "Never used"}
-                        </div>
-                      </div>
-                      {token.revokedAt ? (
-                        <Badge variant="secondary">Revoked</Badge>
-                      ) : (
-                        <Button variant="ghost" size="sm" onClick={() => revokeWorkflowToken(token.id)} disabled={!canManageOrganization}>
-                          Revoke
-                        </Button>
-                      )}
+                  {emailMessage ? <div className="mt-2 text-xs text-muted-foreground">{emailMessage}</div> : null}
+                  {latestEmail ? (
+                    <div className="mt-3 rounded-md border bg-background/70 p-2 text-xs text-muted-foreground">
+                      Latest email: {latestEmail.status} via {latestEmail.provider} at {new Date(latestEmail.attemptedAt).toLocaleString()}
                     </div>
-                  ))}
+                  ) : (
+                    <div className="mt-3 rounded-md border border-dashed p-2 text-xs text-muted-foreground">No email delivery has been attempted yet.</div>
+                  )}
                 </div>
-              ) : (
-                <div className="mt-3 rounded-md border border-dashed p-2 text-xs text-muted-foreground">
-                  No tokens loaded yet. Create one or refresh the project token list.
-                </div>
-              )}
-            </div>
-            <Separator />
-            <div className="grid gap-2">
-              <Button onClick={runPollNow} disabled={!canManageOrganization}>
-                <Activity data-icon="inline-start" />
-                Run poll now
-              </Button>
-              {pollMessage ? <div className="text-xs text-muted-foreground">{pollMessage}</div> : null}
-            </div>
-            <Separator />
-            {latestPoll ? (
-              <div className="rounded-lg border bg-muted/20 p-3 text-sm">
-                <div className="font-medium">Latest poll: {latestPoll.status}</div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  {latestPoll.sampledNodes} nodes, {latestPoll.createdSamples} samples, {latestPoll.evaluatedAlerts} alerts,{" "}
-                  {latestPoll.deletedSamples} old samples cleaned.
-                </div>
-                {latestPoll.errorSummary ? (
-                  <div className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
-                    {latestPoll.errorSummary}
+                <div className="rounded-lg border bg-muted/20 p-3 text-sm">
+                  <div className="flex items-center gap-2 font-medium">
+                    <KeyRound className="size-4" />
+                    Workflow telemetry
                   </div>
-                ) : null}
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Project-scoped ingestion tokens let external automations post workflow runs to ArgusGrid.
+                  </div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+                    <Input
+                      value={ingestionTokenName}
+                      onChange={(event) => setIngestionTokenName(event.target.value)}
+                      aria-label="Ingestion token name"
+                      disabled={!canManageOrganization}
+                    />
+                    <Button onClick={createWorkflowToken} disabled={!canManageOrganization}>
+                      Create token
+                    </Button>
+                  </div>
+                  {generatedIngestionToken ? (
+                    <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+                      <div className="font-medium">Copy this token now. It will not be shown again.</div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <code className="min-w-0 flex-1 overflow-x-auto rounded bg-background px-2 py-1 text-[11px] text-foreground">
+                          {generatedIngestionToken}
+                        </code>
+                        <Button variant="outline" size="sm" onClick={() => copyText(generatedIngestionToken, "Token copied.")}>
+                          <Copy data-icon="inline-start" />
+                          Copy
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={loadIngestionTokens} disabled={!canManageOrganization}>
+                      Refresh tokens
+                    </Button>
+                    {ingestionTokenMessage ? <span className="text-xs text-muted-foreground">{ingestionTokenMessage}</span> : null}
+                  </div>
+                  {ingestionTokens.length ? (
+                    <div className="mt-3 grid gap-2">
+                      {ingestionTokens.map((token) => (
+                        <div key={token.id} className="flex items-center justify-between gap-3 rounded-md border bg-background/70 p-2 text-xs">
+                          <div className="min-w-0">
+                            <div className="truncate font-medium">{token.name}</div>
+                            <div className="mt-1 text-muted-foreground">
+                              {token.prefix}... / {token.revokedAt ? "Revoked" : token.lastUsedAt ? `Last used ${new Date(token.lastUsedAt).toLocaleString()}` : "Never used"}
+                            </div>
+                          </div>
+                          {token.revokedAt ? (
+                            <Badge variant="secondary">Revoked</Badge>
+                          ) : (
+                            <Button variant="ghost" size="sm" onClick={() => revokeWorkflowToken(token.id)} disabled={!canManageOrganization}>
+                              Revoke
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-3 rounded-md border border-dashed p-2 text-xs text-muted-foreground">
+                      No tokens loaded yet. Create one or refresh the project token list.
+                    </div>
+                  )}
+                </div>
               </div>
-            ) : (
-              <div className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">No cron poll has run yet.</div>
-            )}
+            </div>
           </DialogContent>
         </Dialog>
 
@@ -1206,8 +1242,10 @@ export function ArgusGridDashboard({
             alerts={alerts}
             alertRules={alertRules}
             canEditProject={canEditProject}
+            isRefreshingProject={isRefreshingProject}
             onOverride={setStatusOverride}
             onResolveAlert={resolveAlert}
+            onRefreshProject={refreshProjectData}
             onRuleSaved={(rule) => {
               setAlertRules((currentRules) => {
                 const normalized = {
@@ -1386,8 +1424,10 @@ function NodeInspector({
   alerts,
   alertRules,
   canEditProject,
+  isRefreshingProject,
   onOverride,
   onResolveAlert,
+  onRefreshProject,
   onRuleSaved,
   onPatch,
 }: {
@@ -1398,8 +1438,10 @@ function NodeInspector({
   alerts: WorkspacePayload["alerts"]
   alertRules: WorkspacePayload["alertRules"]
   canEditProject: boolean
+  isRefreshingProject: boolean
   onOverride: (status: NodeStatus) => void
   onResolveAlert: (alertId: string) => void
+  onRefreshProject: () => Promise<void>
   onRuleSaved: (rule: ProjectAlertRule) => void
   onPatch: (patch: Partial<EndpointNodeData>) => void
 }) {
@@ -1768,9 +1810,15 @@ function NodeInspector({
 
           <TabsContent value="runs" className="mt-3 flex flex-col gap-4">
             <Card>
-              <CardHeader>
-                <CardTitle>Recent Runs</CardTitle>
-                <CardDescription>{hasPersistedRuns ? "Persisted workflow telemetry for this node" : "Post workflow runs with a project ingestion token"}</CardDescription>
+              <CardHeader className="flex flex-row items-start justify-between gap-3">
+                <div>
+                  <CardTitle>Recent Runs</CardTitle>
+                  <CardDescription>{hasPersistedRuns ? "Persisted workflow telemetry for this node" : "Post workflow runs with a project ingestion token"}</CardDescription>
+                </div>
+                <Button variant="outline" size="sm" onClick={onRefreshProject} disabled={isRefreshingProject}>
+                  <Activity data-icon="inline-start" />
+                  {isRefreshingProject ? "Refreshing" : "Refresh runs"}
+                </Button>
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
                 {!hasPersistedRuns ? (
@@ -1895,256 +1943,309 @@ function NodeInspector({
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle>API Configuration</CardTitle>
-                <CardDescription>Save a deployed polling target and metric mapping</CardDescription>
+                <CardTitle>Monitoring Setup</CardTitle>
+                <CardDescription>Open focused setup widgets for templates, API polling, and alert rules</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
-                <div className="rounded-lg border bg-muted/20 p-3">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-medium">Integration templates</div>
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        Pick a basic setup card or switch to advanced for copyable payloads.
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 rounded-lg border bg-background p-1 text-xs">
-                      <Button variant={templateMode === "basic" ? "default" : "ghost"} size="sm" onClick={() => setTemplateMode("basic")}>
-                        Basic
-                      </Button>
-                      <Button variant={templateMode === "advanced" ? "default" : "ghost"} size="sm" onClick={() => setTemplateMode("advanced")}>
-                        Advanced
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="mt-3 grid gap-2">
-                    {visibleTemplates.map((template) => (
-                      <div
-                        key={template.id}
-                        className={cn(
-                          "rounded-lg border bg-background/70 p-3 text-xs",
-                          selectedTemplate.id === template.id && "border-primary/60 shadow-sm"
-                        )}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-medium">{template.name}</span>
-                              <Badge variant={template.setupKind === "metric" ? "secondary" : "outline"}>
-                                {template.setupKind === "metric" ? "Metric samples" : "Workflow runs"}
-                              </Badge>
-                              <Badge variant="outline">{template.difficulty}</Badge>
-                            </div>
-                            <div className="mt-1 text-muted-foreground">{template.description}</div>
-                          </div>
-                          <Button variant="outline" size="sm" onClick={() => applyIntegrationTemplate(template)} disabled={!canEditProject && template.setupKind === "metric"}>
-                            {template.preset ? "Apply fields" : "Select"}
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <Dialog>
+                    <DialogTrigger render={<Button variant="outline" className="h-auto justify-start p-3" />}>
+                      <Sparkles data-icon="inline-start" />
+                      Templates
+                    </DialogTrigger>
+                    <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-5xl">
+                      <DialogHeader>
+                        <DialogTitle>Integration templates</DialogTitle>
+                        <DialogDescription>Choose a basic setup card or copy an advanced payload for the selected node.</DialogDescription>
+                      </DialogHeader>
+                      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3">
+                        <div className="text-xs text-muted-foreground">
+                          Templates show whether they create metric samples or workflow runs. Snippets use node id {selectedNode.id}.
+                        </div>
+                        <div className="grid grid-cols-2 rounded-lg border bg-background p-1 text-xs">
+                          <Button variant={templateMode === "basic" ? "default" : "ghost"} size="sm" onClick={() => setTemplateMode("basic")}>
+                            Basic
+                          </Button>
+                          <Button variant={templateMode === "advanced" ? "default" : "ghost"} size="sm" onClick={() => setTemplateMode("advanced")}>
+                            Advanced
                           </Button>
                         </div>
-                        {templateMode === "basic" ? (
-                          <div className="mt-3 grid gap-2">
-                            <div className="flex flex-wrap gap-1">
-                              {template.requiredFields.map((field) => (
-                                <Badge key={field} variant="outline">
-                                  {field}
-                                </Badge>
-                              ))}
-                            </div>
-                            <div className="grid gap-1 text-muted-foreground">
-                              {template.basicSteps.map((step, index) => (
-                                <div key={step}>
-                                  {index + 1}. {step}
+                      </div>
+                      <div className="grid gap-3 lg:grid-cols-[1fr_1fr]">
+                        <div className="grid content-start gap-2">
+                          {visibleTemplates.map((template) => (
+                            <div
+                              key={template.id}
+                              className={cn(
+                                "rounded-lg border bg-background/70 p-3 text-xs",
+                                selectedTemplate.id === template.id && "border-primary/60 shadow-sm"
+                              )}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-medium">{template.name}</span>
+                                    <Badge variant={template.setupKind === "metric" ? "secondary" : "outline"}>
+                                      {template.setupKind === "metric" ? "Metric samples" : "Workflow runs"}
+                                    </Badge>
+                                    <Badge variant="outline">{template.difficulty}</Badge>
+                                  </div>
+                                  <div className="mt-1 text-muted-foreground">{template.description}</div>
                                 </div>
-                              ))}
+                                <Button variant="outline" size="sm" onClick={() => applyIntegrationTemplate(template)} disabled={!canEditProject && template.setupKind === "metric"}>
+                                  {template.preset ? "Apply fields" : "Select"}
+                                </Button>
+                              </div>
+                              {templateMode === "basic" ? (
+                                <div className="mt-3 grid gap-2">
+                                  <div className="flex flex-wrap gap-1">
+                                    {template.requiredFields.map((field) => (
+                                      <Badge key={field} variant="outline">
+                                        {field}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                  <div className="grid gap-1 text-muted-foreground">
+                                    {template.basicSteps.map((step, index) => (
+                                      <div key={step}>
+                                        {index + 1}. {step}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : null}
                             </div>
-                          </div>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                  {templateMode === "advanced" ? (
-                    <div className="mt-3 rounded-lg border bg-background/70 p-3 text-xs">
-                      <div className="flex items-center justify-between gap-2">
-                        <div>
-                          <div className="font-medium">{selectedTemplate.name} advanced snippet</div>
-                          <div className="mt-1 text-muted-foreground">Uses node id {selectedNode.id} and the placeholder &lt;ingestion-token&gt;.</div>
+                          ))}
                         </div>
-                        <Button variant="outline" size="sm" onClick={copySelectedTemplateSnippet}>
-                          <Copy data-icon="inline-start" />
-                          Copy
-                        </Button>
-                      </div>
-                      <pre className="mt-3 max-h-64 overflow-auto rounded-md bg-muted p-3 font-mono text-[11px] text-muted-foreground">
-                        {selectedTemplateSnippet}
-                      </pre>
-                    </div>
-                  ) : null}
-                  {templateMessage ? <div className="mt-2 text-xs text-muted-foreground">{templateMessage}</div> : null}
-                </div>
-                <Button variant="outline" onClick={useDemoMetric} disabled={!canEditProject}>
-                  <Wand2 data-icon="inline-start" />
-                  Use demo metric
-                </Button>
-                <Input value={apiUrl} onChange={(event) => setApiUrl(event.target.value)} aria-label="Endpoint URL" disabled={!canEditProject} />
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <select className="h-9 rounded-lg border bg-background px-2 text-sm disabled:opacity-50" value={authType} onChange={(event) => setAuthType(event.target.value)} disabled={!canEditProject}>
-                    <option value="NONE">No auth</option>
-                    <option value="API_KEY_HEADER">API key header</option>
-                    <option value="BEARER_TOKEN">Bearer token</option>
-                    <option value="BASIC">Basic auth</option>
-                    <option value="CUSTOM_HEADERS">Custom headers</option>
-                  </select>
-                  <Input value={cadenceMin} onChange={(event) => setCadenceMin(event.target.value)} aria-label="Cadence minutes" disabled={!canEditProject} />
-                </div>
-                <Input
-                  value={secretValue}
-                  onChange={(event) => setSecretValue(event.target.value)}
-                  placeholder="Secret value, encrypted before storage"
-                  type="password"
-                  disabled={!canEditProject}
-                />
-                <Separator />
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <Input value={mappingLabel} onChange={(event) => setMappingLabel(event.target.value)} aria-label="Mapping label" disabled={!canEditProject} />
-                  <Input value={unit} onChange={(event) => setUnit(event.target.value)} placeholder="Unit" disabled={!canEditProject} />
-                </div>
-                <Input value={jsonPath} onChange={(event) => setJsonPath(event.target.value)} aria-label="JSONPath" disabled={!canEditProject} />
-                <Input value={transform} onChange={(event) => setTransform(event.target.value)} aria-label="Transform" placeholder="Transform, e.g. none, round:1, divide:1000" disabled={!canEditProject} />
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <Input value={threshold} onChange={(event) => setThreshold(event.target.value)} aria-label="Threshold" disabled={!canEditProject} />
-                  <select className="h-9 rounded-lg border bg-background px-2 text-sm disabled:opacity-50" value={visualization} onChange={(event) => setVisualization(event.target.value)} disabled={!canEditProject}>
-                    <option value="NUMBER">Number</option>
-                    <option value="LINE">Line</option>
-                    <option value="BAR">Bar</option>
-                    <option value="TABLE">Table</option>
-                    <option value="STATUS">Status</option>
-                    <option value="HEATMAP">Heatmap</option>
-                  </select>
-                </div>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <Button variant="outline" onClick={testApiConfig} disabled={!canEditProject}>Test endpoint</Button>
-                  <Button onClick={saveApiConfig} disabled={!canEditProject}>Save API setup</Button>
-                </div>
-                {apiMessage ? <div className="text-xs text-muted-foreground">{apiMessage}</div> : null}
-                {apiTestResult ? (
-                  <div className="rounded-lg border bg-muted/20 p-3 text-xs">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant={apiTestResult.ok ? "secondary" : "destructive"}>
-                        {apiTestResult.status ? `HTTP ${apiTestResult.status}` : apiTestResult.ok ? "OK" : "Failed"}
-                      </Badge>
-                      {apiTestResult.contentType ? <Badge variant="outline">{apiTestResult.contentType}</Badge> : null}
-                      {apiTestResult.parsedJson === false ? <Badge variant="outline">Non-JSON response</Badge> : null}
-                    </div>
-                    {apiTestResult.error ? <div className="mt-2 text-destructive">{apiTestResult.error}</div> : null}
-                    {apiTestResult.mappings?.length ? (
-                      <div className="mt-3 grid gap-2">
-                        {apiTestResult.mappings.map((mapping) => (
-                          <div key={mapping.label} className="rounded-md border bg-background/70 p-2">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="font-medium">{mapping.label}</span>
-                              <Badge variant={mapping.ok ? "secondary" : "destructive"}>{mapping.ok ? "Mapped" : "Missing"}</Badge>
+                        <div className="rounded-lg border bg-background/70 p-3 text-xs">
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <div className="font-medium">{selectedTemplate.name} advanced snippet</div>
+                              <div className="mt-1 text-muted-foreground">Uses the placeholder &lt;ingestion-token&gt;; no real token is exposed.</div>
                             </div>
-                            <div className="mt-1 font-mono text-muted-foreground">{mapping.jsonPath}</div>
-                            {mapping.error ? <div className="mt-1 text-destructive">{mapping.error}</div> : null}
-                            {mapping.ok ? (
-                              <div className="mt-1">
-                                Value: {String(mapping.value)}{mapping.unit ? ` ${mapping.unit}` : ""}
-                              </div>
-                            ) : null}
-                            {mapping.threshold ? (
-                              <div className={cn("mt-1", mapping.threshold.crossed ? "text-amber-600 dark:text-amber-300" : "text-muted-foreground")}>
-                                Threshold: {mapping.threshold.message}
-                              </div>
-                            ) : null}
+                            <Button variant="outline" size="sm" onClick={copySelectedTemplateSnippet}>
+                              <Copy data-icon="inline-start" />
+                              Copy
+                            </Button>
                           </div>
-                        ))}
+                          <pre className="mt-3 max-h-[52vh] overflow-auto rounded-md bg-muted p-3 font-mono text-[11px] text-muted-foreground">
+                            {selectedTemplateSnippet}
+                          </pre>
+                        </div>
                       </div>
-                    ) : null}
-                    {apiTestResult.preview !== undefined ? (
-                      <pre className="mt-3 max-h-48 overflow-auto rounded-md bg-background p-2 font-mono text-[11px]">
-                        {JSON.stringify(apiTestResult.preview, null, 2).slice(0, 4000)}
-                      </pre>
-                    ) : null}
+                      {templateMessage ? <div className="text-xs text-muted-foreground">{templateMessage}</div> : null}
+                    </DialogContent>
+                  </Dialog>
+
+                  <Dialog>
+                    <DialogTrigger render={<Button variant="outline" className="h-auto justify-start p-3" />}>
+                      <Gauge data-icon="inline-start" />
+                      API Setup
+                    </DialogTrigger>
+                    <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-4xl">
+                      <DialogHeader>
+                        <DialogTitle>API setup</DialogTitle>
+                        <DialogDescription>Configure one deployed endpoint, JSONPath mapping, and test response preview.</DialogDescription>
+                      </DialogHeader>
+                      <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
+                        <div className="grid content-start gap-3">
+                          <Button variant="outline" onClick={useDemoMetric} disabled={!canEditProject}>
+                            <Wand2 data-icon="inline-start" />
+                            Use demo metric
+                          </Button>
+                          <Input value={apiUrl} onChange={(event) => setApiUrl(event.target.value)} aria-label="Endpoint URL" disabled={!canEditProject} />
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <select className="h-9 rounded-lg border bg-background px-2 text-sm disabled:opacity-50" value={authType} onChange={(event) => setAuthType(event.target.value)} disabled={!canEditProject}>
+                              <option value="NONE">No auth</option>
+                              <option value="API_KEY_HEADER">API key header</option>
+                              <option value="BEARER_TOKEN">Bearer token</option>
+                              <option value="BASIC">Basic auth</option>
+                              <option value="CUSTOM_HEADERS">Custom headers</option>
+                            </select>
+                            <Input value={cadenceMin} onChange={(event) => setCadenceMin(event.target.value)} aria-label="Cadence minutes" disabled={!canEditProject} />
+                          </div>
+                          <Input
+                            value={secretValue}
+                            onChange={(event) => setSecretValue(event.target.value)}
+                            placeholder="Secret value, encrypted before storage"
+                            type="password"
+                            disabled={!canEditProject}
+                          />
+                          <Separator />
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <Input value={mappingLabel} onChange={(event) => setMappingLabel(event.target.value)} aria-label="Mapping label" disabled={!canEditProject} />
+                            <Input value={unit} onChange={(event) => setUnit(event.target.value)} placeholder="Unit" disabled={!canEditProject} />
+                          </div>
+                          <Input value={jsonPath} onChange={(event) => setJsonPath(event.target.value)} aria-label="JSONPath" disabled={!canEditProject} />
+                          <Input value={transform} onChange={(event) => setTransform(event.target.value)} aria-label="Transform" placeholder="Transform, e.g. none, round:1, divide:1000" disabled={!canEditProject} />
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <Input value={threshold} onChange={(event) => setThreshold(event.target.value)} aria-label="Threshold" disabled={!canEditProject} />
+                            <select className="h-9 rounded-lg border bg-background px-2 text-sm disabled:opacity-50" value={visualization} onChange={(event) => setVisualization(event.target.value)} disabled={!canEditProject}>
+                              <option value="NUMBER">Number</option>
+                              <option value="LINE">Line</option>
+                              <option value="BAR">Bar</option>
+                              <option value="TABLE">Table</option>
+                              <option value="STATUS">Status</option>
+                              <option value="HEATMAP">Heatmap</option>
+                            </select>
+                          </div>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <Button variant="outline" onClick={testApiConfig} disabled={!canEditProject}>Test endpoint</Button>
+                            <Button onClick={saveApiConfig} disabled={!canEditProject}>Save API setup</Button>
+                          </div>
+                          {apiMessage ? <div className="text-xs text-muted-foreground">{apiMessage}</div> : null}
+                        </div>
+                        <div className="grid content-start gap-3">
+                          {apiTestResult ? (
+                            <div className="rounded-lg border bg-muted/20 p-3 text-xs">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Badge variant={apiTestResult.ok ? "secondary" : "destructive"}>
+                                  {apiTestResult.status ? `HTTP ${apiTestResult.status}` : apiTestResult.ok ? "OK" : "Failed"}
+                                </Badge>
+                                {apiTestResult.contentType ? <Badge variant="outline">{apiTestResult.contentType}</Badge> : null}
+                                {apiTestResult.parsedJson === false ? <Badge variant="outline">Non-JSON response</Badge> : null}
+                              </div>
+                              {apiTestResult.error ? <div className="mt-2 text-destructive">{apiTestResult.error}</div> : null}
+                              {apiTestResult.mappings?.length ? (
+                                <div className="mt-3 grid gap-2">
+                                  {apiTestResult.mappings.map((mapping) => (
+                                    <div key={mapping.label} className="rounded-md border bg-background/70 p-2">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="font-medium">{mapping.label}</span>
+                                        <Badge variant={mapping.ok ? "secondary" : "destructive"}>{mapping.ok ? "Mapped" : "Missing"}</Badge>
+                                      </div>
+                                      <div className="mt-1 font-mono text-muted-foreground">{mapping.jsonPath}</div>
+                                      {mapping.error ? <div className="mt-1 text-destructive">{mapping.error}</div> : null}
+                                      {mapping.ok ? (
+                                        <div className="mt-1">
+                                          Value: {String(mapping.value)}{mapping.unit ? ` ${mapping.unit}` : ""}
+                                        </div>
+                                      ) : null}
+                                      {mapping.threshold ? (
+                                        <div className={cn("mt-1", mapping.threshold.crossed ? "text-amber-600 dark:text-amber-300" : "text-muted-foreground")}>
+                                          Threshold: {mapping.threshold.message}
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : null}
+                              {apiTestResult.preview !== undefined ? (
+                                <pre className="mt-3 max-h-[42vh] overflow-auto rounded-md bg-background p-2 font-mono text-[11px]">
+                                  {JSON.stringify(apiTestResult.preview, null, 2).slice(0, 4000)}
+                                </pre>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                              Test an endpoint to preview JSON, mapped values, and threshold feedback here.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+
+                  <Dialog>
+                    <DialogTrigger render={<Button variant="outline" className="h-auto justify-start p-3" />}>
+                      <Bell data-icon="inline-start" />
+                      Alert Rule
+                    </DialogTrigger>
+                    <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-3xl">
+                      <DialogHeader>
+                        <DialogTitle>Alert rule</DialogTitle>
+                        <DialogDescription>Create a threshold rule from a saved parameter mapping.</DialogDescription>
+                      </DialogHeader>
+                      <div className="grid gap-4 lg:grid-cols-[1fr_0.9fr]">
+                        <div className="grid content-start gap-3 rounded-lg border bg-muted/20 p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="text-sm font-medium">Threshold rule</div>
+                              <div className="mt-1 text-xs text-muted-foreground">Attach this rule to a saved API mapping.</div>
+                            </div>
+                            <Badge variant={ruleEnabled ? "secondary" : "outline"}>{ruleEnabled ? "Enabled" : "Disabled"}</Badge>
+                          </div>
+                          <select
+                            className="h-9 rounded-lg border bg-background px-2 text-sm disabled:opacity-50"
+                            value={ruleMappingId}
+                            onChange={(event) => {
+                              const parameter = selectedNode.parameters.find((candidate) => candidate.id === event.target.value)
+                              setRuleMappingId(event.target.value)
+                              if (parameter) {
+                                setRuleName(`${parameter.label} threshold crossed`)
+                              }
+                            }}
+                            disabled={!canEditProject}
+                          >
+                            {selectedNode.parameters.filter((parameter) => parameter.id).length ? null : (
+                              <option value="">No saved mappings yet</option>
+                            )}
+                            {selectedNode.parameters
+                              .filter((parameter) => parameter.id)
+                              .map((parameter) => (
+                                <option key={parameter.id} value={parameter.id}>
+                                  {parameter.label}
+                                </option>
+                              ))}
+                          </select>
+                          <Input value={ruleName} onChange={(event) => setRuleName(event.target.value)} aria-label="Alert rule name" disabled={!canEditProject} />
+                          <div className="grid gap-2 sm:grid-cols-[1fr_130px]">
+                            <Input
+                              value={ruleExpression}
+                              onChange={(event) => setRuleExpression(event.target.value)}
+                              aria-label="Alert rule threshold"
+                              placeholder="> 90"
+                              disabled={!canEditProject}
+                            />
+                            <select
+                              className="h-9 rounded-lg border bg-background px-2 text-sm disabled:opacity-50"
+                              value={ruleSeverity}
+                              onChange={(event) => setRuleSeverity(event.target.value)}
+                              disabled={!canEditProject}
+                            >
+                              <option value="INFO">Info</option>
+                              <option value="WARNING">Warning</option>
+                              <option value="CRITICAL">Critical</option>
+                            </select>
+                          </div>
+                          <label className="flex items-center gap-2 text-sm">
+                            <input type="checkbox" checked={ruleEnabled} onChange={(event) => setRuleEnabled(event.target.checked)} disabled={!canEditProject} />
+                            Rule enabled
+                          </label>
+                          <Button onClick={saveAlertRule} disabled={!canEditProject}>
+                            Save alert rule
+                          </Button>
+                          {ruleMessage ? <div className="text-xs text-muted-foreground">{ruleMessage}</div> : null}
+                        </div>
+                        <div className="grid content-start gap-2">
+                          <div className="text-sm font-medium">Saved rules</div>
+                          {nodeAlertRules.length ? (
+                            nodeAlertRules.map((rule) => (
+                              <div key={rule.id} className="rounded-md border bg-background/70 p-2 text-xs">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="font-medium">{rule.name}</span>
+                                  <Badge variant={rule.enabled ? "secondary" : "outline"}>{rule.severity}</Badge>
+                                </div>
+                                <div className="mt-1 text-muted-foreground">
+                                  {rule.mappingLabel ?? "Mapping"} {rule.expression}
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">No alert rules saved for this node yet.</div>
+                          )}
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+                {(templateMessage || apiMessage || ruleMessage) ? (
+                  <div className="rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
+                    {templateMessage ? <div>{templateMessage}</div> : null}
+                    {apiMessage ? <div>{apiMessage}</div> : null}
+                    {ruleMessage ? <div>{ruleMessage}</div> : null}
                   </div>
                 ) : null}
-                <Separator />
-                <div className="rounded-lg border bg-muted/20 p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-medium">Alert rule</div>
-                      <div className="mt-1 text-xs text-muted-foreground">Create a threshold rule from a saved parameter mapping.</div>
-                    </div>
-                    <Badge variant={ruleEnabled ? "secondary" : "outline"}>{ruleEnabled ? "Enabled" : "Disabled"}</Badge>
-                  </div>
-                  <div className="mt-3 grid gap-2">
-                    <select
-                      className="h-9 rounded-lg border bg-background px-2 text-sm disabled:opacity-50"
-                      value={ruleMappingId}
-                      onChange={(event) => {
-                        const parameter = selectedNode.parameters.find((candidate) => candidate.id === event.target.value)
-                        setRuleMappingId(event.target.value)
-                        if (parameter) {
-                          setRuleName(`${parameter.label} threshold crossed`)
-                        }
-                      }}
-                      disabled={!canEditProject}
-                    >
-                      {selectedNode.parameters.filter((parameter) => parameter.id).length ? null : (
-                        <option value="">No saved mappings yet</option>
-                      )}
-                      {selectedNode.parameters
-                        .filter((parameter) => parameter.id)
-                        .map((parameter) => (
-                          <option key={parameter.id} value={parameter.id}>
-                            {parameter.label}
-                          </option>
-                        ))}
-                    </select>
-                    <Input value={ruleName} onChange={(event) => setRuleName(event.target.value)} aria-label="Alert rule name" disabled={!canEditProject} />
-                    <div className="grid gap-2 sm:grid-cols-[1fr_130px]">
-                      <Input
-                        value={ruleExpression}
-                        onChange={(event) => setRuleExpression(event.target.value)}
-                        aria-label="Alert rule threshold"
-                        placeholder="> 90"
-                        disabled={!canEditProject}
-                      />
-                      <select
-                        className="h-9 rounded-lg border bg-background px-2 text-sm disabled:opacity-50"
-                        value={ruleSeverity}
-                        onChange={(event) => setRuleSeverity(event.target.value)}
-                        disabled={!canEditProject}
-                      >
-                        <option value="INFO">Info</option>
-                        <option value="WARNING">Warning</option>
-                        <option value="CRITICAL">Critical</option>
-                      </select>
-                    </div>
-                    <label className="flex items-center gap-2 text-sm">
-                      <input type="checkbox" checked={ruleEnabled} onChange={(event) => setRuleEnabled(event.target.checked)} disabled={!canEditProject} />
-                      Rule enabled
-                    </label>
-                    <Button onClick={saveAlertRule} disabled={!canEditProject}>
-                      Save alert rule
-                    </Button>
-                    {ruleMessage ? <div className="text-xs text-muted-foreground">{ruleMessage}</div> : null}
-                  </div>
-                  {nodeAlertRules.length ? (
-                    <div className="mt-3 grid gap-2">
-                      {nodeAlertRules.map((rule) => (
-                        <div key={rule.id} className="rounded-md border bg-background/70 p-2 text-xs">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="font-medium">{rule.name}</span>
-                            <Badge variant={rule.enabled ? "secondary" : "outline"}>{rule.severity}</Badge>
-                          </div>
-                          <div className="mt-1 text-muted-foreground">
-                            {rule.mappingLabel ?? "Mapping"} {rule.expression}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-                <Separator />
                 {selectedNode.parameters.map((parameter) => (
                   <div key={parameter.label} className="rounded-lg border bg-muted/20 p-3">
                     <div className="flex items-center justify-between gap-2">
