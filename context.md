@@ -13,6 +13,10 @@ ArgusGrid is a PC-first Next.js dashboard for monitoring AI workflow automations
 - Added authenticated route handlers for workspace bootstrap, project list/detail loading, graph autosave batches, and direct node/edge CRUD.
 - Added Neon-ready environment docs, `.env.example`, Prisma generation/migration scripts, and an idempotent seed command.
 - Added deployed-first onboarding, project create/rename/archive controls, team member/invitation UI, encrypted API configuration, cron polling, metric sample persistence, hourly rollups, and in-app alert resolution.
+- Added private-beta team completion: pending invitations are accepted on matching GitHub login, owners/admins can manage member roles and pending invitations, and viewers are blocked from project mutations.
+- Added guided API setup testing with endpoint response status, JSON/non-JSON preview, JSONPath mapping results, transform output, and threshold preview.
+- Added project-level alert center filters, alert detail drawer, and optional Resend email notifications for newly created alerts.
+- Added DB-backed custom PNG/SVG node icon uploads with size and MIME validation.
 - Added secured Vercel cron configuration for `/api/cron/poll`; Hobby-compatible schedule is daily.
 - Added safe deployed readiness checks through `/api/health`, dashboard deployment diagnostics, poll execution logging, duplicate-alert prevention, non-JSON polling tolerance, and raw metric sample retention cleanup.
 - Added visual polish for the deployed dashboard: neutral black/grey dark mode tokens, clearer React Flow dot grid visibility, and edit-mode node snapping to the nearest 22px grid point on drag release.
@@ -34,5 +38,5 @@ ArgusGrid is a PC-first Next.js dashboard for monitoring AI workflow automations
 
 ## Next Priorities
 - Run the smoke script against the deployed Vercel site after each push.
-- Browser-test onboarding, project switching, team invites, API setup, cron polling, deployment diagnostics, and alert resolution on the deployed site.
-- Add email provider configuration for alert delivery.
+- Browser-test invited-user acceptance, role management, guided API setup, icon upload, alert center filtering, cron polling, deployment diagnostics, and alert resolution on the deployed site.
+- Configure `RESEND_API_KEY` and `ALERT_FROM_EMAIL` in Vercel when real alert email delivery is wanted.

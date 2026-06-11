@@ -17,6 +17,18 @@ import { getPrisma } from "@/lib/prisma"
 type DbNode = EndpointNode & {
   override: { status: string; reason: string; expiresAt: Date | null } | null
   endpointConfig: { url: string; method: string; authType: string; cadenceMin: number } | null
+  icon: { id: string; mimeType: string } | null
+  alertEvents: {
+    id: string
+    title: string
+    message: string
+    severity: string
+    nodeId: string | null
+    ruleId: string | null
+    createdAt: Date
+    resolvedAt: Date | null
+    node: { label: string } | null
+  }[]
 }
 
 type DbProject = Project & {
@@ -29,6 +41,8 @@ type DbProject = Project & {
       title: string
       message: string
       severity: string
+      nodeId: string | null
+      ruleId: string | null
       createdAt: Date
       resolvedAt: Date | null
       node: { label: string } | null
@@ -43,6 +57,7 @@ export type WorkspacePayload = {
     slug: string
     onboardingCompleted: boolean
   }
+  currentUserRole: string
   projects: {
     id: string
     name: string
@@ -73,6 +88,9 @@ export type WorkspacePayload = {
     createdAt: string
     resolvedAt: string | null
     nodeLabel: string | null
+    source: string
+    firstSeen: string
+    lastSeen: string
   }[]
   diagnostics: ReadinessStatus
   summary: typeof projectSummary
@@ -163,11 +181,13 @@ function dbNodeToEndpointNode(node: DbNode): EndpointNodeData {
     cadence: toCadenceLabel(node.endpointConfig?.cadenceMin),
     auth: toAuthLabel(node.endpointConfig?.authType),
     position: { x: node.x, y: node.y },
+    customIconUrl: node.icon ? `/api/projects/${node.projectId}/nodes/${node.id}/icon?v=${node.updatedAt.getTime()}` : undefined,
   }
 }
 
 function projectToWorkspace(
   organization: { id: string; name: string; slug: string; onboardingCompleted: boolean },
+  currentUserRole: MembershipRole,
   projects: { id: string; name: string; slug: string }[],
   project: DbProject,
   members: WorkspacePayload["members"],
@@ -178,8 +198,13 @@ function projectToWorkspace(
   const activeNodes = nodes.filter((node) => (node.override ?? node.status) === "active").length
   const degradedNodes = nodes.filter((node) => (node.override ?? node.status) === "degraded").length
   const downNodes = nodes.filter((node) => (node.override ?? node.status) === "down").length
-  const alerts = project.alertRules
-    .flatMap((rule) => rule.events)
+  const alertEventsById = new Map(
+    project.alertRules
+      .flatMap((rule) => rule.events)
+      .concat(project.nodes.flatMap((node) => node.alertEvents))
+      .map((event) => [event.id, event])
+  )
+  const alerts = Array.from(alertEventsById.values())
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .slice(0, 20)
     .map((event) => ({
@@ -190,10 +215,14 @@ function projectToWorkspace(
       createdAt: event.createdAt.toISOString(),
       resolvedAt: event.resolvedAt?.toISOString() ?? null,
       nodeLabel: event.node?.label ?? null,
+      source: event.ruleId ? "Threshold rule" : event.nodeId ? "Endpoint polling" : "Project",
+      firstSeen: event.createdAt.toISOString(),
+      lastSeen: event.createdAt.toISOString(),
     }))
 
   return {
     organization,
+    currentUserRole,
     projects,
     project: {
       id: project.id,
@@ -339,6 +368,43 @@ async function uniqueProjectSlug(organizationId: string, base: string) {
 
 export async function ensureWorkspaceForUser(user: { id: string; name?: string | null; email?: string | null }) {
   const prisma = getPrisma()
+  const normalizedEmail = user.email?.toLowerCase()
+
+  if (normalizedEmail) {
+    const invitations = await prisma.teamInvitation.findMany({
+      where: {
+        email: normalizedEmail,
+        status: "PENDING",
+      },
+      orderBy: { createdAt: "asc" },
+    })
+
+    for (const invitation of invitations) {
+      await prisma.$transaction([
+        prisma.membership.upsert({
+          where: {
+            userId_organizationId: {
+              userId: user.id,
+              organizationId: invitation.organizationId,
+            },
+          },
+          update: {
+            role: invitation.role,
+          },
+          create: {
+            userId: user.id,
+            organizationId: invitation.organizationId,
+            role: invitation.role,
+          },
+        }),
+        prisma.teamInvitation.update({
+          where: { id: invitation.id },
+          data: { status: "ACCEPTED" },
+        }),
+      ])
+    }
+  }
+
   const existingMembership = await prisma.membership.findFirst({
     where: { userId: user.id },
     include: {
@@ -431,6 +497,21 @@ export async function getWorkspaceForUser(userId: string, projectId?: string) {
         include: {
           override: true,
           endpointConfig: true,
+          icon: {
+            select: {
+              id: true,
+              mimeType: true,
+            },
+          },
+          alertEvents: {
+            include: {
+              node: {
+                select: { label: true },
+              },
+            },
+            orderBy: { createdAt: "desc" },
+            take: 20,
+          },
         },
         orderBy: { createdAt: "asc" },
       },
@@ -468,7 +549,7 @@ export async function getWorkspaceForUser(userId: string, projectId?: string) {
 
   const diagnostics = await getReadinessStatus()
 
-  return projectToWorkspace(membership.organization, membership.organization.projects, project, members, invitations, diagnostics)
+  return projectToWorkspace(membership.organization, membership.role, membership.organization.projects, project, members, invitations, diagnostics)
 }
 
 export async function getOnboardingState(userId: string) {
@@ -535,6 +616,34 @@ export async function assertProjectAccess(userId: string, projectId: string) {
 
   if (!project) {
     throw new Error("Project not found or access denied.")
+  }
+
+  return project
+}
+
+export async function assertProjectRole(
+  userId: string,
+  projectId: string,
+  allowed: MembershipRole[] = ["OWNER", "ADMIN", "MEMBER"]
+) {
+  const prisma = getPrisma()
+  const project = await prisma.project.findFirst({
+    where: {
+      id: projectId,
+      organization: {
+        memberships: {
+          some: {
+            userId,
+            role: { in: allowed },
+          },
+        },
+      },
+    },
+    select: { id: true, organizationId: true },
+  })
+
+  if (!project) {
+    throw new Error("Project mutation access denied.")
   }
 
   return project

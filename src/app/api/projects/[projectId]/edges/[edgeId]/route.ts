@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
-import { getApiUserId } from "@/lib/api-session"
+import { getApiUserId, requireProjectRole } from "@/lib/api-session"
 import { getPrisma } from "@/lib/prisma"
-import { assertProjectAccess, serializeGraphForProject } from "@/lib/workspace"
+import { serializeGraphForProject } from "@/lib/workspace"
 
 const updateEdgeSchema = z.object({
   source: z.string().min(1).optional(),
@@ -16,7 +16,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ proje
   if (error) return error
 
   const { projectId, edgeId } = await context.params
-  await assertProjectAccess(userId, projectId)
+  const accessError = await requireProjectRole(userId, projectId)
+  if (accessError) return accessError
 
   const parsed = updateEdgeSchema.safeParse(await request.json())
   if (!parsed.success) {
@@ -61,7 +62,8 @@ export async function DELETE(_: Request, context: { params: Promise<{ projectId:
   if (error) return error
 
   const { projectId, edgeId } = await context.params
-  await assertProjectAccess(userId, projectId)
+  const accessError = await requireProjectRole(userId, projectId)
+  if (accessError) return accessError
 
   const prisma = getPrisma()
   await prisma.graphEdge.deleteMany({ where: { id: edgeId, projectId } })

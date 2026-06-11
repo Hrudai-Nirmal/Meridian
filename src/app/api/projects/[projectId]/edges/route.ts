@@ -2,9 +2,9 @@ import { randomUUID } from "crypto"
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
-import { getApiUserId } from "@/lib/api-session"
+import { getApiUserId, requireProjectRole } from "@/lib/api-session"
 import { getPrisma } from "@/lib/prisma"
-import { assertProjectAccess, serializeGraphForProject } from "@/lib/workspace"
+import { serializeGraphForProject } from "@/lib/workspace"
 
 const createEdgeSchema = z.object({
   id: z.string().min(1).optional(),
@@ -18,7 +18,8 @@ export async function POST(request: Request, context: { params: Promise<{ projec
   if (error) return error
 
   const { projectId } = await context.params
-  await assertProjectAccess(userId, projectId)
+  const accessError = await requireProjectRole(userId, projectId)
+  if (accessError) return accessError
 
   const parsed = createEdgeSchema.safeParse(await request.json())
   if (!parsed.success) {

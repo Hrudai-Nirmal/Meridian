@@ -3,6 +3,7 @@ import "server-only"
 import { JSONPath } from "jsonpath-plus"
 
 import { decryptSecret } from "@/lib/crypto"
+import { notifyNewAlert } from "@/lib/notifications"
 import { getPrisma } from "@/lib/prisma"
 
 type JsonDocument = string | number | boolean | object | unknown[] | null
@@ -181,6 +182,12 @@ export async function runProjectPolling(): Promise<PollingResult> {
                 nodeId: node.id,
               },
             })
+            await notifyNewAlert(prisma, {
+              nodeId: node.id,
+              title,
+              message: `${mapping.label} is ${value}${mapping.unit ? ` ${mapping.unit}` : ""}`,
+              severity: "WARNING",
+            })
           }
         }
       }
@@ -265,6 +272,12 @@ export async function runProjectPolling(): Promise<PollingResult> {
             severity: "CRITICAL",
             nodeId: node.id,
           },
+        })
+        await notifyNewAlert(prisma, {
+          nodeId: node.id,
+          title: "Endpoint polling failed",
+          message,
+          severity: "CRITICAL",
         })
       }
     } finally {

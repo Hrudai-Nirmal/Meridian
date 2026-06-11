@@ -23,7 +23,12 @@ export function EndpointGraphNode({ data, selected }: NodeProps) {
       <Handle className="opacity-0" type="target" position={Position.Left} />
       <div className="flex items-start gap-3">
         <div className="flex size-11 items-center justify-center rounded-lg border bg-background/80 shadow-sm">
-          <Icon className="size-5" />
+          {nodeData.customIconUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img alt="" className="size-6 object-contain" src={nodeData.customIconUrl} />
+          ) : (
+            <Icon className="size-5" />
+          )}
         </div>
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold">{nodeData.label}</div>

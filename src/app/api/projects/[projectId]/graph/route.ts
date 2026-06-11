@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
-import { getApiUserId } from "@/lib/api-session"
+import { getApiUserId, requireProjectRole } from "@/lib/api-session"
 import { getPrisma } from "@/lib/prisma"
-import { assertProjectAccess, serializeGraphForProject, workspaceConverters } from "@/lib/workspace"
+import { serializeGraphForProject, workspaceConverters } from "@/lib/workspace"
 
 const nodeStatusSchema = z.enum(["active", "degraded", "down", "unknown"])
 
@@ -56,7 +56,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ proje
   if (error) return error
 
   const { projectId } = await context.params
-  await assertProjectAccess(userId, projectId)
+  const accessError = await requireProjectRole(userId, projectId)
+  if (accessError) return accessError
 
   const parsed = graphSaveSchema.safeParse(await request.json())
   if (!parsed.success) {

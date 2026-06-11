@@ -1,8 +1,10 @@
 import { getServerSession } from "next-auth"
+import type { MembershipRole } from "@prisma/client"
 import { NextResponse } from "next/server"
 
 import { authOptions } from "@/lib/auth"
 import { hasDatabaseConfig } from "@/lib/prisma"
+import { assertOrganizationRole, assertProjectRole } from "@/lib/workspace"
 
 export async function getApiUserId() {
   if (!hasDatabaseConfig()) {
@@ -22,4 +24,26 @@ export async function getApiUserId() {
   }
 
   return { error: null, userId: session.user.id }
+}
+
+export async function requireProjectRole(
+  userId: string,
+  projectId: string,
+  allowed: MembershipRole[] = ["OWNER", "ADMIN", "MEMBER"]
+) {
+  try {
+    await assertProjectRole(userId, projectId, allowed)
+    return null
+  } catch {
+    return NextResponse.json({ error: "Project mutation access denied." }, { status: 403 })
+  }
+}
+
+export async function requireOrganizationRole(userId: string, organizationId: string, allowed: MembershipRole[] = ["OWNER", "ADMIN"]) {
+  try {
+    await assertOrganizationRole(userId, organizationId, allowed)
+    return null
+  } catch {
+    return NextResponse.json({ error: "Organization access denied." }, { status: 403 })
+  }
 }

@@ -56,6 +56,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
@@ -119,6 +120,7 @@ function snapToGridPosition(position: { x: number; y: number }) {
 
 type SaveState = "saved" | "saving" | "error"
 type ProjectMode = "blank" | "demo"
+type ProjectAlert = WorkspacePayload["alerts"][number]
 
 export function ArgusGridDashboard({
   initialWorkspace,
@@ -138,10 +140,20 @@ export function ArgusGridDashboard({
   const [inviteRole, setInviteRole] = useState("MEMBER")
   const [teamMessage, setTeamMessage] = useState("")
   const [actionMessage, setActionMessage] = useState("")
+  const [members, setMembers] = useState(initialWorkspace.members)
+  const [invitations, setInvitations] = useState(initialWorkspace.invitations)
+  const [alerts, setAlerts] = useState(initialWorkspace.alerts)
+  const [alertStatusFilter, setAlertStatusFilter] = useState<"active" | "resolved" | "all">("active")
+  const [alertSeverityFilter, setAlertSeverityFilter] = useState("all")
+  const [selectedAlertDetail, setSelectedAlertDetail] = useState<ProjectAlert | null>(null)
+  const [iconMessage, setIconMessage] = useState("")
   const [nodes, setNodes, onNodesChange] = useNodesState(initialWorkspace.nodes.map(toFlowNode))
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialWorkspace.edges.map(toFlowEdge))
   const didMountRef = useRef(false)
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const iconInputRef = useRef<HTMLInputElement | null>(null)
+  const canManageOrganization = initialWorkspace.currentUserRole === "OWNER" || initialWorkspace.currentUserRole === "ADMIN"
+  const canEditProject = canManageOrganization || initialWorkspace.currentUserRole === "MEMBER"
 
   const selectedNode = useMemo<EndpointNodeData | undefined>(
     () => (nodes.find((node) => node.id === selectedId)?.data as unknown as EndpointNodeData | undefined) ?? initialWorkspace.nodes[0],
@@ -155,6 +167,16 @@ export function ArgusGridDashboard({
       down: values.filter((node) => (node.override ?? node.status) === "down").length,
     }
   }, [nodes])
+  const filteredAlerts = useMemo(
+    () =>
+      alerts.filter((alert) => {
+        if (alertStatusFilter === "active" && alert.resolvedAt) return false
+        if (alertStatusFilter === "resolved" && !alert.resolvedAt) return false
+        if (alertSeverityFilter !== "all" && alert.severity !== alertSeverityFilter) return false
+        return true
+      }),
+    [alertSeverityFilter, alertStatusFilter, alerts]
+  )
 
   const persistGraph = useCallback(async () => {
     setSaveState("saving")
@@ -249,6 +271,10 @@ export function ArgusGridDashboard({
   )
 
   const addEndpointNode = () => {
+    if (!canEditProject) {
+      setActionMessage("Viewers cannot edit the project map.")
+      return
+    }
     const id = crypto.randomUUID()
     const seed = initialWorkspace.nodes[0] ?? allEndpointNodes[0]
     const newNode: EndpointNodeData = {
@@ -272,6 +298,10 @@ export function ArgusGridDashboard({
   }
 
   const createProject = async () => {
+    if (!canManageOrganization) {
+      setActionMessage("Only owners and admins can create projects.")
+      return
+    }
     setActionMessage("Creating project...")
     const response = await fetch("/api/projects", {
       method: "POST",
@@ -287,6 +317,10 @@ export function ArgusGridDashboard({
   }
 
   const renameProject = async () => {
+    if (!canManageOrganization) {
+      setActionMessage("Only owners and admins can rename projects.")
+      return
+    }
     setActionMessage("Renaming project...")
     const response = await fetch(`/api/projects/${initialWorkspace.project.id}`, {
       method: "PATCH",
@@ -301,6 +335,10 @@ export function ArgusGridDashboard({
   }
 
   const archiveProject = async () => {
+    if (!canManageOrganization) {
+      setActionMessage("Only owners and admins can archive projects.")
+      return
+    }
     setActionMessage("Archiving project...")
     const response = await fetch(`/api/projects/${initialWorkspace.project.id}`, { method: "DELETE" })
     if (response.ok) {
@@ -311,6 +349,10 @@ export function ArgusGridDashboard({
   }
 
   const inviteMember = async () => {
+    if (!canManageOrganization) {
+      setTeamMessage("Only owners and admins can invite teammates.")
+      return
+    }
     setTeamMessage("")
     const response = await fetch("/api/organization/members", {
       method: "POST",
@@ -318,10 +360,88 @@ export function ArgusGridDashboard({
       body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
     })
     setTeamMessage(response.ok ? "Invitation saved." : "Invitation failed.")
-    if (response.ok) setInviteEmail("")
+    if (response.ok) {
+      const payload = await response.json()
+      setInvitations((current) => [payload.invitation, ...current])
+      setInviteEmail("")
+    }
+  }
+
+  const updateMemberRole = async (memberId: string, role: string) => {
+    setTeamMessage("Updating member...")
+    const response = await fetch(`/api/organization/members/${memberId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role }),
+    })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      setTeamMessage(payload?.error ?? "Member update failed.")
+      return
+    }
+    setMembers((current) => current.map((member) => (member.id === memberId ? payload.member : member)))
+    setTeamMessage("Member updated.")
+  }
+
+  const removeMember = async (memberId: string) => {
+    setTeamMessage("Removing member...")
+    const response = await fetch(`/api/organization/members/${memberId}`, { method: "DELETE" })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      setTeamMessage(payload?.error ?? "Member removal failed.")
+      return
+    }
+    setMembers((current) => current.filter((member) => member.id !== memberId))
+    setTeamMessage("Member removed.")
+  }
+
+  const cancelInvitation = async (invitationId: string) => {
+    setTeamMessage("Cancelling invitation...")
+    const response = await fetch(`/api/organization/invitations/${invitationId}`, { method: "DELETE" })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      setTeamMessage(payload?.error ?? "Invitation cancellation failed.")
+      return
+    }
+    setInvitations((current) => current.filter((invitation) => invitation.id !== invitationId))
+    setTeamMessage("Invitation cancelled.")
+  }
+
+  const resolveAlert = async (alertId: string) => {
+    const response = await fetch(`/api/alerts/${alertId}`, { method: "PATCH" })
+    if (!response.ok) return
+    const resolvedAt = new Date().toISOString()
+    setAlerts((currentAlerts) => currentAlerts.map((alert) => (alert.id === alertId ? { ...alert, resolvedAt } : alert)))
+    setSelectedAlertDetail((alert) => (alert?.id === alertId ? { ...alert, resolvedAt } : alert))
+  }
+
+  const uploadSelectedIcon = async (file: File | undefined) => {
+    if (!file || !selectedNode || !canEditProject) return
+    setIconMessage("Uploading icon...")
+    const formData = new FormData()
+    formData.set("icon", file)
+    const response = await fetch(`/api/projects/${initialWorkspace.project.id}/nodes/${selectedNode.id}/icon`, {
+      method: "PUT",
+      body: formData,
+    })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      setIconMessage(payload?.error ?? "Icon upload failed.")
+      return
+    }
+
+    setNodes((currentNodes) =>
+      currentNodes.map((node) => {
+        if (node.id !== selectedNode.id) return node
+        const data = node.data as unknown as EndpointNodeData
+        return { ...node, data: { ...data, customIconUrl: payload.iconUrl } as unknown as Record<string, unknown> }
+      })
+    )
+    setIconMessage("Icon uploaded.")
   }
 
   const setStatusOverride = (status: NodeStatus) => {
+    if (!canEditProject) return
     setNodes((currentNodes) =>
       currentNodes.map((node) => {
         if (node.id !== selectedId) return node
@@ -375,7 +495,7 @@ export function ArgusGridDashboard({
           </select>
           <div className="mt-2 grid grid-cols-2 gap-2">
             <Dialog>
-              <DialogTrigger render={<Button variant="outline" size="sm" />}>New</DialogTrigger>
+              <DialogTrigger render={<Button variant="outline" size="sm" disabled={!canManageOrganization} />}>New</DialogTrigger>
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Create project</DialogTitle>
@@ -396,7 +516,7 @@ export function ArgusGridDashboard({
               </DialogContent>
             </Dialog>
             <Dialog>
-              <DialogTrigger render={<Button variant="outline" size="sm" />}>Manage</DialogTrigger>
+              <DialogTrigger render={<Button variant="outline" size="sm" disabled={!canManageOrganization} />}>Manage</DialogTrigger>
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Manage project</DialogTitle>
@@ -420,9 +540,58 @@ export function ArgusGridDashboard({
           <SidebarItem icon={Activity} label="Runs & Steps" />
           <SidebarItem icon={CircleDollarSign} label="Cost & Usage" />
           <SidebarItem icon={Gauge} label="Quality & Evals" />
-          <SidebarItem icon={Bell} label="Alerts" count={String(initialWorkspace.alerts.filter((alert) => !alert.resolvedAt).length)} />
+          <SidebarItem icon={Bell} label="Alerts" count={String(alerts.filter((alert) => !alert.resolvedAt).length)} />
           <SidebarItem icon={ShieldCheck} label="Security" />
         </nav>
+
+        <Dialog>
+          <DialogTrigger render={<Button variant="outline" className="mb-3 justify-start" />}>
+            <Bell data-icon="inline-start" />
+            Alert Center
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Project alert center</DialogTitle>
+              <DialogDescription>Filter active and resolved alerts across the current project.</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <select className="h-9 rounded-lg border bg-background px-2 text-sm" value={alertStatusFilter} onChange={(event) => setAlertStatusFilter(event.target.value as "active" | "resolved" | "all")}>
+                <option value="active">Active alerts</option>
+                <option value="resolved">Resolved alerts</option>
+                <option value="all">All alerts</option>
+              </select>
+              <select className="h-9 rounded-lg border bg-background px-2 text-sm" value={alertSeverityFilter} onChange={(event) => setAlertSeverityFilter(event.target.value)}>
+                <option value="all">All severities</option>
+                <option value="INFO">Info</option>
+                <option value="WARNING">Warning</option>
+                <option value="CRITICAL">Critical</option>
+              </select>
+            </div>
+            <div className="max-h-96 overflow-y-auto rounded-lg border">
+              {filteredAlerts.length ? (
+                filteredAlerts.map((alert) => (
+                  <div key={alert.id} className="flex items-start justify-between gap-3 border-b p-3 text-sm last:border-b-0">
+                    <button className="min-w-0 flex-1 text-left" onClick={() => setSelectedAlertDetail(alert)}>
+                      <div className="font-medium">{alert.title}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {alert.nodeLabel ?? "Project"} / {alert.severity} / {alert.resolvedAt ? "Resolved" : "Active"}
+                      </div>
+                    </button>
+                    {!alert.resolvedAt && canEditProject ? (
+                      <Button variant="outline" size="sm" onClick={() => resolveAlert(alert.id)}>
+                        Resolve
+                      </Button>
+                    ) : (
+                      <Badge variant={alert.resolvedAt ? "secondary" : "destructive"}>{alert.resolvedAt ? "Resolved" : "Active"}</Badge>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <div className="p-4 text-sm text-muted-foreground">No alerts match the current filters.</div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <Dialog>
           <DialogTrigger render={<Button variant="outline" className="mb-3 justify-start" />}>
@@ -435,30 +604,50 @@ export function ArgusGridDashboard({
               <DialogDescription>Invite collaborators and review current workspace members.</DialogDescription>
             </DialogHeader>
             <div className="grid gap-2 sm:grid-cols-[1fr_130px]">
-              <Input value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="teammate@example.com" />
-              <select className="h-9 rounded-lg border bg-background px-2 text-sm" value={inviteRole} onChange={(event) => setInviteRole(event.target.value)}>
+              <Input value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="teammate@example.com" disabled={!canManageOrganization} />
+              <select className="h-9 rounded-lg border bg-background px-2 text-sm disabled:opacity-50" value={inviteRole} onChange={(event) => setInviteRole(event.target.value)} disabled={!canManageOrganization}>
                 <option value="ADMIN">Admin</option>
                 <option value="MEMBER">Member</option>
                 <option value="VIEWER">Viewer</option>
               </select>
             </div>
-            <Button onClick={inviteMember}>Save invitation</Button>
+            <Button onClick={inviteMember} disabled={!canManageOrganization}>Save invitation</Button>
             {teamMessage ? <div className="text-sm text-muted-foreground">{teamMessage}</div> : null}
             <Separator />
             <div className="max-h-72 overflow-y-auto">
-              {initialWorkspace.members.map((member) => (
+              {members.map((member) => (
                 <div key={member.id} className="flex items-center justify-between gap-3 border-b py-2 text-sm">
                   <span className="min-w-0">
                     <span className="block truncate font-medium">{member.name}</span>
                     <span className="block truncate text-xs text-muted-foreground">{member.email}</span>
                   </span>
-                  <Badge variant="secondary">{member.role}</Badge>
+                  {canManageOrganization && member.role !== "OWNER" ? (
+                    <div className="flex shrink-0 items-center gap-2">
+                      <select className="h-8 rounded-lg border bg-background px-2 text-xs" value={member.role} onChange={(event) => updateMemberRole(member.id, event.target.value)}>
+                        <option value="ADMIN">Admin</option>
+                        <option value="MEMBER">Member</option>
+                        <option value="VIEWER">Viewer</option>
+                      </select>
+                      <Button variant="ghost" size="sm" onClick={() => removeMember(member.id)}>
+                        Remove
+                      </Button>
+                    </div>
+                  ) : (
+                    <Badge variant="secondary">{member.role}</Badge>
+                  )}
                 </div>
               ))}
-              {initialWorkspace.invitations.map((invitation) => (
+              {invitations.map((invitation) => (
                 <div key={invitation.id} className="flex items-center justify-between gap-3 border-b py-2 text-sm">
                   <span className="truncate">{invitation.email}</span>
-                  <Badge variant="outline">{invitation.role} pending</Badge>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Badge variant="outline">{invitation.role} pending</Badge>
+                    {canManageOrganization ? (
+                      <Button variant="ghost" size="sm" onClick={() => cancelInvitation(invitation.id)}>
+                        Cancel
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
               ))}
             </div>
@@ -531,11 +720,11 @@ export function ArgusGridDashboard({
               </TooltipTrigger>
               <TooltipContent>Toggle theme</TooltipContent>
             </Tooltip>
-            <Button variant={editMode ? "default" : "outline"} onClick={() => setEditMode((value) => !value)}>
+            <Button variant={editMode ? "default" : "outline"} onClick={() => setEditMode((value) => !value)} disabled={!canEditProject}>
               <Edit3 data-icon="inline-start" />
-              {editMode ? "Editing" : "View mode"}
+              {canEditProject ? (editMode ? "Editing" : "View mode") : "Read only"}
             </Button>
-            <Button onClick={addEndpointNode}>
+            <Button onClick={addEndpointNode} disabled={!canEditProject}>
               <Plus data-icon="inline-start" />
               Add node
             </Button>
@@ -564,7 +753,14 @@ export function ArgusGridDashboard({
                 </Badge>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Button variant="outline" size="sm">
+                <input
+                  ref={iconInputRef}
+                  className="hidden"
+                  type="file"
+                  accept="image/png,image/svg+xml"
+                  onChange={(event) => uploadSelectedIcon(event.target.files?.[0])}
+                />
+                <Button variant="outline" size="sm" disabled={!canEditProject || !selectedNode} onClick={() => iconInputRef.current?.click()}>
                   <HardDriveUpload data-icon="inline-start" />
                   Upload icon
                 </Button>
@@ -576,6 +772,7 @@ export function ArgusGridDashboard({
                   <Save data-icon="inline-start" />
                   {saveState === "saving" ? "Autosaving" : saveState === "error" ? "Save failed" : "Autosaved"}
                 </Button>
+                {iconMessage ? <span className="text-xs text-muted-foreground">{iconMessage}</span> : null}
               </div>
             </div>
 
@@ -627,8 +824,10 @@ export function ArgusGridDashboard({
             currentUser={currentUser}
             categories={initialWorkspace.categories}
             projectId={initialWorkspace.project.id}
-            alerts={initialWorkspace.alerts}
+            alerts={alerts}
+            canEditProject={canEditProject}
             onOverride={setStatusOverride}
+            onResolveAlert={resolveAlert}
             onPatch={(patch) => {
               setNodes((currentNodes) =>
                 currentNodes.map((node) => {
@@ -644,6 +843,57 @@ export function ArgusGridDashboard({
           )}
         </section>
       </main>
+      <Sheet open={Boolean(selectedAlertDetail)} onOpenChange={(open) => !open && setSelectedAlertDetail(null)}>
+        <SheetContent className="w-full sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>{selectedAlertDetail?.title ?? "Alert details"}</SheetTitle>
+            <SheetDescription>{selectedAlertDetail?.message}</SheetDescription>
+          </SheetHeader>
+          {selectedAlertDetail ? (
+            <div className="grid gap-3 px-4 text-sm">
+              <div className="rounded-lg border p-3">
+                <div className="text-xs text-muted-foreground">Affected node</div>
+                <div className="font-medium">{selectedAlertDetail.nodeLabel ?? "Project"}</div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-lg border p-3">
+                  <div className="text-xs text-muted-foreground">Severity</div>
+                  <div className="font-medium">{selectedAlertDetail.severity}</div>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <div className="text-xs text-muted-foreground">Status</div>
+                  <div className="font-medium">{selectedAlertDetail.resolvedAt ? "Resolved" : "Active"}</div>
+                </div>
+              </div>
+              <div className="rounded-lg border p-3">
+                <div className="text-xs text-muted-foreground">Source</div>
+                <div className="font-medium">{selectedAlertDetail.source}</div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-lg border p-3">
+                  <div className="text-xs text-muted-foreground">First seen</div>
+                  <div className="font-medium">{new Date(selectedAlertDetail.firstSeen).toLocaleString()}</div>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <div className="text-xs text-muted-foreground">Last seen</div>
+                  <div className="font-medium">{new Date(selectedAlertDetail.lastSeen).toLocaleString()}</div>
+                </div>
+              </div>
+              {selectedAlertDetail.resolvedAt ? (
+                <div className="rounded-lg border p-3">
+                  <div className="text-xs text-muted-foreground">Resolved at</div>
+                  <div className="font-medium">{new Date(selectedAlertDetail.resolvedAt).toLocaleString()}</div>
+                </div>
+              ) : canEditProject ? (
+                <Button onClick={() => resolveAlert(selectedAlertDetail.id)}>
+                  <CheckCircle2 data-icon="inline-start" />
+                  Resolve alert
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }
@@ -684,13 +934,46 @@ function ReadinessItem({ label, ready }: { label: string; ready: boolean }) {
   )
 }
 
+function healthSourceCopy(node: EndpointNodeData) {
+  if (node.override) return "Manual override"
+  if (node.statusReason.toLowerCase().includes("threshold")) return "Threshold rule"
+  if (node.statusReason.toLowerCase().includes("http") || node.statusReason.toLowerCase().includes("endpoint")) return "Endpoint check"
+  if (node.statusReason.toLowerCase().includes("poll")) return "Latest poll"
+  return "Seeded or manual status"
+}
+
+type ApiTestResult = {
+  ok?: boolean
+  status?: number
+  contentType?: string
+  parsedJson?: boolean
+  preview?: unknown
+  error?: string
+  mappings?: {
+    label: string
+    ok: boolean
+    jsonPath: string
+    rawValue?: unknown
+    value?: unknown
+    unit?: string
+    error?: string
+    threshold?: {
+      configured: boolean
+      crossed: boolean
+      message: string
+    }
+  }[]
+}
+
 function NodeInspector({
   selectedNode,
   currentUser,
   categories,
   projectId,
   alerts,
+  canEditProject,
   onOverride,
+  onResolveAlert,
   onPatch,
 }: {
   selectedNode: EndpointNodeData
@@ -698,7 +981,9 @@ function NodeInspector({
   categories: string[]
   projectId: string
   alerts: WorkspacePayload["alerts"]
+  canEditProject: boolean
   onOverride: (status: NodeStatus) => void
+  onResolveAlert: (alertId: string) => void
   onPatch: (patch: Partial<EndpointNodeData>) => void
 }) {
   const Icon = iconRegistry[selectedNode.icon] ?? iconRegistry.api
@@ -709,13 +994,49 @@ function NodeInspector({
   const [cadenceMin, setCadenceMin] = useState("15")
   const [mappingLabel, setMappingLabel] = useState("Primary metric")
   const [jsonPath, setJsonPath] = useState("$.value")
+  const [transform, setTransform] = useState("none")
   const [unit, setUnit] = useState("")
   const [threshold, setThreshold] = useState("> 90")
   const [visualization, setVisualization] = useState("NUMBER")
   const [apiMessage, setApiMessage] = useState("")
-  const [visibleAlerts, setVisibleAlerts] = useState(alerts)
+  const [apiTestResult, setApiTestResult] = useState<ApiTestResult | null>(null)
+
+  const testApiConfig = async () => {
+    if (!canEditProject) {
+      setApiMessage("Viewers cannot test private endpoint credentials.")
+      return
+    }
+    setApiMessage("Testing endpoint...")
+    setApiTestResult(null)
+    const response = await fetch(`/api/projects/${projectId}/nodes/${selectedNode.id}/api-config/test`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url: apiUrl,
+        method: "GET",
+        authType,
+        secretValue,
+        mappings: [
+          {
+            label: mappingLabel,
+            jsonPath,
+            transform,
+            unit,
+            threshold,
+          },
+        ],
+      }),
+    })
+    const payload = (await response.json().catch(() => ({ error: "Endpoint test failed." }))) as ApiTestResult
+    setApiTestResult(payload)
+    setApiMessage(response.ok ? "Endpoint test completed." : payload.error ?? "Endpoint test failed.")
+  }
 
   const saveApiConfig = async () => {
+    if (!canEditProject) {
+      setApiMessage("Viewers cannot change API configuration.")
+      return
+    }
     setApiMessage("Saving API configuration...")
     const response = await fetch(`/api/projects/${projectId}/nodes/${selectedNode.id}/api-config`, {
       method: "PUT",
@@ -731,6 +1052,7 @@ function NodeInspector({
           {
             label: mappingLabel,
             jsonPath,
+            transform,
             unit,
             threshold,
             visualization,
@@ -754,20 +1076,17 @@ function NodeInspector({
     setApiMessage("API configuration saved.")
   }
 
-  const resolveAlert = async (alertId: string) => {
-    const response = await fetch(`/api/alerts/${alertId}`, { method: "PATCH" })
-    if (!response.ok) return
-    setVisibleAlerts((currentAlerts) =>
-      currentAlerts.map((alert) => (alert.id === alertId ? { ...alert, resolvedAt: new Date().toISOString() } : alert))
-    )
-  }
-
   return (
     <aside className="min-h-0 overflow-y-auto border-l bg-background">
       <div className="sticky top-0 z-10 border-b bg-background/95 px-5 py-4 backdrop-blur">
         <div className="flex items-start gap-3">
           <div className="flex size-12 items-center justify-center rounded-xl border bg-muted">
-            <Icon className="size-6" />
+            {selectedNode.customIconUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img alt="" className="size-7 object-contain" src={selectedNode.customIconUrl} />
+            ) : (
+              <Icon className="size-6" />
+            )}
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -786,6 +1105,10 @@ function NodeInspector({
             <CardDescription>{selectedNode.statusReason}</CardDescription>
           </CardHeader>
           <CardContent>
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <Badge variant="outline">Source: {healthSourceCopy(selectedNode)}</Badge>
+              {selectedNode.override ? <Badge variant="secondary">Admin override active</Badge> : null}
+            </div>
             <div className="grid grid-cols-2 gap-3">
               {selectedNode.metrics.map((metric) => (
                 <div key={metric.label} className="rounded-lg border bg-muted/30 p-3">
@@ -797,7 +1120,7 @@ function NodeInspector({
             </div>
             <div className="mt-4 flex items-center gap-2">
               {(["active", "degraded", "down"] as NodeStatus[]).map((status) => (
-                <Button key={status} variant={effectiveStatus === status ? "default" : "outline"} size="sm" onClick={() => onOverride(status)}>
+                <Button key={status} variant={effectiveStatus === status ? "default" : "outline"} size="sm" onClick={() => onOverride(status)} disabled={!canEditProject}>
                   {statusCopy[status]}
                 </Button>
               ))}
@@ -917,11 +1240,12 @@ function NodeInspector({
                 <CardDescription>Changes autosave into the project graph</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
-                <Input value={selectedNode.label} onChange={(event) => onPatch({ label: event.target.value })} aria-label="Node label" />
+                <Input value={selectedNode.label} onChange={(event) => onPatch({ label: event.target.value })} aria-label="Node label" disabled={!canEditProject} />
                 <Textarea
                   value={selectedNode.description}
                   onChange={(event) => onPatch({ description: event.target.value })}
                   aria-label="Node description"
+                  disabled={!canEditProject}
                 />
               </CardContent>
             </Card>
@@ -931,32 +1255,34 @@ function NodeInspector({
                 <CardDescription>Save a deployed polling target and metric mapping</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
-                <Input value={apiUrl} onChange={(event) => setApiUrl(event.target.value)} aria-label="Endpoint URL" />
+                <Input value={apiUrl} onChange={(event) => setApiUrl(event.target.value)} aria-label="Endpoint URL" disabled={!canEditProject} />
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <select className="h-9 rounded-lg border bg-background px-2 text-sm" value={authType} onChange={(event) => setAuthType(event.target.value)}>
+                  <select className="h-9 rounded-lg border bg-background px-2 text-sm disabled:opacity-50" value={authType} onChange={(event) => setAuthType(event.target.value)} disabled={!canEditProject}>
                     <option value="NONE">No auth</option>
                     <option value="API_KEY_HEADER">API key header</option>
                     <option value="BEARER_TOKEN">Bearer token</option>
                     <option value="BASIC">Basic auth</option>
                     <option value="CUSTOM_HEADERS">Custom headers</option>
                   </select>
-                  <Input value={cadenceMin} onChange={(event) => setCadenceMin(event.target.value)} aria-label="Cadence minutes" />
+                  <Input value={cadenceMin} onChange={(event) => setCadenceMin(event.target.value)} aria-label="Cadence minutes" disabled={!canEditProject} />
                 </div>
                 <Input
                   value={secretValue}
                   onChange={(event) => setSecretValue(event.target.value)}
                   placeholder="Secret value, encrypted before storage"
                   type="password"
+                  disabled={!canEditProject}
                 />
                 <Separator />
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <Input value={mappingLabel} onChange={(event) => setMappingLabel(event.target.value)} aria-label="Mapping label" />
-                  <Input value={unit} onChange={(event) => setUnit(event.target.value)} placeholder="Unit" />
+                  <Input value={mappingLabel} onChange={(event) => setMappingLabel(event.target.value)} aria-label="Mapping label" disabled={!canEditProject} />
+                  <Input value={unit} onChange={(event) => setUnit(event.target.value)} placeholder="Unit" disabled={!canEditProject} />
                 </div>
-                <Input value={jsonPath} onChange={(event) => setJsonPath(event.target.value)} aria-label="JSONPath" />
+                <Input value={jsonPath} onChange={(event) => setJsonPath(event.target.value)} aria-label="JSONPath" disabled={!canEditProject} />
+                <Input value={transform} onChange={(event) => setTransform(event.target.value)} aria-label="Transform" placeholder="Transform, e.g. none, round:1, divide:1000" disabled={!canEditProject} />
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <Input value={threshold} onChange={(event) => setThreshold(event.target.value)} aria-label="Threshold" />
-                  <select className="h-9 rounded-lg border bg-background px-2 text-sm" value={visualization} onChange={(event) => setVisualization(event.target.value)}>
+                  <Input value={threshold} onChange={(event) => setThreshold(event.target.value)} aria-label="Threshold" disabled={!canEditProject} />
+                  <select className="h-9 rounded-lg border bg-background px-2 text-sm disabled:opacity-50" value={visualization} onChange={(event) => setVisualization(event.target.value)} disabled={!canEditProject}>
                     <option value="NUMBER">Number</option>
                     <option value="LINE">Line</option>
                     <option value="BAR">Bar</option>
@@ -965,8 +1291,52 @@ function NodeInspector({
                     <option value="HEATMAP">Heatmap</option>
                   </select>
                 </div>
-                <Button onClick={saveApiConfig}>Save API setup</Button>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Button variant="outline" onClick={testApiConfig} disabled={!canEditProject}>Test endpoint</Button>
+                  <Button onClick={saveApiConfig} disabled={!canEditProject}>Save API setup</Button>
+                </div>
                 {apiMessage ? <div className="text-xs text-muted-foreground">{apiMessage}</div> : null}
+                {apiTestResult ? (
+                  <div className="rounded-lg border bg-muted/20 p-3 text-xs">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant={apiTestResult.ok ? "secondary" : "destructive"}>
+                        {apiTestResult.status ? `HTTP ${apiTestResult.status}` : apiTestResult.ok ? "OK" : "Failed"}
+                      </Badge>
+                      {apiTestResult.contentType ? <Badge variant="outline">{apiTestResult.contentType}</Badge> : null}
+                      {apiTestResult.parsedJson === false ? <Badge variant="outline">Non-JSON response</Badge> : null}
+                    </div>
+                    {apiTestResult.error ? <div className="mt-2 text-destructive">{apiTestResult.error}</div> : null}
+                    {apiTestResult.mappings?.length ? (
+                      <div className="mt-3 grid gap-2">
+                        {apiTestResult.mappings.map((mapping) => (
+                          <div key={mapping.label} className="rounded-md border bg-background/70 p-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-medium">{mapping.label}</span>
+                              <Badge variant={mapping.ok ? "secondary" : "destructive"}>{mapping.ok ? "Mapped" : "Missing"}</Badge>
+                            </div>
+                            <div className="mt-1 font-mono text-muted-foreground">{mapping.jsonPath}</div>
+                            {mapping.error ? <div className="mt-1 text-destructive">{mapping.error}</div> : null}
+                            {mapping.ok ? (
+                              <div className="mt-1">
+                                Value: {String(mapping.value)}{mapping.unit ? ` ${mapping.unit}` : ""}
+                              </div>
+                            ) : null}
+                            {mapping.threshold ? (
+                              <div className={cn("mt-1", mapping.threshold.crossed ? "text-amber-600 dark:text-amber-300" : "text-muted-foreground")}>
+                                Threshold: {mapping.threshold.message}
+                              </div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    {apiTestResult.preview !== undefined ? (
+                      <pre className="mt-3 max-h-48 overflow-auto rounded-md bg-background p-2 font-mono text-[11px]">
+                        {JSON.stringify(apiTestResult.preview, null, 2).slice(0, 4000)}
+                      </pre>
+                    ) : null}
+                  </div>
+                ) : null}
                 <Separator />
                 {selectedNode.parameters.map((parameter) => (
                   <div key={parameter.label} className="rounded-lg border bg-muted/20 p-3">
@@ -989,8 +1359,8 @@ function NodeInspector({
             <CardDescription>In-app alerts from cron polling</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-2">
-            {visibleAlerts.length ? (
-              visibleAlerts.map((alert) => (
+            {alerts.length ? (
+              alerts.map((alert) => (
                 <div key={alert.id} className="flex items-start justify-between gap-2 rounded-lg border p-3 text-sm">
                   <div className="min-w-0">
                     <div className="font-medium">{alert.title}</div>
@@ -1000,7 +1370,7 @@ function NodeInspector({
                   {alert.resolvedAt ? (
                     <Badge variant="secondary">Resolved</Badge>
                   ) : (
-                    <Button variant="outline" size="sm" onClick={() => resolveAlert(alert.id)}>
+                    <Button variant="outline" size="sm" onClick={() => onResolveAlert(alert.id)} disabled={!canEditProject}>
                       <CheckCircle2 data-icon="inline-start" />
                       Resolve
                     </Button>

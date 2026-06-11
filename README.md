@@ -22,6 +22,8 @@ ENCRYPTION_KEY="replace-with-a-long-random-encryption-key"
 GITHUB_ID="replace-with-github-oauth-client-id"
 GITHUB_SECRET="replace-with-github-oauth-client-secret"
 CRON_SECRET="replace-with-a-long-random-cron-secret"
+RESEND_API_KEY="optional-resend-api-key-for-alert-email"
+ALERT_FROM_EMAIL="ArgusGrid <alerts@example.com>"
 ```
 
 GitHub OAuth callback URL:
@@ -76,7 +78,11 @@ Manual post-deploy checklist:
 - Project switch, create, rename, and archive behave predictably.
 - Graph node edits autosave and survive refresh.
 - Team invitation save shows a visible result.
+- Pending invited users are attached to the organization on first matching GitHub login.
+- Owner/admin users can change roles, remove members, and cancel pending invitations.
 - API setup stores configuration without exposing secret values.
+- API setup test shows response status, JSON preview, JSONPath mapping, and threshold preview.
+- Custom PNG/SVG node icon upload validates file type and size.
 - `/api/cron/poll` rejects a wrong bearer token.
 - Deployment diagnostics show database, auth, encryption, cron, and latest poll status.
 - `/api/health` does not include raw env var values, database URLs, OAuth secrets, or encrypted credential payloads.
@@ -97,4 +103,4 @@ npm run dev
 
 On first GitHub login, ArgusGrid creates a personal organization and owner membership, then shows onboarding to confirm organization/project names and choose demo or blank setup.
 
-The app now includes project management, team invitations, encrypted API credential storage, metric mappings, cron polling, metric samples, hourly rollups, poll execution logs, readiness diagnostics, raw sample retention cleanup, and in-app alerts. Email delivery and custom icon uploads are still deferred.
+The app now includes project management, team invitation acceptance, member management, encrypted API credential storage, guided metric mapping tests, cron polling, metric samples, hourly rollups, poll execution logs, readiness diagnostics, raw sample retention cleanup, in-app alerts, optional Resend email alert delivery, and small custom node icon uploads.

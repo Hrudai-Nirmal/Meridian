@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
-import { getApiUserId } from "@/lib/api-session"
+import { getApiUserId, requireProjectRole } from "@/lib/api-session"
 import { encryptSecret } from "@/lib/crypto"
 import { getPrisma } from "@/lib/prisma"
-import { assertProjectAccess } from "@/lib/workspace"
 
 const apiConfigSchema = z.object({
   url: z.string().url(),
@@ -30,7 +29,8 @@ export async function PUT(request: Request, context: { params: Promise<{ project
   if (error) return error
 
   const { projectId, nodeId } = await context.params
-  await assertProjectAccess(userId, projectId)
+  const accessError = await requireProjectRole(userId, projectId)
+  if (accessError) return accessError
 
   const parsed = apiConfigSchema.safeParse(await request.json())
   if (!parsed.success) {

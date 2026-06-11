@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
-import { getApiUserId } from "@/lib/api-session"
+import { getApiUserId, requireProjectRole } from "@/lib/api-session"
 import { getPrisma } from "@/lib/prisma"
 import { assertProjectAccess, serializeGraphForProject, workspaceConverters } from "@/lib/workspace"
 
@@ -27,7 +27,8 @@ export async function GET(_: Request, context: { params: Promise<{ projectId: st
   if (error) return error
 
   const { projectId, nodeId } = await context.params
-  await assertProjectAccess(userId, projectId)
+  const accessError = await requireProjectRole(userId, projectId)
+  if (accessError) return accessError
 
   const prisma = getPrisma()
 
@@ -48,7 +49,8 @@ export async function DELETE(_: Request, context: { params: Promise<{ projectId:
   if (error) return error
 
   const { projectId, nodeId } = await context.params
-  await assertProjectAccess(userId, projectId)
+  const accessError = await requireProjectRole(userId, projectId)
+  if (accessError) return accessError
 
   const prisma = getPrisma()
 

@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
-import { getApiUserId } from "@/lib/api-session"
+import { getApiUserId, requireOrganizationRole } from "@/lib/api-session"
 import { getPrisma } from "@/lib/prisma"
-import { assertOrganizationRole, getWorkspaceForUser } from "@/lib/workspace"
+import { getWorkspaceForUser } from "@/lib/workspace"
 
 const inviteSchema = z.object({
   email: z.string().email(),
@@ -34,7 +34,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Workspace not found." }, { status: 404 })
   }
 
-  await assertOrganizationRole(userId, workspace.organization.id)
+  const accessError = await requireOrganizationRole(userId, workspace.organization.id)
+  if (accessError) return accessError
 
   const parsed = inviteSchema.safeParse(await request.json())
   if (!parsed.success) {

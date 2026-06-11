@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
-import { getApiUserId } from "@/lib/api-session"
+import { getApiUserId, requireOrganizationRole } from "@/lib/api-session"
 import { createBlankProject, createSeedProject, getWorkspaceForUser } from "@/lib/workspace"
 
 const createProjectSchema = z.object({
@@ -35,6 +35,8 @@ export async function POST(request: Request) {
   if (!workspace) {
     return NextResponse.json({ error: "Workspace not found." }, { status: 404 })
   }
+  const accessError = await requireOrganizationRole(userId, workspace.organization.id)
+  if (accessError) return accessError
 
   const project =
     parsed.data.mode === "demo"

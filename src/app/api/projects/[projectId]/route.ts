@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
-import { getApiUserId } from "@/lib/api-session"
+import { getApiUserId, requireProjectRole } from "@/lib/api-session"
 import { getPrisma } from "@/lib/prisma"
-import { assertProjectAccess, serializeGraphForProject, slugify } from "@/lib/workspace"
+import { serializeGraphForProject, slugify } from "@/lib/workspace"
 
 const updateProjectSchema = z.object({
   name: z.string().min(2).max(80),
@@ -28,7 +28,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ proje
   if (error) return error
 
   const { projectId } = await context.params
-  await assertProjectAccess(userId, projectId)
+  const accessError = await requireProjectRole(userId, projectId, ["OWNER", "ADMIN"])
+  if (accessError) return accessError
   const parsed = updateProjectSchema.safeParse(await request.json())
 
   if (!parsed.success) {
@@ -53,7 +54,8 @@ export async function DELETE(_: Request, context: { params: Promise<{ projectId:
   if (error) return error
 
   const { projectId } = await context.params
-  await assertProjectAccess(userId, projectId)
+  const accessError = await requireProjectRole(userId, projectId, ["OWNER", "ADMIN"])
+  if (accessError) return accessError
 
   const prisma = getPrisma()
   await prisma.project.update({

@@ -60,6 +60,7 @@ export type EndpointNodeData = {
   statusReason: string
   override?: NodeStatus
   category: string
+  customIconUrl?: string
   apiUrl: string
   cadence: string
   auth: string
