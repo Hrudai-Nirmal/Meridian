@@ -73,6 +73,7 @@ import {
   type EndpointNodeData,
   type NodeStatus,
 } from "@/lib/argusgrid-data"
+import { integrationTemplates, type IntegrationTemplate } from "@/lib/integration-templates"
 import { cn } from "@/lib/utils"
 import type { WorkspacePayload } from "@/lib/workspace"
 
@@ -134,6 +135,107 @@ function runBadgeVariant(status: string): "destructive" | "secondary" | "outline
   if (status === "failed") return "destructive"
   if (status === "degraded") return "secondary"
   return "outline"
+}
+
+function buildIntegrationSnippet(template: IntegrationTemplate, nodeId: string) {
+  const ingestUrl = "https://argusgrid.hrudainirmal.in/api/ingest/runs"
+
+  if (template.id === "dify") {
+    return `POST ${ingestUrl}
+Authorization: Bearer <ingestion-token>
+Content-Type: application/json
+
+{
+  "nodeId": "${nodeId}",
+  "externalId": "{{workflow_run_id}}",
+  "status": "{{status}}",
+  "startedAt": "{{started_at}}",
+  "finishedAt": "{{finished_at}}",
+  "costUsd": {{total_price}},
+  "tokens": {{total_tokens}},
+  "steps": [
+    { "name": "Dify workflow", "status": "{{status}}", "toolName": "dify" }
+  ]
+}`
+  }
+
+  if (template.id === "n8n") {
+    return `{
+  "method": "POST",
+  "url": "${ingestUrl}",
+  "headers": {
+    "Authorization": "Bearer <ingestion-token>",
+    "Content-Type": "application/json"
+  },
+  "body": {
+    "nodeId": "${nodeId}",
+    "externalId": "{{$execution.id}}",
+    "status": "success",
+    "startedAt": "{{$now.minus({ seconds: 5 }).toISO()}}",
+    "finishedAt": "{{$now.toISO()}}",
+    "steps": [
+      { "name": "n8n workflow", "status": "success", "toolName": "n8n" }
+    ]
+  }
+}`
+  }
+
+  if (template.id === "github-actions") {
+    return `- name: Report workflow run to ArgusGrid
+  if: always()
+  shell: bash
+  env:
+    ARGUSGRID_TOKEN: \${{ secrets.ARGUSGRID_INGESTION_TOKEN }}
+  run: |
+    STATUS="success"
+    if [ "\${{ job.status }}" != "success" ]; then STATUS="failed"; fi
+    curl -X POST "${ingestUrl}" \\
+      -H "Authorization: Bearer $ARGUSGRID_TOKEN" \\
+      -H "Content-Type: application/json" \\
+      -d '{
+        "nodeId": "${nodeId}",
+        "externalId": "\${{ github.run_id }}-\${{ github.run_attempt }}",
+        "status": "'"$STATUS"'",
+        "startedAt": "\${{ github.event.head_commit.timestamp }}",
+        "finishedAt": "'"\$(date -u +"%Y-%m-%dT%H:%M:%SZ")"'",
+        "steps": [
+          { "name": "GitHub Actions job", "status": "'"$STATUS"'", "toolName": "github-actions" }
+        ]
+      }'`
+  }
+
+  if (template.id === "custom-rest-metric") {
+    return `Expected JSON response from your endpoint:
+{
+  "health": {
+    "score": 92
+  }
+}
+
+ArgusGrid polling preset:
+Endpoint URL: https://api.example.com/automation/health
+JSONPath: $.health.score
+Transform: none
+Unit: score
+Threshold: < 70`
+  }
+
+  return `curl -X POST "${ingestUrl}" \\
+  -H "Authorization: Bearer <ingestion-token>" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "nodeId": "${nodeId}",
+    "externalId": "run_001",
+    "status": "success",
+    "startedAt": "2026-06-12T09:30:00.000Z",
+    "finishedAt": "2026-06-12T09:30:02.400Z",
+    "costUsd": 0.042,
+    "tokens": 1280,
+    "steps": [
+      { "name": "Fetch context", "status": "success", "latencyMs": 420, "toolName": "database" },
+      { "name": "Generate response", "status": "success", "latencyMs": 1700, "toolName": "llm" }
+    ]
+  }'`
 }
 
 type SaveState = "saved" | "saving" | "error"
@@ -1325,6 +1427,9 @@ function NodeInspector({
   const [ruleEnabled, setRuleEnabled] = useState(nodeAlertRules[0]?.enabled ?? true)
   const [ruleMessage, setRuleMessage] = useState("")
   const [runMessage, setRunMessage] = useState("")
+  const [templateMode, setTemplateMode] = useState<"basic" | "advanced">("basic")
+  const [selectedTemplateId, setSelectedTemplateId] = useState<IntegrationTemplate["id"]>("generic-webhook")
+  const [templateMessage, setTemplateMessage] = useState("")
   const realMetricCards = selectedNode.realMetrics?.length ? selectedNode.realMetrics : null
   const hasPersistedMappings = selectedNode.parameters.some((parameter) => parameter.id)
   const hasRealTrend =
@@ -1352,6 +1457,9 @@ function NodeInspector({
   -H "Authorization: Bearer <ingestion-token>" \\
   -H "Content-Type: application/json" \\
   -d '${telemetryPayload}'`
+  const visibleTemplates = integrationTemplates
+  const selectedTemplate = integrationTemplates.find((template) => template.id === selectedTemplateId) ?? integrationTemplates[0]
+  const selectedTemplateSnippet = buildIntegrationSnippet(selectedTemplate, selectedNode.id)
 
   const useDemoMetric = () => {
     const demoUrl = `${window.location.origin}/api/demo/metric`
@@ -1370,6 +1478,33 @@ function NodeInspector({
     setRuleSeverity("WARNING")
     setRuleEnabled(true)
     setApiMessage("Demo metric loaded. Test and save the API setup, then save the alert rule.")
+  }
+
+  const applyIntegrationTemplate = (template: IntegrationTemplate) => {
+    setSelectedTemplateId(template.id)
+    setTemplateMessage("")
+
+    if (template.preset) {
+      setApiUrl(template.preset.apiUrl)
+      setAuthType(template.preset.authType)
+      setSecretValue("")
+      setCadenceMin(template.preset.cadenceMin)
+      setMappingLabel(template.preset.mappingLabel)
+      setJsonPath(template.preset.jsonPath)
+      setTransform(template.preset.transform)
+      setUnit(template.preset.unit)
+      setThreshold(template.preset.threshold)
+      setVisualization(template.preset.visualization)
+      setRuleName(template.preset.ruleName)
+      setRuleExpression(template.preset.ruleExpression)
+      setRuleSeverity(template.preset.ruleSeverity)
+      setRuleEnabled(true)
+      setApiMessage("Template applied. Replace the endpoint URL, test it, then save API setup.")
+      setTemplateMessage(`${template.name} fields applied.`)
+      return
+    }
+
+    setTemplateMessage(`${template.name} selected. Copy the advanced snippet or follow the setup steps.`)
   }
 
   const testApiConfig = async () => {
@@ -1507,6 +1642,11 @@ function NodeInspector({
   const copyTelemetryExample = async () => {
     await navigator.clipboard.writeText(telemetryCurl)
     setRunMessage("Telemetry example copied.")
+  }
+
+  const copySelectedTemplateSnippet = async () => {
+    await navigator.clipboard.writeText(selectedTemplateSnippet)
+    setTemplateMessage(`${selectedTemplate.name} snippet copied.`)
   }
 
   return (
@@ -1759,6 +1899,87 @@ function NodeInspector({
                 <CardDescription>Save a deployed polling target and metric mapping</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
+                <div className="rounded-lg border bg-muted/20 p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-medium">Integration templates</div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        Pick a basic setup card or switch to advanced for copyable payloads.
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 rounded-lg border bg-background p-1 text-xs">
+                      <Button variant={templateMode === "basic" ? "default" : "ghost"} size="sm" onClick={() => setTemplateMode("basic")}>
+                        Basic
+                      </Button>
+                      <Button variant={templateMode === "advanced" ? "default" : "ghost"} size="sm" onClick={() => setTemplateMode("advanced")}>
+                        Advanced
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid gap-2">
+                    {visibleTemplates.map((template) => (
+                      <div
+                        key={template.id}
+                        className={cn(
+                          "rounded-lg border bg-background/70 p-3 text-xs",
+                          selectedTemplate.id === template.id && "border-primary/60 shadow-sm"
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-medium">{template.name}</span>
+                              <Badge variant={template.setupKind === "metric" ? "secondary" : "outline"}>
+                                {template.setupKind === "metric" ? "Metric samples" : "Workflow runs"}
+                              </Badge>
+                              <Badge variant="outline">{template.difficulty}</Badge>
+                            </div>
+                            <div className="mt-1 text-muted-foreground">{template.description}</div>
+                          </div>
+                          <Button variant="outline" size="sm" onClick={() => applyIntegrationTemplate(template)} disabled={!canEditProject && template.setupKind === "metric"}>
+                            {template.preset ? "Apply fields" : "Select"}
+                          </Button>
+                        </div>
+                        {templateMode === "basic" ? (
+                          <div className="mt-3 grid gap-2">
+                            <div className="flex flex-wrap gap-1">
+                              {template.requiredFields.map((field) => (
+                                <Badge key={field} variant="outline">
+                                  {field}
+                                </Badge>
+                              ))}
+                            </div>
+                            <div className="grid gap-1 text-muted-foreground">
+                              {template.basicSteps.map((step, index) => (
+                                <div key={step}>
+                                  {index + 1}. {step}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                  {templateMode === "advanced" ? (
+                    <div className="mt-3 rounded-lg border bg-background/70 p-3 text-xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <div className="font-medium">{selectedTemplate.name} advanced snippet</div>
+                          <div className="mt-1 text-muted-foreground">Uses node id {selectedNode.id} and the placeholder &lt;ingestion-token&gt;.</div>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={copySelectedTemplateSnippet}>
+                          <Copy data-icon="inline-start" />
+                          Copy
+                        </Button>
+                      </div>
+                      <pre className="mt-3 max-h-64 overflow-auto rounded-md bg-muted p-3 font-mono text-[11px] text-muted-foreground">
+                        {selectedTemplateSnippet}
+                      </pre>
+                    </div>
+                  ) : null}
+                  {templateMessage ? <div className="mt-2 text-xs text-muted-foreground">{templateMessage}</div> : null}
+                </div>
                 <Button variant="outline" onClick={useDemoMetric} disabled={!canEditProject}>
                   <Wand2 data-icon="inline-start" />
                   Use demo metric

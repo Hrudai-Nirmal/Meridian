@@ -23,6 +23,7 @@ ArgusGrid is a PC-first Next.js dashboard for monitoring AI workflow automations
 - Added owner/admin manual project polling for demos, a deterministic demo metric endpoint, and a dashboard shortcut for configuring a known threshold-breach metric.
 - Added real metric dashboards in the node inspector: workspace payloads now include recent `MetricSample` values, hourly `MetricRollup` trend data, freshness labels, threshold context, and seeded visuals only act as fallback when no persisted samples exist.
 - Added workflow run telemetry ingestion: project-scoped hashed ingestion tokens, generic `/api/ingest/runs` webhook, persisted `WorkflowRun`/`WorkflowStep` details, and a Runs tab that shows real submitted runs with seeded fallback only when no telemetry exists.
+- Added basic and advanced integration templates for Generic Webhook, Dify, n8n, GitHub Actions, and custom REST metrics. Templates prefill metric setup fields or provide copyable telemetry snippets with selected node ids and token placeholders.
 - Added visual polish for the deployed dashboard: neutral black/grey dark mode tokens, clearer React Flow dot grid visibility, and edit-mode node snapping to the nearest 22px grid point on drag release.
 - Added Playwright smoke script for public deployed checks, optional authenticated checks, and optional private-beta mutation checks.
 - Added API stubs for project state and REST endpoint test/mapping behavior.
@@ -45,4 +46,5 @@ ArgusGrid is a PC-first Next.js dashboard for monitoring AI workflow automations
 - Browser-test notification preferences, owner/admin test email, alert-rule creation, one-alert/one-email behavior, and alert resolution allowing a later email.
 - Browser-test manual "Run poll now" against a demo metric node and confirm the inspector shows the real `95 score` metric card, persisted trend chart, alert update, and no duplicate unresolved email.
 - Browser-test workflow telemetry token creation/revocation and a valid `/api/ingest/runs` POST updating the selected node's Runs tab without sending alert email.
+- Browser-test Basic/Advanced integration templates: custom REST metric field prefill, telemetry snippets containing the selected node id, and no real token values in copied snippets.
 - Browser-test invited-user acceptance, role management, guided API setup, icon upload, alert center filtering, cron polling, deployment diagnostics, and alert resolution on the deployed site.
