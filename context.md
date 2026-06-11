@@ -15,6 +15,7 @@ ArgusGrid is a PC-first Next.js dashboard for monitoring AI workflow automations
 - Added deployed-first onboarding, project create/rename/archive controls, team member/invitation UI, encrypted API configuration, cron polling, metric sample persistence, hourly rollups, and in-app alert resolution.
 - Added secured Vercel cron configuration for `/api/cron/poll`; Hobby-compatible schedule is daily.
 - Added safe deployed readiness checks through `/api/health`, dashboard deployment diagnostics, poll execution logging, duplicate-alert prevention, non-JSON polling tolerance, and raw metric sample retention cleanup.
+- Added visual polish for the deployed dashboard: neutral black/grey dark mode tokens, clearer React Flow dot grid visibility, and edit-mode node snapping to the nearest 22px grid point on drag release.
 - Added Playwright smoke script for public deployed checks, optional authenticated checks, and optional private-beta mutation checks.
 - Added API stubs for project state and REST endpoint test/mapping behavior.
 - If database or GitHub OAuth env vars are missing, the app shows a setup-required screen instead of trying to start Auth.js against incomplete config.

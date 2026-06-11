@@ -13,6 +13,7 @@ import {
   type Connection,
   type Edge,
   type Node,
+  type OnNodeDrag,
 } from "@xyflow/react"
 import {
   Activity,
@@ -72,6 +73,7 @@ import { cn } from "@/lib/utils"
 import type { WorkspacePayload } from "@/lib/workspace"
 
 const nodeTypes = { endpoint: EndpointGraphNode }
+const GRAPH_GRID_SIZE = 22
 
 const toneClasses = {
   good: "text-emerald-600 dark:text-emerald-300",
@@ -105,6 +107,13 @@ function toFlowEdge(edge: WorkspacePayload["edges"][number]): Edge {
     animated: true,
     style: { stroke: "#38bdf8", strokeWidth: 2 },
     labelStyle: { fill: "#475569", fontSize: 11, fontWeight: 600 },
+  }
+}
+
+function snapToGridPosition(position: { x: number; y: number }) {
+  return {
+    x: Math.round(position.x / GRAPH_GRID_SIZE) * GRAPH_GRID_SIZE,
+    y: Math.round(position.y / GRAPH_GRID_SIZE) * GRAPH_GRID_SIZE,
   }
 }
 
@@ -226,6 +235,17 @@ export function ArgusGridDashboard({
       )
     },
     [editMode, setEdges]
+  )
+
+  const onNodeDragStop = useCallback<OnNodeDrag>(
+    (_, draggedNode) => {
+      if (!editMode) return
+      const snappedPosition = snapToGridPosition(draggedNode.position)
+      setNodes((currentNodes) =>
+        currentNodes.map((node) => (node.id === draggedNode.id ? { ...node, position: snappedPosition } : node))
+      )
+    },
+    [editMode, setNodes]
   )
 
   const addEndpointNode = () => {
@@ -527,7 +547,7 @@ export function ArgusGridDashboard({
         </header>
 
         <section className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(640px,1fr)_420px]">
-          <div className="flex min-w-0 flex-col bg-slate-50/70 dark:bg-slate-950/50">
+          <div className="flex min-w-0 flex-col bg-zinc-50 dark:bg-zinc-950">
             <div className="flex flex-col gap-3 border-b bg-background/80 px-5 py-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="outline" className="gap-1.5">
@@ -567,7 +587,10 @@ export function ArgusGridDashboard({
                 onNodesChange={editMode ? onNodesChange : undefined}
                 onEdgesChange={editMode ? onEdgesChange : undefined}
                 onConnect={onConnect}
+                onNodeDragStop={onNodeDragStop}
                 onNodeClick={(_, node) => setSelectedId(node.id)}
+                snapToGrid={editMode}
+                snapGrid={[GRAPH_GRID_SIZE, GRAPH_GRID_SIZE]}
                 nodesDraggable={editMode}
                 nodesConnectable={editMode}
                 elementsSelectable
@@ -576,10 +599,10 @@ export function ArgusGridDashboard({
               >
                 <Background
                   variant={BackgroundVariant.Dots}
-                  gap={22}
-                  size={1}
+                  gap={GRAPH_GRID_SIZE}
+                  size={1.8}
                   color="currentColor"
-                  className="text-slate-300 dark:text-slate-700"
+                  className="text-zinc-500 dark:text-zinc-700"
                 />
                 <MiniMap pannable zoomable nodeStrokeWidth={3} className="!bg-background !shadow-sm" />
                 <Controls className="!border !bg-background !shadow-sm" />
@@ -587,7 +610,7 @@ export function ArgusGridDashboard({
 
               <div className="pointer-events-none absolute left-5 top-5 max-w-sm rounded-xl border bg-background/90 p-4 shadow-sm backdrop-blur">
                 <div className="flex items-center gap-2 text-sm font-medium">
-                  <Sparkles className="size-4 text-cyan-600" />
+                  <Sparkles className="size-4 text-zinc-600 dark:text-zinc-300" />
                   Visual endpoint map
                 </div>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
