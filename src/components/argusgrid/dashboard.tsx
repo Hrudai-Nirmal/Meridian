@@ -120,6 +120,15 @@ function snapToGridPosition(position: { x: number; y: number }) {
   }
 }
 
+function formatSampledAt(timestamp: string) {
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(timestamp))
+}
+
 type SaveState = "saved" | "saving" | "error"
 type ProjectMode = "blank" | "demo"
 type ProjectAlert = WorkspacePayload["alerts"][number]
@@ -300,6 +309,11 @@ export function ArgusGridDashboard({
       cadence: "Every 15 min",
       position: { x: 460 + nodes.length * 28, y: 320 + nodes.length * 18 },
       alerts: [],
+      realMetrics: [],
+      realSampleSeries: [],
+      realRollupSeries: [],
+      latestSampledAt: undefined,
+      freshnessLabel: undefined,
     }
 
     setNodes((currentNodes) => currentNodes.concat(toFlowNode(newNode)))
@@ -1166,6 +1180,11 @@ function NodeInspector({
   const [ruleSeverity, setRuleSeverity] = useState(nodeAlertRules[0]?.severity ?? "WARNING")
   const [ruleEnabled, setRuleEnabled] = useState(nodeAlertRules[0]?.enabled ?? true)
   const [ruleMessage, setRuleMessage] = useState("")
+  const realMetricCards = selectedNode.realMetrics?.length ? selectedNode.realMetrics : null
+  const hasPersistedMappings = selectedNode.parameters.some((parameter) => parameter.id)
+  const hasRealTrend =
+    Boolean(selectedNode.realRollupSeries?.some((series) => series.points.length)) ||
+    Boolean(selectedNode.realSampleSeries?.some((series) => series.points.length))
 
   const useDemoMetric = () => {
     const demoUrl = `${window.location.origin}/api/demo/metric`
@@ -1349,17 +1368,37 @@ function NodeInspector({
           <CardContent>
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <Badge variant="outline">Source: {healthSourceCopy(selectedNode)}</Badge>
+              {selectedNode.freshnessLabel ? <Badge variant="secondary">Sampled {selectedNode.freshnessLabel}</Badge> : null}
               {selectedNode.override ? <Badge variant="secondary">Admin override active</Badge> : null}
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              {selectedNode.metrics.map((metric) => (
-                <div key={metric.label} className="rounded-lg border bg-muted/30 p-3">
-                  <div className="text-xs text-muted-foreground">{metric.label}</div>
-                  <div className="mt-1 text-xl font-semibold">{metric.value}</div>
-                  <div className={cn("mt-1 text-xs", toneClasses[metric.tone])}>{metric.delta}</div>
-                </div>
-              ))}
-            </div>
+            {realMetricCards ? (
+              <div className="grid grid-cols-2 gap-3">
+                {realMetricCards.map((metric) => (
+                  <div key={metric.mappingId ?? metric.label} className="rounded-lg border bg-muted/30 p-3">
+                    <div className="text-xs text-muted-foreground">{metric.label}</div>
+                    <div className="mt-1 text-xl font-semibold">{metric.displayValue}</div>
+                    <div className={cn("mt-1 text-xs", toneClasses[metric.tone])}>
+                      {metric.threshold ? `Threshold ${metric.threshold}` : "No threshold"}
+                    </div>
+                    <div className="mt-1 text-[11px] text-muted-foreground">Sampled {formatSampledAt(metric.sampledAt)}</div>
+                  </div>
+                ))}
+              </div>
+            ) : hasPersistedMappings ? (
+              <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                This node has saved mappings, but no metric samples yet. Run poll now to populate real cards and charts.
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                {selectedNode.metrics.map((metric) => (
+                  <div key={metric.label} className="rounded-lg border bg-muted/30 p-3">
+                    <div className="text-xs text-muted-foreground">{metric.label}</div>
+                    <div className="mt-1 text-xl font-semibold">{metric.value}</div>
+                    <div className={cn("mt-1 text-xs", toneClasses[metric.tone])}>{metric.delta}</div>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="mt-4 flex items-center gap-2">
               {(["active", "degraded", "down"] as NodeStatus[]).map((status) => (
                 <Button key={status} variant={effectiveStatus === status ? "default" : "outline"} size="sm" onClick={() => onOverride(status)} disabled={!canEditProject}>
@@ -1379,8 +1418,8 @@ function NodeInspector({
           <TabsContent value="analytics" className="mt-3 flex flex-col gap-4">
             <Card>
               <CardHeader>
-                <CardTitle>Latency Trend</CardTitle>
-                <CardDescription>Latest seven sampling buckets</CardDescription>
+                <CardTitle>Metric Trend</CardTitle>
+                <CardDescription>{hasRealTrend ? "Recent persisted samples and hourly rollups" : "Seeded fallback until samples exist"}</CardDescription>
               </CardHeader>
               <CardContent>
                 <LatencyChart node={selectedNode} />

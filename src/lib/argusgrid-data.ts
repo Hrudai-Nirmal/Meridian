@@ -36,6 +36,29 @@ export type EndpointMetric = {
   tone: "good" | "warn" | "bad" | "neutral"
 }
 
+export type RealMetricPoint = {
+  timestamp: string
+  value: number
+}
+
+export type RealMetricSeries = {
+  mappingId?: string | null
+  label: string
+  unit: string
+  points: RealMetricPoint[]
+}
+
+export type RealMetricSummary = {
+  mappingId?: string | null
+  label: string
+  value: number
+  displayValue: string
+  unit: string
+  sampledAt: string
+  threshold?: string
+  tone: "good" | "warn" | "bad" | "neutral"
+}
+
 export type EndpointRun = {
   id: string
   status: "success" | "degraded" | "failed"
@@ -72,6 +95,11 @@ export type EndpointNodeData = {
   costSeries: number[]
   qualitySeries: number[]
   heatmap: number[][]
+  realMetrics?: RealMetricSummary[]
+  realSampleSeries?: RealMetricSeries[]
+  realRollupSeries?: RealMetricSeries[]
+  latestSampledAt?: string
+  freshnessLabel?: string
   parameters: {
     id?: string
     label: string

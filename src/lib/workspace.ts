@@ -18,7 +18,8 @@ type DbNode = EndpointNode & {
   override: { status: string; reason: string; expiresAt: Date | null } | null
   endpointConfig: { url: string; method: string; authType: string; cadenceMin: number } | null
   icon: { id: string; mimeType: string } | null
-  mappings: { id: string; label: string; jsonPath: string; transform: string | null; unit: string | null }[]
+  mappings: { id: string; label: string; jsonPath: string; transform: string | null; unit: string | null; threshold: unknown }[]
+  samples: { value: number; sampledAt: Date; mappingId: string | null }[]
   alertEvents: {
     id: string
     title: string
@@ -37,6 +38,13 @@ type DbNode = EndpointNode & {
       failureReason: string | null
     }[]
   }[]
+}
+
+type DbRollup = {
+  scope: string
+  metricKey: string
+  value: number
+  startedAt: Date
 }
 
 type DbProject = Project & {
@@ -206,7 +214,56 @@ function toCadenceMinutes(cadence?: string | null) {
   return Number(match[0])
 }
 
-function dbNodeToEndpointNode(node: DbNode): EndpointNodeData {
+function formatMetricValue(value: number) {
+  return new Intl.NumberFormat("en", {
+    maximumFractionDigits: Math.abs(value) >= 100 ? 0 : 2,
+  }).format(value)
+}
+
+function thresholdToExpression(threshold: unknown) {
+  if (typeof threshold === "string") return threshold.trim() || undefined
+  if (threshold && typeof threshold === "object" && "expression" in threshold) {
+    const expression = String((threshold as { expression?: unknown }).expression ?? "").trim()
+    return expression || undefined
+  }
+  return undefined
+}
+
+function thresholdExceeded(value: number, expression?: string) {
+  const match = expression?.match(/^(>=|>|<=|<|=)\s*(-?\d+(\.\d+)?)$/)
+  if (!match) return false
+
+  const target = Number(match[2])
+  switch (match[1]) {
+    case ">":
+      return value > target
+    case ">=":
+      return value >= target
+    case "<":
+      return value < target
+    case "<=":
+      return value <= target
+    case "=":
+      return value === target
+    default:
+      return false
+  }
+}
+
+function freshnessLabel(sampledAt?: Date) {
+  if (!sampledAt) return undefined
+  const ageMs = Math.max(0, Date.now() - sampledAt.getTime())
+  const minuteMs = 60 * 1000
+  const hourMs = 60 * minuteMs
+  const dayMs = 24 * hourMs
+
+  if (ageMs < minuteMs) return "Just now"
+  if (ageMs < hourMs) return `${Math.floor(ageMs / minuteMs)}m ago`
+  if (ageMs < dayMs) return `${Math.floor(ageMs / hourMs)}h ago`
+  return `${Math.floor(ageMs / dayMs)}d ago`
+}
+
+function dbNodeToEndpointNode(node: DbNode, rollups: DbRollup[] = []): EndpointNodeData {
   const seed =
     allEndpointNodes.find((candidate) => candidate.id === node.id || node.id.endsWith(`-${candidate.id}`)) ??
     allEndpointNodes.find((candidate) => candidate.icon === node.iconKind) ??
@@ -220,6 +277,67 @@ function dbNodeToEndpointNode(node: DbNode): EndpointNodeData {
     transform: mapping.transform ?? "none",
     unit: mapping.unit ?? "",
   }))
+  const mappingById = new Map(node.mappings.map((mapping) => [mapping.id, mapping]))
+  const samplesByMapping = new Map<string, typeof node.samples>()
+
+  for (const sample of node.samples) {
+    const key = sample.mappingId ?? "unmapped"
+    samplesByMapping.set(key, (samplesByMapping.get(key) ?? []).concat(sample))
+  }
+
+  const realSampleSeries = Array.from(samplesByMapping.entries()).map(([mappingId, samples]) => {
+    const mapping = mappingById.get(mappingId)
+    const sortedSamples = [...samples].sort((a, b) => a.sampledAt.getTime() - b.sampledAt.getTime())
+
+    return {
+      mappingId: mappingId === "unmapped" ? null : mappingId,
+      label: mapping?.label ?? "Metric",
+      unit: mapping?.unit ?? "",
+      points: sortedSamples.map((sample) => ({
+        timestamp: sample.sampledAt.toISOString(),
+        value: sample.value,
+      })),
+    }
+  })
+  const realRollupSeries = Array.from(
+    rollups.reduce((groups, rollup) => {
+      groups.set(rollup.metricKey, (groups.get(rollup.metricKey) ?? []).concat(rollup))
+      return groups
+    }, new Map<string, DbRollup[]>())
+  ).map(([metricKey, metricRollups]) => {
+    const mapping = node.mappings.find((candidate) => candidate.label === metricKey)
+    const sortedRollups = [...metricRollups].sort((a, b) => a.startedAt.getTime() - b.startedAt.getTime())
+
+    return {
+      mappingId: mapping?.id ?? null,
+      label: metricKey,
+      unit: mapping?.unit ?? "",
+      points: sortedRollups.map((rollup) => ({
+        timestamp: rollup.startedAt.toISOString(),
+        value: rollup.value,
+      })),
+    }
+  })
+  const realMetrics = Array.from(samplesByMapping.entries()).map(([mappingId, samples]) => {
+    const sortedSamples = [...samples].sort((a, b) => b.sampledAt.getTime() - a.sampledAt.getTime())
+    const latest = sortedSamples[0]
+    const mapping = mappingById.get(mappingId)
+    const unit = mapping?.unit ?? ""
+    const threshold = thresholdToExpression(mapping?.threshold)
+    const crossed = thresholdExceeded(latest.value, threshold)
+
+    return {
+      mappingId: mappingId === "unmapped" ? null : mappingId,
+      label: mapping?.label ?? "Metric",
+      value: latest.value,
+      displayValue: `${formatMetricValue(latest.value)}${unit ? ` ${unit}` : ""}`,
+      unit,
+      sampledAt: latest.sampledAt.toISOString(),
+      threshold,
+      tone: crossed ? ("warn" as const) : ("good" as const),
+    }
+  })
+  const latestSample = [...node.samples].sort((a, b) => b.sampledAt.getTime() - a.sampledAt.getTime())[0]
 
   return {
     ...seed,
@@ -237,6 +355,11 @@ function dbNodeToEndpointNode(node: DbNode): EndpointNodeData {
     position: { x: node.x, y: node.y },
     customIconUrl: node.icon ? `/api/projects/${node.projectId}/nodes/${node.id}/icon?v=${node.updatedAt.getTime()}` : undefined,
     parameters: mappedParameters.length ? mappedParameters : seed.parameters,
+    realMetrics,
+    realSampleSeries,
+    realRollupSeries,
+    latestSampledAt: latestSample?.sampledAt.toISOString(),
+    freshnessLabel: freshnessLabel(latestSample?.sampledAt),
   }
 }
 
@@ -258,9 +381,10 @@ function projectToWorkspace(
   members: WorkspacePayload["members"],
   invitations: WorkspacePayload["invitations"],
   notificationPreference: WorkspacePayload["notificationPreference"],
-  diagnostics: ReadinessStatus
+  diagnostics: ReadinessStatus,
+  rollupsByNodeId = new Map<string, DbRollup[]>()
 ): WorkspacePayload {
-  const nodes = project.nodes.map(dbNodeToEndpointNode)
+  const nodes = project.nodes.map((node) => dbNodeToEndpointNode(node, rollupsByNodeId.get(node.id) ?? []))
   const activeNodes = nodes.filter((node) => (node.override ?? node.status) === "active").length
   const degradedNodes = nodes.filter((node) => (node.override ?? node.status) === "degraded").length
   const downNodes = nodes.filter((node) => (node.override ?? node.status) === "down").length
@@ -609,6 +733,16 @@ export async function getWorkspaceForUser(userId: string, projectId?: string) {
               jsonPath: true,
               transform: true,
               unit: true,
+              threshold: true,
+            },
+          },
+          samples: {
+            orderBy: { sampledAt: "desc" },
+            take: 120,
+            select: {
+              value: true,
+              sampledAt: true,
+              mappingId: true,
             },
           },
           icon: {
@@ -670,6 +804,27 @@ export async function getWorkspaceForUser(userId: string, projectId?: string) {
 
   if (!project) return null
 
+  const rollups = await prisma.metricRollup.findMany({
+    where: {
+      bucket: "hour",
+      scope: {
+        in: project.nodes.map((node) => node.id),
+      },
+    },
+    orderBy: { startedAt: "desc" },
+    take: Math.max(240, project.nodes.length * 48),
+    select: {
+      scope: true,
+      metricKey: true,
+      value: true,
+      startedAt: true,
+    },
+  })
+  const rollupsByNodeId = rollups.reduce((groups, rollup) => {
+    groups.set(rollup.scope, (groups.get(rollup.scope) ?? []).concat(rollup))
+    return groups
+  }, new Map<string, DbRollup[]>())
+
   const members = membership.organization.memberships.map((member) => ({
     id: member.id,
     name: member.user.name ?? "Pending user",
@@ -698,7 +853,8 @@ export async function getWorkspaceForUser(userId: string, projectId?: string) {
     members,
     invitations,
     notificationPreference,
-    diagnostics
+    diagnostics,
+    rollupsByNodeId
   )
 }
 

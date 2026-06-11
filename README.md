@@ -92,6 +92,7 @@ Manual post-deploy checklist:
 - Owner/admin test email returns clear success or failure feedback and does not expose `RESEND_API_KEY`.
 - Owner/admin manual poll run updates latest poll diagnostics without exposing `CRON_SECRET`.
 - The demo metric shortcut can configure a node with `$.value > 90` for controlled alert QA.
+- After saving the demo metric and running poll now, the selected node shows a real `95 score` metric card, persisted sample trend, freshness label, and alert context after refresh.
 - Notification preferences save enabled/disabled email alerts and minimum severity per signed-in user.
 - Alert rules can be created from saved parameter mappings and new alert emails are not repeated while the alert remains unresolved.
 - `/api/health` does not include raw env var values, database URLs, OAuth secrets, or encrypted credential payloads.
@@ -112,4 +113,4 @@ npm run dev
 
 On first GitHub login, ArgusGrid creates a personal organization and owner membership, then shows onboarding to confirm organization/project names and choose demo or blank setup.
 
-The app now includes project management, team invitation acceptance, member management, encrypted API credential storage, guided metric mapping tests, compact alert-rule management, cron/manual polling, a deterministic demo metric source, metric samples, hourly rollups, poll execution logs, readiness diagnostics, raw sample retention cleanup, in-app alerts, Resend email delivery logging/test flow/preferences, and small custom node icon uploads.
+The app now includes project management, team invitation acceptance, member management, encrypted API credential storage, guided metric mapping tests, compact alert-rule management, cron/manual polling, a deterministic demo metric source, real metric cards and trend charts from persisted samples/rollups, poll execution logs, readiness diagnostics, raw sample retention cleanup, in-app alerts, Resend email delivery logging/test flow/preferences, and small custom node icon uploads.

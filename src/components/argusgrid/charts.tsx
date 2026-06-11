@@ -7,7 +7,24 @@ import type { EndpointNodeData } from "@/lib/argusgrid-data"
 const axisLabel = { color: "#64748b", fontSize: 10 }
 const grid = { left: 32, right: 12, top: 22, bottom: 26 }
 
+function formatSeriesTimestamp(timestamp: string) {
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(timestamp))
+}
+
 export function LatencyChart({ node }: { node: EndpointNodeData }) {
+  const realSeries =
+    node.realRollupSeries?.find((series) => series.points.length) ??
+    node.realSampleSeries?.find((series) => series.points.length)
+  const xAxisData = realSeries
+    ? realSeries.points.map((point) => formatSeriesTimestamp(point.timestamp))
+    : ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Now"]
+  const seriesData = realSeries ? realSeries.points.map((point) => point.value) : node.latencySeries
+
   return (
     <ReactECharts
       className="h-44 w-full"
@@ -15,9 +32,17 @@ export function LatencyChart({ node }: { node: EndpointNodeData }) {
         color: ["#0f766e"],
         grid,
         tooltip: { trigger: "axis" },
-        xAxis: { type: "category", data: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Now"], axisLabel },
+        xAxis: { type: "category", data: xAxisData, axisLabel },
         yAxis: { type: "value", axisLabel },
-        series: [{ name: "Latency", type: "line", smooth: true, areaStyle: { opacity: 0.12 }, data: node.latencySeries }],
+        series: [
+          {
+            name: realSeries ? `${realSeries.label}${realSeries.unit ? ` (${realSeries.unit})` : ""}` : "Latency",
+            type: "line",
+            smooth: true,
+            areaStyle: { opacity: 0.12 },
+            data: seriesData,
+          },
+        ],
       }}
       notMerge
       lazyUpdate
