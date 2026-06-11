@@ -153,6 +153,9 @@ export function ArgusGridDashboard({
   const [emailEnabled, setEmailEnabled] = useState(initialWorkspace.notificationPreference.enabled)
   const [emailSeverity, setEmailSeverity] = useState(initialWorkspace.notificationPreference.severity)
   const [emailMessage, setEmailMessage] = useState("")
+  const [latestPoll, setLatestPoll] = useState(initialWorkspace.diagnostics.latestPoll)
+  const [latestEmail, setLatestEmail] = useState(initialWorkspace.diagnostics.latestEmail)
+  const [pollMessage, setPollMessage] = useState("")
   const [iconMessage, setIconMessage] = useState("")
   const [nodes, setNodes, onNodesChange] = useNodesState(initialWorkspace.nodes.map(toFlowNode))
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialWorkspace.edges.map(toFlowEdge))
@@ -440,6 +443,35 @@ export function ArgusGridDashboard({
     const response = await fetch("/api/notifications/test-email", { method: "POST" })
     const payload = await response.json().catch(() => null)
     setEmailMessage(payload?.message ?? (response.ok ? "Test email sent." : "Test email failed."))
+  }
+
+  const runPollNow = async () => {
+    if (!canManageOrganization) {
+      setPollMessage("Only owners and admins can run polling manually.")
+      return
+    }
+    setPollMessage("Running poll...")
+    const response = await fetch(`/api/projects/${initialWorkspace.project.id}/poll/run`, { method: "POST" })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      setPollMessage(payload?.error ?? "Manual poll failed.")
+      return
+    }
+
+    setLatestPoll(payload.diagnostics?.latestPoll ?? null)
+    setLatestEmail(payload.diagnostics?.latestEmail ?? latestEmail)
+    if (payload.alerts) setAlerts(payload.alerts)
+    if (payload.nodes) {
+      setNodes((currentNodes) =>
+        currentNodes.map((node) => {
+          const updated = payload.nodes.find((candidate: EndpointNodeData) => candidate.id === node.id)
+          return updated ? { ...node, data: updated as unknown as Record<string, unknown> } : node
+        })
+      )
+    }
+    setPollMessage(
+      `Poll completed: ${payload.result?.sampledNodes ?? 0} nodes, ${payload.result?.createdSamples ?? 0} samples, ${payload.result?.evaluatedAlerts ?? 0} new alerts.`
+    )
   }
 
   const resolveAlert = async (alertId: string) => {
@@ -741,26 +773,33 @@ export function ArgusGridDashboard({
                 </Button>
               </div>
               {emailMessage ? <div className="mt-2 text-xs text-muted-foreground">{emailMessage}</div> : null}
-              {initialWorkspace.diagnostics.latestEmail ? (
+              {latestEmail ? (
                 <div className="mt-3 rounded-md border bg-background/70 p-2 text-xs text-muted-foreground">
-                  Latest email: {initialWorkspace.diagnostics.latestEmail.status} via {initialWorkspace.diagnostics.latestEmail.provider} at{" "}
-                  {new Date(initialWorkspace.diagnostics.latestEmail.attemptedAt).toLocaleString()}
+                  Latest email: {latestEmail.status} via {latestEmail.provider} at {new Date(latestEmail.attemptedAt).toLocaleString()}
                 </div>
               ) : (
                 <div className="mt-3 rounded-md border border-dashed p-2 text-xs text-muted-foreground">No email delivery has been attempted yet.</div>
               )}
             </div>
             <Separator />
-            {initialWorkspace.diagnostics.latestPoll ? (
+            <div className="grid gap-2">
+              <Button onClick={runPollNow} disabled={!canManageOrganization}>
+                <Activity data-icon="inline-start" />
+                Run poll now
+              </Button>
+              {pollMessage ? <div className="text-xs text-muted-foreground">{pollMessage}</div> : null}
+            </div>
+            <Separator />
+            {latestPoll ? (
               <div className="rounded-lg border bg-muted/20 p-3 text-sm">
-                <div className="font-medium">Latest poll: {initialWorkspace.diagnostics.latestPoll.status}</div>
+                <div className="font-medium">Latest poll: {latestPoll.status}</div>
                 <div className="mt-1 text-xs text-muted-foreground">
-                  {initialWorkspace.diagnostics.latestPoll.sampledNodes} nodes, {initialWorkspace.diagnostics.latestPoll.createdSamples} samples,{" "}
-                  {initialWorkspace.diagnostics.latestPoll.evaluatedAlerts} alerts, {initialWorkspace.diagnostics.latestPoll.deletedSamples} old samples cleaned.
+                  {latestPoll.sampledNodes} nodes, {latestPoll.createdSamples} samples, {latestPoll.evaluatedAlerts} alerts,{" "}
+                  {latestPoll.deletedSamples} old samples cleaned.
                 </div>
-                {initialWorkspace.diagnostics.latestPoll.errorSummary ? (
+                {latestPoll.errorSummary ? (
                   <div className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
-                    {initialWorkspace.diagnostics.latestPoll.errorSummary}
+                    {latestPoll.errorSummary}
                   </div>
                 ) : null}
               </div>
@@ -1128,6 +1167,25 @@ function NodeInspector({
   const [ruleEnabled, setRuleEnabled] = useState(nodeAlertRules[0]?.enabled ?? true)
   const [ruleMessage, setRuleMessage] = useState("")
 
+  const useDemoMetric = () => {
+    const demoUrl = `${window.location.origin}/api/demo/metric`
+    setApiUrl(demoUrl)
+    setAuthType("NONE")
+    setSecretValue("")
+    setCadenceMin("15")
+    setMappingLabel("Demo metric")
+    setJsonPath("$.value")
+    setTransform("none")
+    setUnit("score")
+    setThreshold("> 90")
+    setVisualization("NUMBER")
+    setRuleName("Demo metric threshold crossed")
+    setRuleExpression("> 90")
+    setRuleSeverity("WARNING")
+    setRuleEnabled(true)
+    setApiMessage("Demo metric loaded. Test and save the API setup, then save the alert rule.")
+  }
+
   const testApiConfig = async () => {
     if (!canEditProject) {
       setApiMessage("Viewers cannot test private endpoint credentials.")
@@ -1439,6 +1497,10 @@ function NodeInspector({
                 <CardDescription>Save a deployed polling target and metric mapping</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
+                <Button variant="outline" onClick={useDemoMetric} disabled={!canEditProject}>
+                  <Wand2 data-icon="inline-start" />
+                  Use demo metric
+                </Button>
                 <Input value={apiUrl} onChange={(event) => setApiUrl(event.target.value)} aria-label="Endpoint URL" disabled={!canEditProject} />
                 <div className="grid gap-2 sm:grid-cols-2">
                   <select className="h-9 rounded-lg border bg-background px-2 text-sm disabled:opacity-50" value={authType} onChange={(event) => setAuthType(event.target.value)} disabled={!canEditProject}>

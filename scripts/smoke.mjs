@@ -45,6 +45,13 @@ try {
   })
   assert(cronResponse.status() === 401, "Cron route did not reject a wrong bearer token.")
 
+  const demoMetricResponse = await publicPage.request.get(`${baseUrl}/api/demo/metric`)
+  const demoMetric = await json(demoMetricResponse)
+  assert(demoMetricResponse.ok() && demoMetric?.value === 95, "Demo metric route did not return the expected deterministic sample.")
+
+  const manualPollResponse = await publicPage.request.post(`${baseUrl}/api/projects/not-a-real-project/poll/run`)
+  assert(manualPollResponse.status() === 401, "Manual poll route did not require authentication.")
+
   await publicPage.close()
 
   if (authState) {

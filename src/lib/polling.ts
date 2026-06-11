@@ -74,7 +74,7 @@ function bucketHour(date: Date) {
   return bucket
 }
 
-export async function runProjectPolling(): Promise<PollingResult> {
+export async function runProjectPolling(options: { projectId?: string } = {}): Promise<PollingResult> {
   const prisma = getPrisma()
   const checkedAt = new Date()
   const execution = await prisma.pollExecution.create({
@@ -90,6 +90,7 @@ export async function runProjectPolling(): Promise<PollingResult> {
       },
       project: {
         archivedAt: null,
+        ...(options.projectId ? { id: options.projectId } : {}),
       },
     },
     include: {
