@@ -45,8 +45,8 @@ export function OnboardingScreen({
           <div className="mb-2 flex size-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
             <Network className="size-6" />
           </div>
-          <CardTitle>Set up your ArgusGrid workspace</CardTitle>
-          <CardDescription>Confirm your private beta workspace before the first project is created.</CardDescription>
+          <CardTitle>Set up your control room</CardTitle>
+          <CardDescription>Confirm the agency or team workspace that will hold your first AI automation map.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <label className="flex flex-col gap-2 text-sm font-medium">
@@ -59,7 +59,7 @@ export function OnboardingScreen({
           </label>
           <div className="grid gap-2 sm:grid-cols-2">
             <Button variant={mode === "demo" ? "default" : "outline"} onClick={() => setMode("demo")}>
-              Seed demo data
+              Seed agency demo
             </Button>
             <Button variant={mode === "blank" ? "default" : "outline"} onClick={() => setMode("blank")}>
               Start blank

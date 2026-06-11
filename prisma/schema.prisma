@@ -64,6 +64,7 @@ model User {
   invitations   TeamInvitation[]
   notifications NotificationPreference[]
   ingestionTokens IngestionToken[]
+  reportShares  ReportShare[]
   createdAt     DateTime                 @default(now())
   updatedAt     DateTime                 @updatedAt
 }
@@ -158,6 +159,7 @@ model Project {
   edges          GraphEdge[]
   secrets        ProjectSecret[]
   ingestionTokens IngestionToken[]
+  reportShares   ReportShare[]
   alertRules     AlertRule[]
   auditLogs      AuditLog[]
   archivedAt     DateTime?
@@ -287,6 +289,25 @@ model IngestionToken {
   @@index([projectId, revokedAt])
   @@index([createdById])
   @@index([prefix])
+}
+
+model ReportShare {
+  id          String    @id @default(cuid())
+  token       String    @unique
+  title       String
+  clientName  String?
+  projectId   String
+  createdById String
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy   User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([projectId, revokedAt])
+  @@index([createdById])
+  @@index([expiresAt])
 }
 
 model ParameterMapping {

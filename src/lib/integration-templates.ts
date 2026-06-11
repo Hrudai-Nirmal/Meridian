@@ -1,5 +1,5 @@
 export type IntegrationTemplate = {
-  id: "generic-webhook" | "dify" | "n8n" | "github-actions" | "custom-rest-metric"
+  id: "dify" | "n8n" | "github-actions" | "custom-rest-metric"
   name: string
   category: string
   difficulty: "Basic" | "Advanced"
@@ -25,17 +25,6 @@ export type IntegrationTemplate = {
 }
 
 export const integrationTemplates: IntegrationTemplate[] = [
-  {
-    id: "generic-webhook",
-    name: "Generic Webhook",
-    category: "Workflow Runs",
-    difficulty: "Basic",
-    mode: "basic",
-    setupKind: "telemetry",
-    description: "Use this when any script or automation can send one JSON request after a run finishes.",
-    requiredFields: ["Ingestion token", "Selected node id", "Run status"],
-    basicSteps: ["Create an ingestion token in Deployment.", "Copy the webhook payload.", "Send it after your automation finishes.", "Refresh Runs."],
-  },
   {
     id: "dify",
     name: "Dify Workflow",
@@ -71,12 +60,12 @@ export const integrationTemplates: IntegrationTemplate[] = [
   },
   {
     id: "custom-rest-metric",
-    name: "Custom REST Metric",
+    name: "OpenAI / Custom REST Metric",
     category: "Metric Polling",
     difficulty: "Advanced",
     mode: "advanced",
     setupKind: "metric",
-    description: "Use this when an endpoint returns JSON and ArgusGrid should poll one numeric field on a schedule.",
+    description: "Use this for OpenAI usage endpoints or any JSON endpoint ArgusGrid should poll on a schedule.",
     requiredFields: ["Endpoint URL", "Auth method", "JSONPath", "Threshold"],
     basicSteps: ["Apply the metric preset.", "Replace the endpoint URL.", "Test the endpoint.", "Save API setup and alert rule."],
     preset: {

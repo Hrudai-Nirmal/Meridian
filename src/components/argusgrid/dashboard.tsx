@@ -24,6 +24,8 @@ import {
   CheckCircle2,
   Copy,
   Edit3,
+  ExternalLink,
+  FileImage,
   Gauge,
   HardDriveUpload,
   KeyRound,
@@ -35,6 +37,7 @@ import {
   Save,
   Search,
   Send,
+  Share2,
   ShieldCheck,
   Sparkles,
   Sun,
@@ -64,7 +67,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { CostQualityChart, IncidentHeatmap, LatencyChart, RelationshipSankey } from "@/components/argusgrid/charts"
+import { CostQualityChart, IncidentHeatmap, LatencyChart } from "@/components/argusgrid/charts"
 import { EndpointGraphNode } from "@/components/argusgrid/endpoint-node"
 import {
   allEndpointNodes,
@@ -250,6 +253,15 @@ type IngestionTokenRecord = {
   lastUsedAt: string | null
   revokedAt: string | null
 }
+type ReportShareRecord = {
+  id: string
+  title: string
+  clientName: string | null
+  url: string
+  expiresAt: string | null
+  revokedAt: string | null
+  createdAt: string
+}
 
 export function ArgusGridDashboard({
   initialWorkspace,
@@ -288,6 +300,11 @@ export function ArgusGridDashboard({
   const [ingestionTokenName, setIngestionTokenName] = useState("Workflow telemetry token")
   const [ingestionTokenMessage, setIngestionTokenMessage] = useState("")
   const [generatedIngestionToken, setGeneratedIngestionToken] = useState("")
+  const [reportShares, setReportShares] = useState<ReportShareRecord[]>([])
+  const [reportTitle, setReportTitle] = useState("Client automation report")
+  const [reportClientName, setReportClientName] = useState("")
+  const [reportExpiryDays, setReportExpiryDays] = useState("90")
+  const [reportMessage, setReportMessage] = useState("")
   const [nodes, setNodes, onNodesChange] = useNodesState(initialWorkspace.nodes.map(toFlowNode))
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialWorkspace.edges.map(toFlowEdge))
   const didMountRef = useRef(false)
@@ -673,6 +690,68 @@ export function ArgusGridDashboard({
     setIngestionTokenMessage("Token revoked.")
   }
 
+  const loadReportShares = async () => {
+    if (!canManageOrganization) {
+      setReportMessage("Only owners and admins can manage client reports.")
+      return
+    }
+
+    setReportMessage("Loading report links...")
+    const response = await fetch(`/api/projects/${initialWorkspace.project.id}/report-shares`)
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      setReportMessage(payload?.error ?? "Report links failed to load.")
+      return
+    }
+    setReportShares(payload.shares ?? [])
+    setReportMessage("Report links loaded.")
+  }
+
+  const createReportShare = async () => {
+    if (!canManageOrganization) {
+      setReportMessage("Only owners and admins can create client reports.")
+      return
+    }
+
+    setReportMessage("Creating report link...")
+    const expiresInDays = reportExpiryDays.trim() ? Number(reportExpiryDays) : undefined
+    const response = await fetch(`/api/projects/${initialWorkspace.project.id}/report-shares`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: reportTitle,
+        clientName: reportClientName.trim() || undefined,
+        expiresInDays: Number.isFinite(expiresInDays) ? expiresInDays : undefined,
+      }),
+    })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      setReportMessage(payload?.error ?? "Report link creation failed.")
+      return
+    }
+    setReportShares((current) => [payload.share, ...current])
+    await navigator.clipboard.writeText(payload.share.url)
+    setReportMessage("Report link created and copied.")
+  }
+
+  const revokeReportShare = async (shareId: string) => {
+    setReportMessage("Revoking report link...")
+    const response = await fetch(`/api/projects/${initialWorkspace.project.id}/report-shares/${shareId}`, { method: "DELETE" })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      setReportMessage(payload?.error ?? "Report link revoke failed.")
+      return
+    }
+    const revokedAt = new Date().toISOString()
+    setReportShares((current) => current.map((share) => (share.id === shareId ? { ...share, revokedAt } : share)))
+    setReportMessage("Report link revoked.")
+  }
+
+  const copyReportShareUrl = async (url: string) => {
+    await navigator.clipboard.writeText(url)
+    setReportMessage("Report link copied.")
+  }
+
   const runPollNow = async () => {
     if (!canManageOrganization) {
       setPollMessage("Only owners and admins can run polling manually.")
@@ -700,6 +779,102 @@ export function ArgusGridDashboard({
     setPollMessage(
       `Poll completed: ${payload.result?.sampledNodes ?? 0} nodes, ${payload.result?.createdSamples ?? 0} samples, ${payload.result?.evaluatedAlerts ?? 0} new alerts.`
     )
+  }
+
+  const exportGraphPng = () => {
+    const graphNodes = nodes.map((node) => ({
+      id: node.id,
+      position: node.position,
+      data: node.data as unknown as EndpointNodeData,
+    }))
+
+    if (!graphNodes.length) {
+      setActionMessage("Add a node before exporting the map.")
+      return
+    }
+
+    const nodeWidth = 220
+    const nodeHeight = 86
+    const padding = 96
+    const minX = Math.min(...graphNodes.map((node) => node.position.x))
+    const minY = Math.min(...graphNodes.map((node) => node.position.y))
+    const maxX = Math.max(...graphNodes.map((node) => node.position.x + nodeWidth))
+    const maxY = Math.max(...graphNodes.map((node) => node.position.y + nodeHeight))
+    const width = Math.max(960, Math.ceil(maxX - minX + padding * 2))
+    const height = Math.max(640, Math.ceil(maxY - minY + padding * 2 + 80))
+    const canvas = document.createElement("canvas")
+    const scale = 2
+    canvas.width = width * scale
+    canvas.height = height * scale
+    const context = canvas.getContext("2d")
+
+    if (!context) {
+      setActionMessage("Map export is not available in this browser.")
+      return
+    }
+
+    context.scale(scale, scale)
+    context.fillStyle = "#fafafa"
+    context.fillRect(0, 0, width, height)
+    context.fillStyle = "#111827"
+    context.font = "700 26px Arial"
+    context.fillText(initialWorkspace.project.name, padding, 48)
+    context.font = "400 13px Arial"
+    context.fillStyle = "#6b7280"
+    context.fillText("ArgusGrid AI automation control room map", padding, 72)
+
+    const centers = new Map(graphNodes.map((node) => [
+      node.id,
+      {
+        x: node.position.x - minX + padding + nodeWidth / 2,
+        y: node.position.y - minY + padding + 80 + nodeHeight / 2,
+      },
+    ]))
+
+    context.lineWidth = 2
+    context.strokeStyle = "#94a3b8"
+    edges.forEach((edge) => {
+      const source = centers.get(edge.source)
+      const target = centers.get(edge.target)
+      if (!source || !target) return
+      context.beginPath()
+      context.moveTo(source.x, source.y)
+      context.lineTo(target.x, target.y)
+      context.stroke()
+    })
+
+    graphNodes.forEach((node) => {
+      const x = node.position.x - minX + padding
+      const y = node.position.y - minY + padding + 80
+      const status = node.data.override ?? node.data.status
+      const statusColor =
+        status === "active" ? "#10b981" : status === "degraded" ? "#f59e0b" : status === "down" ? "#ef4444" : "#94a3b8"
+
+      context.fillStyle = "#ffffff"
+      context.strokeStyle = "#d4d4d8"
+      context.lineWidth = 1
+      context.beginPath()
+      context.roundRect(x, y, nodeWidth, nodeHeight, 14)
+      context.fill()
+      context.stroke()
+      context.fillStyle = statusColor
+      context.beginPath()
+      context.arc(x + 24, y + 28, 7, 0, Math.PI * 2)
+      context.fill()
+      context.fillStyle = "#111827"
+      context.font = "700 15px Arial"
+      context.fillText(node.data.label.slice(0, 24), x + 42, y + 32)
+      context.fillStyle = "#6b7280"
+      context.font = "400 12px Arial"
+      context.fillText(node.data.category.slice(0, 28), x + 42, y + 54)
+      context.fillText(statusCopy[status], x + 42, y + 72)
+    })
+
+    const link = document.createElement("a")
+    link.download = `${initialWorkspace.project.slug}-argusgrid-map.png`
+    link.href = canvas.toDataURL("image/png")
+    link.click()
+    setActionMessage("Project map exported as PNG.")
   }
 
   const resolveAlert = async (alertId: string) => {
@@ -836,6 +1011,7 @@ export function ArgusGridDashboard({
           <SidebarItem icon={CircleDollarSign} label="Cost & Usage" />
           <SidebarItem icon={Gauge} label="Quality & Evals" />
           <SidebarItem icon={Bell} label="Alerts" count={String(alerts.filter((alert) => !alert.resolvedAt).length)} />
+          <SidebarItem icon={Share2} label="Client Reports" />
           <SidebarItem icon={ShieldCheck} label="Security" />
         </nav>
 
@@ -945,6 +1121,70 @@ export function ArgusGridDashboard({
                   </div>
                 </div>
               ))}
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog onOpenChange={(open) => open && loadReportShares()}>
+          <DialogTrigger render={<Button variant="outline" className="mb-3 justify-start" />}>
+            <Share2 data-icon="inline-start" />
+            Client Reports
+          </DialogTrigger>
+          <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-4xl">
+            <DialogHeader>
+              <DialogTitle>Client-facing reports</DialogTitle>
+              <DialogDescription>
+                Create secure read-only links that prove uptime, run volume, cost, tokens, quality, and incidents for agency clients.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+              <div className="grid content-start gap-3 rounded-lg border bg-muted/20 p-3">
+                <Input value={reportTitle} onChange={(event) => setReportTitle(event.target.value)} aria-label="Report title" disabled={!canManageOrganization} />
+                <Input value={reportClientName} onChange={(event) => setReportClientName(event.target.value)} placeholder="Client name, optional" disabled={!canManageOrganization} />
+                <Input value={reportExpiryDays} onChange={(event) => setReportExpiryDays(event.target.value)} placeholder="Expiry in days, optional" disabled={!canManageOrganization} />
+                <Button onClick={createReportShare} disabled={!canManageOrganization}>
+                  <Share2 data-icon="inline-start" />
+                  Create and copy report link
+                </Button>
+                {reportMessage ? <div className="text-xs text-muted-foreground">{reportMessage}</div> : null}
+                <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+                  Reports are public to anyone with the link, but never expose API secrets, ingestion tokens, or private credentials.
+                </div>
+              </div>
+              <div className="grid content-start gap-2">
+                {reportShares.length ? (
+                  reportShares.map((share) => (
+                    <div key={share.id} className="rounded-lg border bg-background/70 p-3 text-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">{share.title}</div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {share.clientName ?? "No client name"} / {share.revokedAt ? "Revoked" : share.expiresAt ? `Expires ${formatSampledAt(share.expiresAt)}` : "No expiry"}
+                          </div>
+                        </div>
+                        <Badge variant={share.revokedAt ? "secondary" : "outline"}>{share.revokedAt ? "Revoked" : "Live"}</Badge>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Button variant="outline" size="sm" onClick={() => copyReportShareUrl(share.url)}>
+                          <Copy data-icon="inline-start" />
+                          Copy
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => window.open(share.url, "_blank", "noopener,noreferrer")} disabled={Boolean(share.revokedAt)}>
+                          <ExternalLink data-icon="inline-start" />
+                          Open
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => revokeReportShare(share.id)} disabled={!canManageOrganization || Boolean(share.revokedAt)}>
+                          Revoke
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                    No report links yet. Create one to share this project with a client.
+                  </div>
+                )}
+              </div>
             </div>
           </DialogContent>
         </Dialog>
@@ -1120,9 +1360,9 @@ export function ArgusGridDashboard({
           <div className="flex min-w-0 flex-wrap items-center gap-3">
             <div>
               <h1 className="truncate text-lg font-semibold">{initialWorkspace.project.name}</h1>
-              <p className="text-xs text-muted-foreground">Graph-first endpoint monitoring workspace</p>
+              <p className="text-xs text-muted-foreground">AI automation control room for live ops, value, and client proof</p>
             </div>
-            <Badge variant="secondary">Vercel Hobby + Neon Free prototype</Badge>
+            <Badge variant="secondary">Graph-first AI ops map</Badge>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative hidden lg:block">
@@ -1179,6 +1419,10 @@ export function ArgusGridDashboard({
                   <HardDriveUpload data-icon="inline-start" />
                   Upload icon
                 </Button>
+                <Button variant="outline" size="sm" onClick={exportGraphPng}>
+                  <FileImage data-icon="inline-start" />
+                  Export PNG
+                </Button>
                 <Badge variant="outline">
                   <Wand2 data-icon="inline-start" />
                   API setup in inspector
@@ -1223,10 +1467,10 @@ export function ArgusGridDashboard({
               <div className="pointer-events-none absolute left-5 top-5 max-w-sm rounded-xl border bg-background/90 p-4 shadow-sm backdrop-blur">
                 <div className="flex items-center gap-2 text-sm font-medium">
                   <Sparkles className="size-4 text-zinc-600 dark:text-zinc-300" />
-                  Visual endpoint map
+                  AI automation control room
                 </div>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  Connections are user-configured visual relationships. Metrics and alerts come from each node&apos;s REST mappings.
+                  Map every automation dependency, then prove reliability, cost, quality, and incidents behind each node.
                 </p>
               </div>
             </div>
@@ -1470,7 +1714,7 @@ function NodeInspector({
   const [ruleMessage, setRuleMessage] = useState("")
   const [runMessage, setRunMessage] = useState("")
   const [templateMode, setTemplateMode] = useState<"basic" | "advanced">("basic")
-  const [selectedTemplateId, setSelectedTemplateId] = useState<IntegrationTemplate["id"]>("generic-webhook")
+  const [selectedTemplateId, setSelectedTemplateId] = useState<IntegrationTemplate["id"]>("dify")
   const [templateMessage, setTemplateMessage] = useState("")
   const realMetricCards = selectedNode.realMetrics?.length ? selectedNode.realMetrics : null
   const hasPersistedMappings = selectedNode.parameters.some((parameter) => parameter.id)
@@ -1795,15 +2039,6 @@ function NodeInspector({
               </CardHeader>
               <CardContent>
                 <IncidentHeatmap node={selectedNode} />
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle>Relationship Flow</CardTitle>
-                <CardDescription>Sankey view of visual endpoint relationships</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <RelationshipSankey />
               </CardContent>
             </Card>
           </TabsContent>

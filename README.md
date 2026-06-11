@@ -1,6 +1,6 @@
 # ArgusGrid
 
-ArgusGrid is a deployed-first Next.js dashboard for monitoring AI workflow automations. Projects open to a graph-first endpoint map; selecting a node shows health, API metadata, alerts, recent runs, costs, and quality signals.
+ArgusGrid is the AI automation control room for agencies and teams. Projects open to a graph-first automation map; selecting a node shows health, API metadata, alerts, recent runs, cost, latency, token usage, and quality signals so teams can prove whether automations are reliable and worth running.
 
 ## Stack
 
@@ -54,6 +54,8 @@ Owners/admins can send a harmless test alert email from Deployment diagnostics a
 
 Owners/admins can also run a project poll manually from Deployment diagnostics for demos. The public `/api/demo/metric` route returns a deterministic sample for private-beta alert QA.
 
+Owners/admins can create secure client-facing report links from the dashboard. Report links render a read-only project summary with uptime, run volume, success rate, cost, token usage, active alerts, quality score, node summaries, and recent incidents. Links can expire and can be revoked.
+
 Owners/admins can create project-scoped workflow telemetry tokens from Deployment diagnostics. The raw token is shown once, then only its prefix/hash metadata is retained. External automations can post run telemetry with:
 
 ```bash
@@ -75,7 +77,9 @@ curl -X POST "https://your-vercel-domain.vercel.app/api/ingest/runs" \
   }'
 ```
 
-The node inspector includes Basic and Advanced integration templates for Generic Webhook, Dify, n8n, GitHub Actions, and custom REST metrics. Basic templates explain the setup path and Advanced templates provide copyable snippets that use the selected node id and `<ingestion-token>` placeholders.
+The node inspector includes Basic and Advanced integration templates for Dify, n8n, GitHub Actions, and OpenAI/custom REST metrics. Basic templates explain the setup path and Advanced templates provide copyable snippets that use the selected node id and `<ingestion-token>` placeholders.
+
+SDK previews live in `sdk/python` and `sdk/js`. See `docs/sdk.md` for one-minute `@argusgrid.trace` examples.
 
 ## Deployed QA
 
@@ -117,6 +121,8 @@ Manual post-deploy checklist:
 - Owner/admin workflow telemetry token creation shows the raw token once, token refresh lists only prefixes, revoke blocks future ingestion, and `/api/ingest/runs` rejects missing/wrong tokens.
 - Posting valid workflow run telemetry updates the selected node's Runs tab after refresh and records step details without sending alert email.
 - Basic and Advanced integration templates render in the API tab; custom REST metric applies fields without saving, and telemetry snippets include the selected node id but no real token.
+- Client report links can be created, opened in a signed-out browser, copied, and revoked without exposing secrets.
+- Project maps can be exported as PNGs for stakeholder reports.
 - The demo metric shortcut can configure a node with `$.value > 90` for controlled alert QA.
 - After saving the demo metric and running poll now, the selected node shows a real `95 score` metric card, persisted sample trend, freshness label, and alert context after refresh.
 - Notification preferences save enabled/disabled email alerts and minimum severity per signed-in user.
@@ -139,4 +145,4 @@ npm run dev
 
 On first GitHub login, ArgusGrid creates a personal organization and owner membership, then shows onboarding to confirm organization/project names and choose demo or blank setup.
 
-The app now includes project management, team invitation acceptance, member management, encrypted API credential storage, guided metric mapping tests, basic/advanced integration templates, compact alert-rule management, cron/manual polling, workflow run telemetry ingestion with hashed project tokens, a deterministic demo metric source, real metric cards and trend charts from persisted samples/rollups, poll execution logs, readiness diagnostics, raw sample retention cleanup, in-app alerts, Resend email delivery logging/test flow/preferences, and small custom node icon uploads.
+The app now includes project management, team invitation acceptance, member management, encrypted API credential storage, guided metric mapping tests, focused basic/advanced integration templates, compact alert-rule management, cron/manual polling, workflow run telemetry ingestion with hashed project tokens, secure client report links, PNG map export, SDK previews, a deterministic demo metric source, real metric cards and trend charts from persisted samples/rollups, poll execution logs, readiness diagnostics, raw sample retention cleanup, in-app alerts, Resend email delivery logging/test flow/preferences, and small custom node icon uploads.

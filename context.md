@@ -1,7 +1,7 @@
 # ArgusGrid Context
 
 ## Project Purpose
-ArgusGrid is a PC-first Next.js dashboard for monitoring AI workflow automations. The product is graph-first: each project opens to a visual endpoint map where nodes represent user-labelled services, APIs, tools, or automation endpoints. Selecting a node opens a dashboard inspector for health, runs, cost, latency, quality, alerts, and API parameter mappings.
+ArgusGrid is a PC-first AI automation control room for agencies and teams. The product is graph-first: each project opens to a visual automation map where nodes represent user-labelled services, APIs, tools, or automation endpoints. Selecting a node opens a dashboard inspector for health, runs, cost, latency, quality, alerts, and API parameter mappings. The strategic buyer focus is AI automation agencies that need to prove reliability and ROI to clients, with in-house AI ops teams as the secondary segment.
 
 ## Current Implementation State
 - Scaffolded with Next.js App Router, TypeScript, Tailwind CSS v4, and shadcn/ui base components.
@@ -23,8 +23,13 @@ ArgusGrid is a PC-first Next.js dashboard for monitoring AI workflow automations
 - Added owner/admin manual project polling for demos, a deterministic demo metric endpoint, and a dashboard shortcut for configuring a known threshold-breach metric.
 - Added real metric dashboards in the node inspector: workspace payloads now include recent `MetricSample` values, hourly `MetricRollup` trend data, freshness labels, threshold context, and seeded visuals only act as fallback when no persisted samples exist.
 - Added workflow run telemetry ingestion: project-scoped hashed ingestion tokens, generic `/api/ingest/runs` webhook, persisted `WorkflowRun`/`WorkflowStep` details, and a Runs tab that shows real submitted runs with seeded fallback only when no telemetry exists.
-- Added basic and advanced integration templates for Generic Webhook, Dify, n8n, GitHub Actions, and custom REST metrics. Templates prefill metric setup fields or provide copyable telemetry snippets with selected node ids and token placeholders.
+- Added basic and advanced integration templates for Dify, n8n, GitHub Actions, and OpenAI/custom REST metrics. Templates prefill metric setup fields or provide copyable telemetry snippets with selected node ids and token placeholders.
 - Reduced inspector crowding by moving integration templates, API setup, and alert-rule editing into focused dialogs; widened Deployment readiness into a scrollable viewport-safe dialog; added an in-place Refresh runs action for workflow telemetry.
+- Replanned the product around the "AI automation control room" positioning: graph-first map, AI value monitoring, reliable alerts, agency client reports, and open-source SDK instrumentation as the growth loop.
+- Added secure client-facing report links with public read-only report pages, expiry/revocation support, agency-friendly summary metrics, and no secret exposure.
+- Added client-side PNG export for the current project map so agencies can include visual automation maps in stakeholder reports.
+- Added Python and JavaScript SDK previews in `sdk/python` and `sdk/js`, plus `docs/sdk.md`, using the existing `/api/ingest/runs` telemetry contract.
+- Focused integration template breadth around Dify, n8n, GitHub Actions, and OpenAI/custom REST instead of broad generic template sprawl.
 - Added visual polish for the deployed dashboard: neutral black/grey dark mode tokens, clearer React Flow dot grid visibility, and edit-mode node snapping to the nearest 22px grid point on drag release.
 - Added Playwright smoke script for public deployed checks, optional authenticated checks, and optional private-beta mutation checks.
 - Added API stubs for project state and REST endpoint test/mapping behavior.
@@ -41,6 +46,9 @@ ArgusGrid is a PC-first Next.js dashboard for monitoring AI workflow automations
 - Small custom node icons can be stored in Postgres in the prototype.
 - Node graph edges are visual relationships only in v1.
 - Node status is computed from health rules but supports admin overrides.
+- Reports start as secure share links and PNG exports, not full client portals.
+- SSE live updates, baseline/anomaly alerting, CSV exports, Slack notifications, and SDK publishing are next-stage priorities.
+- Sankey and forecast/correlation views are deferred until usage data proves demand.
 
 ## Next Priorities
 - Run the smoke script against the deployed Vercel site after each push.
@@ -49,4 +57,7 @@ ArgusGrid is a PC-first Next.js dashboard for monitoring AI workflow automations
 - Browser-test workflow telemetry token creation/revocation and a valid `/api/ingest/runs` POST updating the selected node's Runs tab without sending alert email.
 - Browser-test Basic/Advanced integration templates: custom REST metric field prefill, telemetry snippets containing the selected node id, and no real token values in copied snippets.
 - Browser-test the Deployment readiness dialog and the API tab setup dialogs at desktop height: content should stay within the viewport, scroll internally, and keep the inspector compact.
+- Browser-test client report creation, signed-out report access, copy/open/revoke actions, and PNG map export.
+- Validate the Prisma report-share migration with `prisma migrate deploy` before production use.
+- Test SDK preview snippets against a disposable ingestion token and confirm runs appear in the selected node.
 - Browser-test invited-user acceptance, role management, guided API setup, icon upload, alert center filtering, cron polling, deployment diagnostics, and alert resolution on the deployed site.

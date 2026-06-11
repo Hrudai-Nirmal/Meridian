@@ -1,0 +1,10 @@
+[project]
+name = "argusgrid"
+version = "0.1.0"
+description = "Python tracing SDK for ArgusGrid AI automation telemetry."
+requires-python = ">=3.9"
+authors = [{ name = "ArgusGrid" }]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"

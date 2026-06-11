@@ -15,7 +15,7 @@ export function SignInScreen() {
             <Network className="size-6" />
           </div>
           <CardTitle>Sign in to ArgusGrid</CardTitle>
-          <CardDescription>Use GitHub to enter your private AI workflow monitoring workspace.</CardDescription>
+          <CardDescription>Enter the AI automation control room for live ops, cost, quality, and client proof.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <Button onClick={() => signIn("github", { callbackUrl: "/" })}>
@@ -23,7 +23,7 @@ export function SignInScreen() {
             Continue with GitHub
           </Button>
           <p className="text-xs leading-5 text-muted-foreground">
-            First sign-in automatically creates your personal organization and seeds the Support Automation Grid demo project.
+            First sign-in creates your organization and starts an agency-ready automation map you can monitor and report on.
           </p>
         </CardContent>
       </Card>

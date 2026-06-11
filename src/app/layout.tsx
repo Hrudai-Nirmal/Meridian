@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "ArgusGrid",
-  description: "Graph-first monitoring dashboard for AI workflow automations.",
+  description: "The AI automation control room for agencies and teams.",
 };
 
 export default function RootLayout({
