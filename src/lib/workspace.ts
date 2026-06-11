@@ -7,6 +7,7 @@ import {
   graphEdges as seedGraphEdges,
   projectCategories,
   projectSummary,
+  type EndpointRun,
   type EndpointNodeData,
   type IconKind,
   type NodeStatus,
@@ -20,6 +21,22 @@ type DbNode = EndpointNode & {
   icon: { id: string; mimeType: string } | null
   mappings: { id: string; label: string; jsonPath: string; transform: string | null; unit: string | null; threshold: unknown }[]
   samples: { value: number; sampledAt: Date; mappingId: string | null }[]
+  runs: {
+    id: string
+    externalId: string | null
+    status: string
+    startedAt: Date
+    finishedAt: Date | null
+    costUsd: { toString(): string } | null
+    tokens: number | null
+    steps: {
+      id: string
+      name: string
+      status: string
+      latencyMs: number | null
+      toolName: string | null
+    }[]
+  }[]
   alertEvents: {
     id: string
     title: string
@@ -263,6 +280,27 @@ function freshnessLabel(sampledAt?: Date) {
   return `${Math.floor(ageMs / dayMs)}d ago`
 }
 
+function formatShortDateTime(date: Date) {
+  return new Intl.DateTimeFormat("en", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date)
+}
+
+function formatDuration(startedAt: Date, finishedAt?: Date | null) {
+  if (!finishedAt) return "Running"
+  const elapsedMs = Math.max(0, finishedAt.getTime() - startedAt.getTime())
+  if (elapsedMs < 1000) return `${elapsedMs}ms`
+  if (elapsedMs < 60_000) return `${(elapsedMs / 1000).toFixed(1)}s`
+  return `${Math.round(elapsedMs / 60_000)}m`
+}
+
+function runStatus(status: string): EndpointRun["status"] {
+  const normalized = status.toLowerCase()
+  if (normalized === "failed" || normalized === "degraded" || normalized === "running" || normalized === "queued") return normalized
+  return "success"
+}
+
 function dbNodeToEndpointNode(node: DbNode, rollups: DbRollup[] = []): EndpointNodeData {
   const seed =
     allEndpointNodes.find((candidate) => candidate.id === node.id || node.id.endsWith(`-${candidate.id}`)) ??
@@ -338,6 +376,28 @@ function dbNodeToEndpointNode(node: DbNode, rollups: DbRollup[] = []): EndpointN
     }
   })
   const latestSample = [...node.samples].sort((a, b) => b.sampledAt.getTime() - a.sampledAt.getTime())[0]
+  const persistedRuns = node.runs.map((run) => ({
+    id: run.externalId ?? run.id,
+    externalId: run.externalId,
+    status: runStatus(run.status),
+    started: formatShortDateTime(run.startedAt),
+    startedAt: run.startedAt.toISOString(),
+    finishedAt: run.finishedAt?.toISOString() ?? null,
+    durationMs: run.finishedAt ? Math.max(0, run.finishedAt.getTime() - run.startedAt.getTime()) : null,
+    latency: formatDuration(run.startedAt, run.finishedAt),
+    cost: run.costUsd ? `$${run.costUsd.toString()}` : "$0.000",
+    costUsd: run.costUsd?.toString() ?? null,
+    tokens: run.tokens,
+    quality: run.status.toLowerCase() === "failed" ? "Failed" : run.status.toLowerCase() === "degraded" ? "Degraded" : "OK",
+    stepCount: run.steps.length,
+    steps: run.steps.map((step) => ({
+      id: step.id,
+      name: step.name,
+      status: step.status,
+      latencyMs: step.latencyMs,
+      toolName: step.toolName,
+    })),
+  }))
 
   return {
     ...seed,
@@ -355,6 +415,8 @@ function dbNodeToEndpointNode(node: DbNode, rollups: DbRollup[] = []): EndpointN
     position: { x: node.x, y: node.y },
     customIconUrl: node.icon ? `/api/projects/${node.projectId}/nodes/${node.id}/icon?v=${node.updatedAt.getTime()}` : undefined,
     parameters: mappedParameters.length ? mappedParameters : seed.parameters,
+    runs: persistedRuns.length ? persistedRuns : seed.runs,
+    hasPersistedRuns: Boolean(persistedRuns.length),
     realMetrics,
     realSampleSeries,
     realRollupSeries,
@@ -743,6 +805,29 @@ export async function getWorkspaceForUser(userId: string, projectId?: string) {
               value: true,
               sampledAt: true,
               mappingId: true,
+            },
+          },
+          runs: {
+            orderBy: { startedAt: "desc" },
+            take: 20,
+            select: {
+              id: true,
+              externalId: true,
+              status: true,
+              startedAt: true,
+              finishedAt: true,
+              costUsd: true,
+              tokens: true,
+              steps: {
+                orderBy: { id: "asc" },
+                select: {
+                  id: true,
+                  name: true,
+                  status: true,
+                  latencyMs: true,
+                  toolName: true,
+                },
+              },
             },
           },
           icon: {

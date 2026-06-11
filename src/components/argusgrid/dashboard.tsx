@@ -22,9 +22,11 @@ import {
   ChevronDown,
   CircleDollarSign,
   CheckCircle2,
+  Copy,
   Edit3,
   Gauge,
   HardDriveUpload,
+  KeyRound,
   LayoutDashboard,
   MailCheck,
   Moon,
@@ -59,7 +61,6 @@ import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -129,10 +130,24 @@ function formatSampledAt(timestamp: string) {
   }).format(new Date(timestamp))
 }
 
+function runBadgeVariant(status: string): "destructive" | "secondary" | "outline" {
+  if (status === "failed") return "destructive"
+  if (status === "degraded") return "secondary"
+  return "outline"
+}
+
 type SaveState = "saved" | "saving" | "error"
 type ProjectMode = "blank" | "demo"
 type ProjectAlert = WorkspacePayload["alerts"][number]
 type ProjectAlertRule = WorkspacePayload["alertRules"][number]
+type IngestionTokenRecord = {
+  id: string
+  name: string
+  prefix: string
+  createdAt: string
+  lastUsedAt: string | null
+  revokedAt: string | null
+}
 
 export function ArgusGridDashboard({
   initialWorkspace,
@@ -166,6 +181,10 @@ export function ArgusGridDashboard({
   const [latestEmail, setLatestEmail] = useState(initialWorkspace.diagnostics.latestEmail)
   const [pollMessage, setPollMessage] = useState("")
   const [iconMessage, setIconMessage] = useState("")
+  const [ingestionTokens, setIngestionTokens] = useState<IngestionTokenRecord[]>([])
+  const [ingestionTokenName, setIngestionTokenName] = useState("Workflow telemetry token")
+  const [ingestionTokenMessage, setIngestionTokenMessage] = useState("")
+  const [generatedIngestionToken, setGeneratedIngestionToken] = useState("")
   const [nodes, setNodes, onNodesChange] = useNodesState(initialWorkspace.nodes.map(toFlowNode))
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialWorkspace.edges.map(toFlowEdge))
   const didMountRef = useRef(false)
@@ -309,6 +328,8 @@ export function ArgusGridDashboard({
       cadence: "Every 15 min",
       position: { x: 460 + nodes.length * 28, y: 320 + nodes.length * 18 },
       alerts: [],
+      runs: [],
+      hasPersistedRuns: false,
       realMetrics: [],
       realSampleSeries: [],
       realRollupSeries: [],
@@ -457,6 +478,63 @@ export function ArgusGridDashboard({
     const response = await fetch("/api/notifications/test-email", { method: "POST" })
     const payload = await response.json().catch(() => null)
     setEmailMessage(payload?.message ?? (response.ok ? "Test email sent." : "Test email failed."))
+  }
+
+  const copyText = async (value: string, successMessage: string) => {
+    await navigator.clipboard.writeText(value)
+    setIngestionTokenMessage(successMessage)
+  }
+
+  const loadIngestionTokens = async () => {
+    if (!canManageOrganization) {
+      setIngestionTokenMessage("Only owners and admins can view ingestion tokens.")
+      return
+    }
+
+    setIngestionTokenMessage("Loading tokens...")
+    const response = await fetch(`/api/projects/${initialWorkspace.project.id}/ingestion-tokens`)
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      setIngestionTokenMessage(payload?.error ?? "Token load failed.")
+      return
+    }
+    setIngestionTokens(payload.tokens ?? [])
+    setIngestionTokenMessage("Tokens loaded.")
+  }
+
+  const createWorkflowToken = async () => {
+    if (!canManageOrganization) {
+      setIngestionTokenMessage("Only owners and admins can create ingestion tokens.")
+      return
+    }
+
+    setIngestionTokenMessage("Creating token...")
+    const response = await fetch(`/api/projects/${initialWorkspace.project.id}/ingestion-tokens`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: ingestionTokenName }),
+    })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      setIngestionTokenMessage(payload?.error ?? "Token creation failed.")
+      return
+    }
+    setGeneratedIngestionToken(payload.token)
+    setIngestionTokens((current) => [payload.tokenRecord, ...current])
+    setIngestionTokenMessage("Token created. Copy it now; it will not be shown again.")
+  }
+
+  const revokeWorkflowToken = async (tokenId: string) => {
+    setIngestionTokenMessage("Revoking token...")
+    const response = await fetch(`/api/projects/${initialWorkspace.project.id}/ingestion-tokens/${tokenId}`, { method: "DELETE" })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      setIngestionTokenMessage(payload?.error ?? "Token revoke failed.")
+      return
+    }
+    const revokedAt = new Date().toISOString()
+    setIngestionTokens((current) => current.map((token) => (token.id === tokenId ? { ...token, revokedAt } : token)))
+    setIngestionTokenMessage("Token revoked.")
   }
 
   const runPollNow = async () => {
@@ -679,7 +757,7 @@ export function ArgusGridDashboard({
             <Users data-icon="inline-start" />
             Team
           </DialogTrigger>
-          <DialogContent className="sm:max-w-lg">
+          <DialogContent className="sm:max-w-2xl">
             <DialogHeader>
               <DialogTitle>Team access</DialogTitle>
               <DialogDescription>Invite collaborators and review current workspace members.</DialogDescription>
@@ -740,7 +818,7 @@ export function ArgusGridDashboard({
             <ShieldCheck data-icon="inline-start" />
             Deployment
           </DialogTrigger>
-          <DialogContent className="sm:max-w-lg">
+          <DialogContent className="sm:max-w-2xl">
             <DialogHeader>
               <DialogTitle>Deployment readiness</DialogTitle>
               <DialogDescription>Safe production checks for the deployed demo. Secret values are never shown.</DialogDescription>
@@ -793,6 +871,72 @@ export function ArgusGridDashboard({
                 </div>
               ) : (
                 <div className="mt-3 rounded-md border border-dashed p-2 text-xs text-muted-foreground">No email delivery has been attempted yet.</div>
+              )}
+            </div>
+            <Separator />
+            <div className="rounded-lg border bg-muted/20 p-3 text-sm">
+              <div className="flex items-center gap-2 font-medium">
+                <KeyRound className="size-4" />
+                Workflow telemetry
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                Project-scoped ingestion tokens let external automations post workflow runs to ArgusGrid.
+              </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+                <Input
+                  value={ingestionTokenName}
+                  onChange={(event) => setIngestionTokenName(event.target.value)}
+                  aria-label="Ingestion token name"
+                  disabled={!canManageOrganization}
+                />
+                <Button onClick={createWorkflowToken} disabled={!canManageOrganization}>
+                  Create token
+                </Button>
+              </div>
+              {generatedIngestionToken ? (
+                <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+                  <div className="font-medium">Copy this token now. It will not be shown again.</div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <code className="min-w-0 flex-1 overflow-x-auto rounded bg-background px-2 py-1 text-[11px] text-foreground">
+                      {generatedIngestionToken}
+                    </code>
+                    <Button variant="outline" size="sm" onClick={() => copyText(generatedIngestionToken, "Token copied.")}>
+                      <Copy data-icon="inline-start" />
+                      Copy
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Button variant="outline" size="sm" onClick={loadIngestionTokens} disabled={!canManageOrganization}>
+                  Refresh tokens
+                </Button>
+                {ingestionTokenMessage ? <span className="text-xs text-muted-foreground">{ingestionTokenMessage}</span> : null}
+              </div>
+              {ingestionTokens.length ? (
+                <div className="mt-3 grid gap-2">
+                  {ingestionTokens.map((token) => (
+                    <div key={token.id} className="flex items-center justify-between gap-3 rounded-md border bg-background/70 p-2 text-xs">
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">{token.name}</div>
+                        <div className="mt-1 text-muted-foreground">
+                          {token.prefix}... / {token.revokedAt ? "Revoked" : token.lastUsedAt ? `Last used ${new Date(token.lastUsedAt).toLocaleString()}` : "Never used"}
+                        </div>
+                      </div>
+                      {token.revokedAt ? (
+                        <Badge variant="secondary">Revoked</Badge>
+                      ) : (
+                        <Button variant="ghost" size="sm" onClick={() => revokeWorkflowToken(token.id)} disabled={!canManageOrganization}>
+                          Revoke
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-3 rounded-md border border-dashed p-2 text-xs text-muted-foreground">
+                  No tokens loaded yet. Create one or refresh the project token list.
+                </div>
               )}
             </div>
             <Separator />
@@ -1180,11 +1324,34 @@ function NodeInspector({
   const [ruleSeverity, setRuleSeverity] = useState(nodeAlertRules[0]?.severity ?? "WARNING")
   const [ruleEnabled, setRuleEnabled] = useState(nodeAlertRules[0]?.enabled ?? true)
   const [ruleMessage, setRuleMessage] = useState("")
+  const [runMessage, setRunMessage] = useState("")
   const realMetricCards = selectedNode.realMetrics?.length ? selectedNode.realMetrics : null
   const hasPersistedMappings = selectedNode.parameters.some((parameter) => parameter.id)
   const hasRealTrend =
     Boolean(selectedNode.realRollupSeries?.some((series) => series.points.length)) ||
     Boolean(selectedNode.realSampleSeries?.some((series) => series.points.length))
+  const hasPersistedRuns = Boolean(selectedNode.hasPersistedRuns)
+  const telemetryPayload = JSON.stringify(
+    {
+      nodeId: selectedNode.id,
+      externalId: "run_001",
+      status: "success",
+      startedAt: "2026-06-12T09:30:00.000Z",
+      finishedAt: "2026-06-12T09:30:02.400Z",
+      costUsd: 0.042,
+      tokens: 1280,
+      steps: [
+        { name: "Fetch context", status: "success", latencyMs: 420, toolName: "database" },
+        { name: "Generate response", status: "success", latencyMs: 1700, toolName: "llm" },
+      ],
+    },
+    null,
+    2
+  )
+  const telemetryCurl = `curl -X POST "https://argusgrid.hrudainirmal.in/api/ingest/runs" \\
+  -H "Authorization: Bearer <ingestion-token>" \\
+  -H "Content-Type: application/json" \\
+  -d '${telemetryPayload}'`
 
   const useDemoMetric = () => {
     const demoUrl = `${window.location.origin}/api/demo/metric`
@@ -1337,6 +1504,11 @@ function NodeInspector({
     setRuleMessage("Alert rule saved.")
   }
 
+  const copyTelemetryExample = async () => {
+    await navigator.clipboard.writeText(telemetryCurl)
+    setRunMessage("Telemetry example copied.")
+  }
+
   return (
     <aside className="min-h-0 overflow-y-auto border-l bg-background">
       <div className="sticky top-0 z-10 border-b bg-background/95 px-5 py-4 backdrop-blur">
@@ -1458,31 +1630,82 @@ function NodeInspector({
             <Card>
               <CardHeader>
                 <CardTitle>Recent Runs</CardTitle>
-                <CardDescription>Run and step aware monitoring sample</CardDescription>
+                <CardDescription>{hasPersistedRuns ? "Persisted workflow telemetry for this node" : "Post workflow runs with a project ingestion token"}</CardDescription>
               </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Run</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Latency</TableHead>
-                      <TableHead>Quality</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+              <CardContent className="flex flex-col gap-3">
+                {!hasPersistedRuns ? (
+                  <div className="rounded-lg border border-dashed p-4 text-sm">
+                    <div className="font-medium">No submitted workflow runs yet.</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      Create a project ingestion token in Deployment diagnostics, then post a run for this node.
+                    </div>
+                    <pre className="mt-3 max-h-52 overflow-auto rounded-md bg-muted p-3 font-mono text-[11px] text-muted-foreground">
+                      {telemetryCurl}
+                    </pre>
+                    <div className="mt-3 flex items-center gap-2">
+                      <Button variant="outline" size="sm" onClick={copyTelemetryExample}>
+                        <Copy data-icon="inline-start" />
+                        Copy example
+                      </Button>
+                      {runMessage ? <span className="text-xs text-muted-foreground">{runMessage}</span> : null}
+                    </div>
+                  </div>
+                ) : null}
+                {selectedNode.runs.length ? (
+                  <div className="grid gap-2">
+                    {!hasPersistedRuns ? <div className="text-xs font-medium text-muted-foreground">Sample fallback rows</div> : null}
                     {selectedNode.runs.map((run) => (
-                      <TableRow key={run.id}>
-                        <TableCell className="font-medium">{run.id}</TableCell>
-                        <TableCell>
-                          <Badge variant={run.status === "failed" ? "destructive" : "secondary"}>{run.status}</Badge>
-                        </TableCell>
-                        <TableCell>{run.latency}</TableCell>
-                        <TableCell>{run.quality}</TableCell>
-                      </TableRow>
+                      <div key={`${run.id}-${run.startedAt ?? run.started}`} className="rounded-lg border bg-muted/20 p-3 text-sm">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="truncate font-medium">{run.externalId ?? run.id}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              Started {run.startedAt ? formatSampledAt(run.startedAt) : run.started}
+                            </div>
+                          </div>
+                          <Badge variant={runBadgeVariant(run.status)}>{run.status}</Badge>
+                        </div>
+                        <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">
+                          <div>
+                            <span className="block font-medium text-foreground">Duration</span>
+                            {run.latency}
+                          </div>
+                          <div>
+                            <span className="block font-medium text-foreground">Cost</span>
+                            {run.cost}
+                          </div>
+                          <div>
+                            <span className="block font-medium text-foreground">Tokens</span>
+                            {run.tokens ?? "n/a"}
+                          </div>
+                          <div>
+                            <span className="block font-medium text-foreground">Steps</span>
+                            {run.stepCount ?? run.steps?.length ?? 0}
+                          </div>
+                        </div>
+                        {run.steps?.length ? (
+                          <details className="mt-3 rounded-md border bg-background/70 p-2 text-xs">
+                            <summary className="cursor-pointer font-medium">Step details</summary>
+                            <div className="mt-2 grid gap-2">
+                              {run.steps.map((step) => (
+                                <div key={step.id} className="flex items-center justify-between gap-2 rounded border p-2">
+                                  <span className="min-w-0">
+                                    <span className="block truncate font-medium">{step.name}</span>
+                                    <span className="block truncate text-muted-foreground">{step.toolName ?? "No tool"}</span>
+                                  </span>
+                                  <span className="shrink-0 text-right text-muted-foreground">
+                                    {step.status}
+                                    {step.latencyMs !== null && step.latencyMs !== undefined ? ` / ${step.latencyMs}ms` : ""}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        ) : null}
+                      </div>
                     ))}
-                  </TableBody>
-                </Table>
+                  </div>
+                ) : null}
               </CardContent>
             </Card>
 

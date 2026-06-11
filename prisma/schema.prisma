@@ -63,6 +63,7 @@ model User {
   memberships   Membership[]
   invitations   TeamInvitation[]
   notifications NotificationPreference[]
+  ingestionTokens IngestionToken[]
   createdAt     DateTime                 @default(now())
   updatedAt     DateTime                 @updatedAt
 }
@@ -156,6 +157,7 @@ model Project {
   nodes          EndpointNode[]
   edges          GraphEdge[]
   secrets        ProjectSecret[]
+  ingestionTokens IngestionToken[]
   alertRules     AlertRule[]
   auditLogs      AuditLog[]
   archivedAt     DateTime?
@@ -269,6 +271,24 @@ model ProjectSecret {
   updatedAt  DateTime            @updatedAt
 }
 
+model IngestionToken {
+  id         String    @id @default(cuid())
+  name       String
+  prefix     String
+  tokenHash  String    @unique
+  projectId  String
+  createdById String
+  project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy  User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([projectId, revokedAt])
+  @@index([createdById])
+  @@index([prefix])
+}
+
 model ParameterMapping {
   id        String         @id @default(cuid())
   label     String
@@ -305,6 +325,10 @@ model WorkflowRun {
   nodeId     String
   node       EndpointNode   @relation(fields: [nodeId], references: [id], onDelete: Cascade)
   steps      WorkflowStep[]
+
+  @@unique([nodeId, externalId])
+  @@index([nodeId, startedAt])
+  @@index([nodeId, externalId])
 }
 
 model WorkflowStep {
@@ -315,6 +339,8 @@ model WorkflowStep {
   toolName  String?
   runId     String
   run       WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
 }
 
 model MetricSample {

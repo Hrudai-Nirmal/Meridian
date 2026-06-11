@@ -61,11 +61,25 @@ export type RealMetricSummary = {
 
 export type EndpointRun = {
   id: string
-  status: "success" | "degraded" | "failed"
+  externalId?: string | null
+  status: "success" | "degraded" | "failed" | "running" | "queued"
   started: string
+  startedAt?: string
+  finishedAt?: string | null
+  durationMs?: number | null
   latency: string
   cost: string
+  costUsd?: string | null
+  tokens?: number | null
   quality: string
+  stepCount?: number
+  steps?: {
+    id: string
+    name: string
+    status: string
+    latencyMs?: number | null
+    toolName?: string | null
+  }[]
 }
 
 export type EndpointAlert = {
@@ -90,6 +104,7 @@ export type EndpointNodeData = {
   position: { x: number; y: number }
   metrics: EndpointMetric[]
   runs: EndpointRun[]
+  hasPersistedRuns?: boolean
   alerts: EndpointAlert[]
   latencySeries: number[]
   costSeries: number[]

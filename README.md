@@ -54,6 +54,27 @@ Owners/admins can send a harmless test alert email from Deployment diagnostics a
 
 Owners/admins can also run a project poll manually from Deployment diagnostics for demos. The public `/api/demo/metric` route returns a deterministic sample for private-beta alert QA.
 
+Owners/admins can create project-scoped workflow telemetry tokens from Deployment diagnostics. The raw token is shown once, then only its prefix/hash metadata is retained. External automations can post run telemetry with:
+
+```bash
+curl -X POST "https://your-vercel-domain.vercel.app/api/ingest/runs" \
+  -H "Authorization: Bearer <ingestion-token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nodeId": "endpoint-node-id",
+    "externalId": "run_001",
+    "status": "success",
+    "startedAt": "2026-06-12T09:30:00.000Z",
+    "finishedAt": "2026-06-12T09:30:02.400Z",
+    "costUsd": 0.042,
+    "tokens": 1280,
+    "steps": [
+      { "name": "Fetch context", "status": "success", "latencyMs": 420, "toolName": "database" },
+      { "name": "Generate response", "status": "success", "latencyMs": 1700, "toolName": "llm" }
+    ]
+  }'
+```
+
 ## Deployed QA
 
 Run public smoke checks against a deployment:
@@ -91,6 +112,8 @@ Manual post-deploy checklist:
 - Deployment diagnostics show database, auth, encryption, cron, email provider readiness, latest poll status, and latest email delivery status.
 - Owner/admin test email returns clear success or failure feedback and does not expose `RESEND_API_KEY`.
 - Owner/admin manual poll run updates latest poll diagnostics without exposing `CRON_SECRET`.
+- Owner/admin workflow telemetry token creation shows the raw token once, token refresh lists only prefixes, revoke blocks future ingestion, and `/api/ingest/runs` rejects missing/wrong tokens.
+- Posting valid workflow run telemetry updates the selected node's Runs tab after refresh and records step details without sending alert email.
 - The demo metric shortcut can configure a node with `$.value > 90` for controlled alert QA.
 - After saving the demo metric and running poll now, the selected node shows a real `95 score` metric card, persisted sample trend, freshness label, and alert context after refresh.
 - Notification preferences save enabled/disabled email alerts and minimum severity per signed-in user.
@@ -113,4 +136,4 @@ npm run dev
 
 On first GitHub login, ArgusGrid creates a personal organization and owner membership, then shows onboarding to confirm organization/project names and choose demo or blank setup.
 
-The app now includes project management, team invitation acceptance, member management, encrypted API credential storage, guided metric mapping tests, compact alert-rule management, cron/manual polling, a deterministic demo metric source, real metric cards and trend charts from persisted samples/rollups, poll execution logs, readiness diagnostics, raw sample retention cleanup, in-app alerts, Resend email delivery logging/test flow/preferences, and small custom node icon uploads.
+The app now includes project management, team invitation acceptance, member management, encrypted API credential storage, guided metric mapping tests, compact alert-rule management, cron/manual polling, workflow run telemetry ingestion with hashed project tokens, a deterministic demo metric source, real metric cards and trend charts from persisted samples/rollups, poll execution logs, readiness diagnostics, raw sample retention cleanup, in-app alerts, Resend email delivery logging/test flow/preferences, and small custom node icon uploads.

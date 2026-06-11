@@ -52,6 +52,15 @@ try {
   const manualPollResponse = await publicPage.request.post(`${baseUrl}/api/projects/not-a-real-project/poll/run`)
   assert(manualPollResponse.status() === 401, "Manual poll route did not require authentication.")
 
+  const ingestResponse = await publicPage.request.post(`${baseUrl}/api/ingest/runs`, {
+    data: {
+      nodeId: "not-a-real-node",
+      status: "success",
+      startedAt: "2026-06-12T09:30:00.000Z",
+    },
+  })
+  assert(ingestResponse.status() === 401, "Workflow run ingestion did not reject missing token authentication.")
+
   await publicPage.close()
 
   if (authState) {
