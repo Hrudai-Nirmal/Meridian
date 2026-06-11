@@ -26,11 +26,13 @@ import {
   Gauge,
   HardDriveUpload,
   LayoutDashboard,
+  MailCheck,
   Moon,
   Network,
   Plus,
   Save,
   Search,
+  Send,
   ShieldCheck,
   Sparkles,
   Sun,
@@ -121,6 +123,7 @@ function snapToGridPosition(position: { x: number; y: number }) {
 type SaveState = "saved" | "saving" | "error"
 type ProjectMode = "blank" | "demo"
 type ProjectAlert = WorkspacePayload["alerts"][number]
+type ProjectAlertRule = WorkspacePayload["alertRules"][number]
 
 export function ArgusGridDashboard({
   initialWorkspace,
@@ -143,9 +146,13 @@ export function ArgusGridDashboard({
   const [members, setMembers] = useState(initialWorkspace.members)
   const [invitations, setInvitations] = useState(initialWorkspace.invitations)
   const [alerts, setAlerts] = useState(initialWorkspace.alerts)
+  const [alertRules, setAlertRules] = useState(initialWorkspace.alertRules)
   const [alertStatusFilter, setAlertStatusFilter] = useState<"active" | "resolved" | "all">("active")
   const [alertSeverityFilter, setAlertSeverityFilter] = useState("all")
   const [selectedAlertDetail, setSelectedAlertDetail] = useState<ProjectAlert | null>(null)
+  const [emailEnabled, setEmailEnabled] = useState(initialWorkspace.notificationPreference.enabled)
+  const [emailSeverity, setEmailSeverity] = useState(initialWorkspace.notificationPreference.severity)
+  const [emailMessage, setEmailMessage] = useState("")
   const [iconMessage, setIconMessage] = useState("")
   const [nodes, setNodes, onNodesChange] = useNodesState(initialWorkspace.nodes.map(toFlowNode))
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialWorkspace.edges.map(toFlowEdge))
@@ -405,6 +412,34 @@ export function ArgusGridDashboard({
     }
     setInvitations((current) => current.filter((invitation) => invitation.id !== invitationId))
     setTeamMessage("Invitation cancelled.")
+  }
+
+  const saveNotificationPreference = async () => {
+    setEmailMessage("Saving preference...")
+    const response = await fetch("/api/notifications/preferences", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: emailEnabled, severity: emailSeverity }),
+    })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      setEmailMessage(payload?.error ?? "Notification preference failed.")
+      return
+    }
+    setEmailEnabled(payload.preference.enabled)
+    setEmailSeverity(payload.preference.severity)
+    setEmailMessage("Notification preference saved.")
+  }
+
+  const sendTestEmail = async () => {
+    if (!canManageOrganization) {
+      setEmailMessage("Only owners and admins can send test emails.")
+      return
+    }
+    setEmailMessage("Sending test email...")
+    const response = await fetch("/api/notifications/test-email", { method: "POST" })
+    const payload = await response.json().catch(() => null)
+    setEmailMessage(payload?.message ?? (response.ok ? "Test email sent." : "Test email failed."))
   }
 
   const resolveAlert = async (alertId: string) => {
@@ -669,6 +704,51 @@ export function ArgusGridDashboard({
               <ReadinessItem label="GitHub OAuth ready" ready={initialWorkspace.diagnostics.checks.auth} />
               <ReadinessItem label="Encryption enabled" ready={initialWorkspace.diagnostics.checks.encryption} />
               <ReadinessItem label="Cron secret configured" ready={initialWorkspace.diagnostics.checks.cron} />
+              <ReadinessItem label="Email provider configured" ready={initialWorkspace.diagnostics.checks.email} />
+            </div>
+            <Separator />
+            <div className="rounded-lg border bg-muted/20 p-3 text-sm">
+              <div className="flex items-center gap-2 font-medium">
+                <MailCheck className="size-4" />
+                Email notifications
+              </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_150px]">
+                <label className="flex items-center gap-2 rounded-lg border bg-background/70 px-3 py-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={emailEnabled}
+                    onChange={(event) => setEmailEnabled(event.target.checked)}
+                  />
+                  Receive alert emails
+                </label>
+                <select
+                  className="h-10 rounded-lg border bg-background px-2 text-sm"
+                  value={emailSeverity}
+                  onChange={(event) => setEmailSeverity(event.target.value)}
+                >
+                  <option value="INFO">Info and above</option>
+                  <option value="WARNING">Warning and above</option>
+                  <option value="CRITICAL">Critical only</option>
+                </select>
+              </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <Button variant="outline" onClick={saveNotificationPreference}>
+                  Save preference
+                </Button>
+                <Button onClick={sendTestEmail} disabled={!canManageOrganization}>
+                  <Send data-icon="inline-start" />
+                  Send test email
+                </Button>
+              </div>
+              {emailMessage ? <div className="mt-2 text-xs text-muted-foreground">{emailMessage}</div> : null}
+              {initialWorkspace.diagnostics.latestEmail ? (
+                <div className="mt-3 rounded-md border bg-background/70 p-2 text-xs text-muted-foreground">
+                  Latest email: {initialWorkspace.diagnostics.latestEmail.status} via {initialWorkspace.diagnostics.latestEmail.provider} at{" "}
+                  {new Date(initialWorkspace.diagnostics.latestEmail.attemptedAt).toLocaleString()}
+                </div>
+              ) : (
+                <div className="mt-3 rounded-md border border-dashed p-2 text-xs text-muted-foreground">No email delivery has been attempted yet.</div>
+              )}
             </div>
             <Separator />
             {initialWorkspace.diagnostics.latestPoll ? (
@@ -825,9 +905,24 @@ export function ArgusGridDashboard({
             categories={initialWorkspace.categories}
             projectId={initialWorkspace.project.id}
             alerts={alerts}
+            alertRules={alertRules}
             canEditProject={canEditProject}
             onOverride={setStatusOverride}
             onResolveAlert={resolveAlert}
+            onRuleSaved={(rule) => {
+              setAlertRules((currentRules) => {
+                const normalized = {
+                  ...rule,
+                  nodeLabel: selectedNode.label,
+                  mappingLabel: selectedNode.parameters.find((parameter) => parameter.id === rule.mappingId)?.label ?? null,
+                  createdAt: rule.createdAt ?? new Date().toISOString(),
+                  updatedAt: rule.updatedAt ?? new Date().toISOString(),
+                }
+                return currentRules.some((currentRule) => currentRule.id === rule.id)
+                  ? currentRules.map((currentRule) => (currentRule.id === rule.id ? normalized : currentRule))
+                  : currentRules.concat(normalized)
+              })
+            }}
             onPatch={(patch) => {
               setNodes((currentNodes) =>
                 currentNodes.map((node) => {
@@ -868,6 +963,25 @@ export function ArgusGridDashboard({
               <div className="rounded-lg border p-3">
                 <div className="text-xs text-muted-foreground">Source</div>
                 <div className="font-medium">{selectedAlertDetail.source}</div>
+              </div>
+              <div className="rounded-lg border p-3">
+                <div className="text-xs text-muted-foreground">Latest email delivery</div>
+                <div className="font-medium">
+                  {selectedAlertDetail.deliveryStatus
+                    ? `${selectedAlertDetail.deliveryStatus}${selectedAlertDetail.deliveryProvider ? ` via ${selectedAlertDetail.deliveryProvider}` : ""}`
+                    : "No delivery attempted"}
+                </div>
+                {selectedAlertDetail.deliveryAttemptedAt ? (
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Attempted {new Date(selectedAlertDetail.deliveryAttemptedAt).toLocaleString()}
+                    {selectedAlertDetail.deliverySentAt ? `, sent ${new Date(selectedAlertDetail.deliverySentAt).toLocaleString()}` : ""}
+                  </div>
+                ) : null}
+                {selectedAlertDetail.deliveryFailureReason ? (
+                  <div className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
+                    {selectedAlertDetail.deliveryFailureReason}
+                  </div>
+                ) : null}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-lg border p-3">
@@ -971,9 +1085,11 @@ function NodeInspector({
   categories,
   projectId,
   alerts,
+  alertRules,
   canEditProject,
   onOverride,
   onResolveAlert,
+  onRuleSaved,
   onPatch,
 }: {
   selectedNode: EndpointNodeData
@@ -981,9 +1097,11 @@ function NodeInspector({
   categories: string[]
   projectId: string
   alerts: WorkspacePayload["alerts"]
+  alertRules: WorkspacePayload["alertRules"]
   canEditProject: boolean
   onOverride: (status: NodeStatus) => void
   onResolveAlert: (alertId: string) => void
+  onRuleSaved: (rule: ProjectAlertRule) => void
   onPatch: (patch: Partial<EndpointNodeData>) => void
 }) {
   const Icon = iconRegistry[selectedNode.icon] ?? iconRegistry.api
@@ -1000,6 +1118,15 @@ function NodeInspector({
   const [visualization, setVisualization] = useState("NUMBER")
   const [apiMessage, setApiMessage] = useState("")
   const [apiTestResult, setApiTestResult] = useState<ApiTestResult | null>(null)
+  const nodeAlertRules = alertRules.filter((rule) => rule.nodeId === selectedNode.id)
+  const firstPersistedParameter = selectedNode.parameters.find((parameter) => parameter.id)
+  const [ruleId, setRuleId] = useState(nodeAlertRules[0]?.id ?? "")
+  const [ruleMappingId, setRuleMappingId] = useState(nodeAlertRules[0]?.mappingId ?? firstPersistedParameter?.id ?? "")
+  const [ruleName, setRuleName] = useState(nodeAlertRules[0]?.name ?? `${firstPersistedParameter?.label ?? mappingLabel} threshold crossed`)
+  const [ruleExpression, setRuleExpression] = useState(nodeAlertRules[0]?.expression ?? threshold)
+  const [ruleSeverity, setRuleSeverity] = useState(nodeAlertRules[0]?.severity ?? "WARNING")
+  const [ruleEnabled, setRuleEnabled] = useState(nodeAlertRules[0]?.enabled ?? true)
+  const [ruleMessage, setRuleMessage] = useState("")
 
   const testApiConfig = async () => {
     if (!canEditProject) {
@@ -1061,8 +1188,8 @@ function NodeInspector({
       }),
     })
 
+    const payload = await response.json().catch(() => null)
     if (!response.ok) {
-      const payload = await response.json().catch(() => null)
       setApiMessage(payload?.error ?? "API configuration failed.")
       return
     }
@@ -1071,9 +1198,66 @@ function NodeInspector({
       apiUrl,
       auth: authType === "NONE" ? "None" : authType.replaceAll("_", " ").toLowerCase(),
       cadence: `Every ${cadenceMin} min`,
+      parameters: payload?.mappings?.length
+        ? payload.mappings
+        : [
+            {
+              label: mappingLabel,
+              path: jsonPath,
+              transform,
+              unit,
+            },
+          ],
     })
+    if (payload?.mappings?.[0]?.id) {
+      setRuleMappingId(payload.mappings[0].id)
+    }
     setSecretValue("")
     setApiMessage("API configuration saved.")
+  }
+
+  const saveAlertRule = async () => {
+    if (!canEditProject) {
+      setRuleMessage("Viewers cannot change alert rules.")
+      return
+    }
+    const parameter = selectedNode.parameters.find((candidate) => candidate.id === ruleMappingId)
+    if (!parameter?.id) {
+      setRuleMessage("Save an API mapping first, then attach a rule to it.")
+      return
+    }
+
+    setRuleMessage("Saving alert rule...")
+    const response = await fetch(`/api/projects/${projectId}/alert-rules`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: ruleId || undefined,
+        nodeId: selectedNode.id,
+        mappingId: parameter.id,
+        mappingLabel: parameter.label,
+        name: ruleName,
+        expression: ruleExpression,
+        severity: ruleSeverity,
+        enabled: ruleEnabled,
+      }),
+    })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      setRuleMessage(payload?.error ?? "Alert rule failed.")
+      return
+    }
+
+    const savedRule = {
+      ...payload.rule,
+      createdAt: payload.rule.createdAt ?? new Date().toISOString(),
+      updatedAt: payload.rule.updatedAt ?? new Date().toISOString(),
+      nodeLabel: selectedNode.label,
+      mappingLabel: parameter.label,
+    } as ProjectAlertRule
+    setRuleId(savedRule.id)
+    onRuleSaved(savedRule)
+    setRuleMessage("Alert rule saved.")
   }
 
   return (
@@ -1337,6 +1521,84 @@ function NodeInspector({
                     ) : null}
                   </div>
                 ) : null}
+                <Separator />
+                <div className="rounded-lg border bg-muted/20 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-medium">Alert rule</div>
+                      <div className="mt-1 text-xs text-muted-foreground">Create a threshold rule from a saved parameter mapping.</div>
+                    </div>
+                    <Badge variant={ruleEnabled ? "secondary" : "outline"}>{ruleEnabled ? "Enabled" : "Disabled"}</Badge>
+                  </div>
+                  <div className="mt-3 grid gap-2">
+                    <select
+                      className="h-9 rounded-lg border bg-background px-2 text-sm disabled:opacity-50"
+                      value={ruleMappingId}
+                      onChange={(event) => {
+                        const parameter = selectedNode.parameters.find((candidate) => candidate.id === event.target.value)
+                        setRuleMappingId(event.target.value)
+                        if (parameter) {
+                          setRuleName(`${parameter.label} threshold crossed`)
+                        }
+                      }}
+                      disabled={!canEditProject}
+                    >
+                      {selectedNode.parameters.filter((parameter) => parameter.id).length ? null : (
+                        <option value="">No saved mappings yet</option>
+                      )}
+                      {selectedNode.parameters
+                        .filter((parameter) => parameter.id)
+                        .map((parameter) => (
+                          <option key={parameter.id} value={parameter.id}>
+                            {parameter.label}
+                          </option>
+                        ))}
+                    </select>
+                    <Input value={ruleName} onChange={(event) => setRuleName(event.target.value)} aria-label="Alert rule name" disabled={!canEditProject} />
+                    <div className="grid gap-2 sm:grid-cols-[1fr_130px]">
+                      <Input
+                        value={ruleExpression}
+                        onChange={(event) => setRuleExpression(event.target.value)}
+                        aria-label="Alert rule threshold"
+                        placeholder="> 90"
+                        disabled={!canEditProject}
+                      />
+                      <select
+                        className="h-9 rounded-lg border bg-background px-2 text-sm disabled:opacity-50"
+                        value={ruleSeverity}
+                        onChange={(event) => setRuleSeverity(event.target.value)}
+                        disabled={!canEditProject}
+                      >
+                        <option value="INFO">Info</option>
+                        <option value="WARNING">Warning</option>
+                        <option value="CRITICAL">Critical</option>
+                      </select>
+                    </div>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={ruleEnabled} onChange={(event) => setRuleEnabled(event.target.checked)} disabled={!canEditProject} />
+                      Rule enabled
+                    </label>
+                    <Button onClick={saveAlertRule} disabled={!canEditProject}>
+                      Save alert rule
+                    </Button>
+                    {ruleMessage ? <div className="text-xs text-muted-foreground">{ruleMessage}</div> : null}
+                  </div>
+                  {nodeAlertRules.length ? (
+                    <div className="mt-3 grid gap-2">
+                      {nodeAlertRules.map((rule) => (
+                        <div key={rule.id} className="rounded-md border bg-background/70 p-2 text-xs">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium">{rule.name}</span>
+                            <Badge variant={rule.enabled ? "secondary" : "outline"}>{rule.severity}</Badge>
+                          </div>
+                          <div className="mt-1 text-muted-foreground">
+                            {rule.mappingLabel ?? "Mapping"} {rule.expression}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
                 <Separator />
                 {selectedNode.parameters.map((parameter) => (
                   <div key={parameter.label} className="rounded-lg border bg-muted/20 p-3">

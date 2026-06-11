@@ -50,6 +50,8 @@ Vercel cron is configured in `vercel.json` to call `/api/cron/poll` daily for Ho
 
 The deployed app exposes `/api/health` for safe readiness checks. It returns booleans and poll metadata only; it must never return secret values.
 
+Owners/admins can send a harmless test alert email from Deployment diagnostics after `RESEND_API_KEY` and `ALERT_FROM_EMAIL` are configured. Delivery attempts are logged per recipient with status, provider, timestamps, and safe failure summaries.
+
 ## Deployed QA
 
 Run public smoke checks against a deployment:
@@ -84,7 +86,10 @@ Manual post-deploy checklist:
 - API setup test shows response status, JSON preview, JSONPath mapping, and threshold preview.
 - Custom PNG/SVG node icon upload validates file type and size.
 - `/api/cron/poll` rejects a wrong bearer token.
-- Deployment diagnostics show database, auth, encryption, cron, and latest poll status.
+- Deployment diagnostics show database, auth, encryption, cron, email provider readiness, latest poll status, and latest email delivery status.
+- Owner/admin test email returns clear success or failure feedback and does not expose `RESEND_API_KEY`.
+- Notification preferences save enabled/disabled email alerts and minimum severity per signed-in user.
+- Alert rules can be created from saved parameter mappings and new alert emails are not repeated while the alert remains unresolved.
 - `/api/health` does not include raw env var values, database URLs, OAuth secrets, or encrypted credential payloads.
 
 ## Local Development
@@ -103,4 +108,4 @@ npm run dev
 
 On first GitHub login, ArgusGrid creates a personal organization and owner membership, then shows onboarding to confirm organization/project names and choose demo or blank setup.
 
-The app now includes project management, team invitation acceptance, member management, encrypted API credential storage, guided metric mapping tests, cron polling, metric samples, hourly rollups, poll execution logs, readiness diagnostics, raw sample retention cleanup, in-app alerts, optional Resend email alert delivery, and small custom node icon uploads.
+The app now includes project management, team invitation acceptance, member management, encrypted API credential storage, guided metric mapping tests, compact alert-rule management, cron polling, metric samples, hourly rollups, poll execution logs, readiness diagnostics, raw sample retention cleanup, in-app alerts, Resend email delivery logging/test flow/preferences, and small custom node icon uploads.

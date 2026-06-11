@@ -1,6 +1,7 @@
 import "server-only"
 
 import { hasGithubAuthConfig } from "@/lib/auth"
+import { isEmailConfigured } from "@/lib/notifications"
 import { getPrisma, hasDatabaseConfig } from "@/lib/prisma"
 
 export type ReadinessStatus = {
@@ -11,6 +12,7 @@ export type ReadinessStatus = {
     auth: boolean
     encryption: boolean
     cron: boolean
+    email: boolean
   }
   latestPoll: {
     status: string
@@ -24,6 +26,12 @@ export type ReadinessStatus = {
     deletedSamples: number
     errorSummary: string | null
   } | null
+  latestEmail: {
+    status: string
+    provider: string
+    attemptedAt: string
+    sentAt: string | null
+  } | null
 }
 
 export async function getReadinessStatus(): Promise<ReadinessStatus> {
@@ -33,8 +41,10 @@ export async function getReadinessStatus(): Promise<ReadinessStatus> {
     auth: Boolean(process.env.NEXTAUTH_URL && process.env.NEXTAUTH_SECRET && hasGithubAuthConfig()),
     encryption: Boolean(process.env.ENCRYPTION_KEY),
     cron: Boolean(process.env.CRON_SECRET),
+    email: isEmailConfigured(),
   }
   let latestPoll: ReadinessStatus["latestPoll"] = null
+  let latestEmail: ReadinessStatus["latestEmail"] = null
 
   if (databaseConfigured) {
     try {
@@ -43,6 +53,15 @@ export async function getReadinessStatus(): Promise<ReadinessStatus> {
       checks.database = true
       const poll = await prisma.pollExecution.findFirst({
         orderBy: { startedAt: "desc" },
+      })
+      const delivery = await prisma.alertNotificationDelivery.findFirst({
+        orderBy: { attemptedAt: "desc" },
+        select: {
+          status: true,
+          provider: true,
+          attemptedAt: true,
+          sentAt: true,
+        },
       })
 
       latestPoll = poll
@@ -59,6 +78,14 @@ export async function getReadinessStatus(): Promise<ReadinessStatus> {
             errorSummary: poll.errorSummary,
           }
         : null
+      latestEmail = delivery
+        ? {
+            status: delivery.status,
+            provider: delivery.provider,
+            attemptedAt: delivery.attemptedAt.toISOString(),
+            sentAt: delivery.sentAt?.toISOString() ?? null,
+          }
+        : null
     } catch {
       checks.database = false
     }
@@ -69,5 +96,6 @@ export async function getReadinessStatus(): Promise<ReadinessStatus> {
     checkedAt: new Date().toISOString(),
     checks,
     latestPoll,
+    latestEmail,
   }
 }

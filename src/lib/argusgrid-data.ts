@@ -73,6 +73,7 @@ export type EndpointNodeData = {
   qualitySeries: number[]
   heatmap: number[][]
   parameters: {
+    id?: string
     label: string
     path: string
     transform: string

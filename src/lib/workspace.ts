@@ -18,6 +18,7 @@ type DbNode = EndpointNode & {
   override: { status: string; reason: string; expiresAt: Date | null } | null
   endpointConfig: { url: string; method: string; authType: string; cadenceMin: number } | null
   icon: { id: string; mimeType: string } | null
+  mappings: { id: string; label: string; jsonPath: string; transform: string | null; unit: string | null }[]
   alertEvents: {
     id: string
     title: string
@@ -28,6 +29,13 @@ type DbNode = EndpointNode & {
     createdAt: Date
     resolvedAt: Date | null
     node: { label: string } | null
+    deliveries: {
+      status: string
+      provider: string
+      attemptedAt: Date
+      sentAt: Date | null
+      failureReason: string | null
+    }[]
   }[]
 }
 
@@ -36,6 +44,16 @@ type DbProject = Project & {
   nodes: DbNode[]
   edges: GraphEdge[]
   alertRules: {
+    id: string
+    name: string
+    expression: string
+    severity: string
+    enabled: boolean
+    nodeId: string | null
+    mappingId: string | null
+    metadata: unknown
+    createdAt: Date
+    updatedAt: Date
     events: {
       id: string
       title: string
@@ -46,6 +64,13 @@ type DbProject = Project & {
       createdAt: Date
       resolvedAt: Date | null
       node: { label: string } | null
+      deliveries: {
+        status: string
+        provider: string
+        attemptedAt: Date
+        sentAt: Date | null
+        failureReason: string | null
+      }[]
     }[]
   }[]
 }
@@ -91,7 +116,29 @@ export type WorkspacePayload = {
     source: string
     firstSeen: string
     lastSeen: string
+    deliveryStatus: string | null
+    deliveryProvider: string | null
+    deliveryAttemptedAt: string | null
+    deliverySentAt: string | null
+    deliveryFailureReason: string | null
   }[]
+  alertRules: {
+    id: string
+    name: string
+    expression: string
+    severity: string
+    enabled: boolean
+    nodeId: string | null
+    mappingId: string | null
+    nodeLabel: string | null
+    mappingLabel: string | null
+    createdAt: string
+    updatedAt: string
+  }[]
+  notificationPreference: {
+    enabled: boolean
+    severity: string
+  }
   diagnostics: ReadinessStatus
   summary: typeof projectSummary
   categories: string[]
@@ -166,6 +213,13 @@ function dbNodeToEndpointNode(node: DbNode): EndpointNodeData {
     allEndpointNodes[0]
   const status = toNodeStatus(node.status)
   const override = node.override ? toNodeStatus(node.override.status) : undefined
+  const mappedParameters = node.mappings.map((mapping) => ({
+    id: mapping.id,
+    label: mapping.label,
+    path: mapping.jsonPath,
+    transform: mapping.transform ?? "none",
+    unit: mapping.unit ?? "",
+  }))
 
   return {
     ...seed,
@@ -182,7 +236,18 @@ function dbNodeToEndpointNode(node: DbNode): EndpointNodeData {
     auth: toAuthLabel(node.endpointConfig?.authType),
     position: { x: node.x, y: node.y },
     customIconUrl: node.icon ? `/api/projects/${node.projectId}/nodes/${node.id}/icon?v=${node.updatedAt.getTime()}` : undefined,
+    parameters: mappedParameters.length ? mappedParameters : seed.parameters,
   }
+}
+
+function getRuleMappingLabel(rule: DbProject["alertRules"][number], nodes: EndpointNodeData[]) {
+  const node = nodes.find((candidate) => candidate.id === rule.nodeId)
+  const parameter = node?.parameters.find((candidate) => candidate.id === rule.mappingId)
+  if (parameter) return parameter.label
+  if (rule.metadata && typeof rule.metadata === "object" && "mappingLabel" in rule.metadata) {
+    return String((rule.metadata as { mappingLabel?: unknown }).mappingLabel ?? "")
+  }
+  return null
 }
 
 function projectToWorkspace(
@@ -192,6 +257,7 @@ function projectToWorkspace(
   project: DbProject,
   members: WorkspacePayload["members"],
   invitations: WorkspacePayload["invitations"],
+  notificationPreference: WorkspacePayload["notificationPreference"],
   diagnostics: ReadinessStatus
 ): WorkspacePayload {
   const nodes = project.nodes.map(dbNodeToEndpointNode)
@@ -207,18 +273,46 @@ function projectToWorkspace(
   const alerts = Array.from(alertEventsById.values())
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .slice(0, 20)
-    .map((event) => ({
-      id: event.id,
-      title: event.title,
-      message: event.message,
-      severity: event.severity,
-      createdAt: event.createdAt.toISOString(),
-      resolvedAt: event.resolvedAt?.toISOString() ?? null,
-      nodeLabel: event.node?.label ?? null,
-      source: event.ruleId ? "Threshold rule" : event.nodeId ? "Endpoint polling" : "Project",
-      firstSeen: event.createdAt.toISOString(),
-      lastSeen: event.createdAt.toISOString(),
-    }))
+    .map((event) => {
+      const latestDelivery = event.deliveries[0]
+
+      return {
+        id: event.id,
+        title: event.title,
+        message: event.message,
+        severity: event.severity,
+        createdAt: event.createdAt.toISOString(),
+        resolvedAt: event.resolvedAt?.toISOString() ?? null,
+        nodeLabel: event.node?.label ?? null,
+        source: event.ruleId ? "Threshold rule" : event.nodeId ? "Endpoint polling" : "Project",
+        firstSeen: event.createdAt.toISOString(),
+        lastSeen: event.createdAt.toISOString(),
+        deliveryStatus: latestDelivery?.status ?? null,
+        deliveryProvider: latestDelivery?.provider ?? null,
+        deliveryAttemptedAt: latestDelivery?.attemptedAt.toISOString() ?? null,
+        deliverySentAt: latestDelivery?.sentAt?.toISOString() ?? null,
+        deliveryFailureReason: latestDelivery?.failureReason ?? null,
+      }
+    })
+  const alertRules = project.alertRules
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+    .map((rule) => {
+      const node = nodes.find((candidate) => candidate.id === rule.nodeId)
+
+      return {
+        id: rule.id,
+        name: rule.name,
+        expression: rule.expression,
+        severity: rule.severity,
+        enabled: rule.enabled,
+        nodeId: rule.nodeId,
+        mappingId: rule.mappingId,
+        nodeLabel: node?.label ?? null,
+        mappingLabel: getRuleMappingLabel(rule, nodes),
+        createdAt: rule.createdAt.toISOString(),
+        updatedAt: rule.updatedAt.toISOString(),
+      }
+    })
 
   return {
     organization,
@@ -232,6 +326,8 @@ function projectToWorkspace(
     members,
     invitations,
     alerts,
+    alertRules,
+    notificationPreference,
     diagnostics,
     summary: {
       ...projectSummary,
@@ -453,6 +549,14 @@ export async function getWorkspaceForUser(userId: string, projectId?: string) {
   const membership = await prisma.membership.findFirst({
     where: { userId },
     include: {
+      user: {
+        include: {
+          notifications: {
+            where: { channel: "email" },
+            take: 1,
+          },
+        },
+      },
       organization: {
         select: {
           id: true,
@@ -497,6 +601,16 @@ export async function getWorkspaceForUser(userId: string, projectId?: string) {
         include: {
           override: true,
           endpointConfig: true,
+          mappings: {
+            orderBy: { createdAt: "asc" },
+            select: {
+              id: true,
+              label: true,
+              jsonPath: true,
+              transform: true,
+              unit: true,
+            },
+          },
           icon: {
             select: {
               id: true,
@@ -507,6 +621,17 @@ export async function getWorkspaceForUser(userId: string, projectId?: string) {
             include: {
               node: {
                 select: { label: true },
+              },
+              deliveries: {
+                orderBy: { attemptedAt: "desc" },
+                take: 1,
+                select: {
+                  status: true,
+                  provider: true,
+                  attemptedAt: true,
+                  sentAt: true,
+                  failureReason: true,
+                },
               },
             },
             orderBy: { createdAt: "desc" },
@@ -523,6 +648,17 @@ export async function getWorkspaceForUser(userId: string, projectId?: string) {
           events: {
             include: {
               node: true,
+              deliveries: {
+                orderBy: { attemptedAt: "desc" },
+                take: 1,
+                select: {
+                  status: true,
+                  provider: true,
+                  attemptedAt: true,
+                  sentAt: true,
+                  failureReason: true,
+                },
+              },
             },
             orderBy: { createdAt: "desc" },
             take: 20,
@@ -548,8 +684,22 @@ export async function getWorkspaceForUser(userId: string, projectId?: string) {
   }))
 
   const diagnostics = await getReadinessStatus()
+  const emailPreference = membership.user.notifications[0]
+  const notificationPreference = {
+    enabled: emailPreference?.enabled ?? membership.role !== "VIEWER",
+    severity: emailPreference?.severity ?? "WARNING",
+  }
 
-  return projectToWorkspace(membership.organization, membership.role, membership.organization.projects, project, members, invitations, diagnostics)
+  return projectToWorkspace(
+    membership.organization,
+    membership.role,
+    membership.organization.projects,
+    project,
+    members,
+    invitations,
+    notificationPreference,
+    diagnostics
+  )
 }
 
 export async function getOnboardingState(userId: string) {

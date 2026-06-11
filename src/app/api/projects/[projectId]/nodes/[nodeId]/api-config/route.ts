@@ -45,6 +45,7 @@ export async function PUT(request: Request, context: { params: Promise<{ project
   }
 
   let secretId: string | undefined
+  const savedMappings: { id: string; label: string; path: string; transform: string; unit: string }[] = []
   if (parsed.data.secretValue && parsed.data.authType !== "NONE") {
     const secret = await prisma.projectSecret.create({
       data: {
@@ -90,6 +91,13 @@ export async function PUT(request: Request, context: { params: Promise<{ project
           nodeId,
         },
       })
+      savedMappings.push({
+        id: created.id,
+        label: created.label,
+        path: created.jsonPath,
+        transform: created.transform ?? "none",
+        unit: created.unit ?? "",
+      })
 
       await transaction.visualizationConfig.create({
         data: {
@@ -102,5 +110,5 @@ export async function PUT(request: Request, context: { params: Promise<{ project
     }
   })
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, mappings: savedMappings })
 }

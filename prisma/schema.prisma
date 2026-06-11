@@ -368,24 +368,32 @@ model AlertRule {
   expression String
   severity   AlertSeverity
   enabled    Boolean       @default(true)
+  nodeId     String?
+  mappingId  String?
+  metadata   Json?
   projectId  String
   project    Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   events     AlertEvent[]
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
+
+  @@index([projectId, enabled])
+  @@index([nodeId])
+  @@index([mappingId])
 }
 
 model AlertEvent {
-  id         String        @id @default(cuid())
+  id         String                      @id @default(cuid())
   title      String
   message    String
   severity   AlertSeverity
   resolvedAt DateTime?
   nodeId     String?
   ruleId     String?
-  node       EndpointNode? @relation(fields: [nodeId], references: [id], onDelete: SetNull)
-  rule       AlertRule?    @relation(fields: [ruleId], references: [id], onDelete: SetNull)
-  createdAt  DateTime      @default(now())
+  node       EndpointNode?               @relation(fields: [nodeId], references: [id], onDelete: SetNull)
+  rule       AlertRule?                  @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  deliveries AlertNotificationDelivery[]
+  createdAt  DateTime                    @default(now())
 
   @@index([nodeId, resolvedAt])
   @@index([ruleId, createdAt])
@@ -398,6 +406,28 @@ model NotificationPreference {
   enabled  Boolean @default(true)
   userId   String
   user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, channel])
+  @@index([userId])
+}
+
+model AlertNotificationDelivery {
+  id            String      @id @default(cuid())
+  channel       String
+  recipient     String
+  status        String
+  provider      String
+  providerId    String?
+  failureReason String?
+  alertEventId  String?
+  alertEvent    AlertEvent? @relation(fields: [alertEventId], references: [id], onDelete: SetNull)
+  createdAt     DateTime    @default(now())
+  attemptedAt   DateTime    @default(now())
+  sentAt        DateTime?
+
+  @@index([alertEventId])
+  @@index([status, attemptedAt])
+  @@index([recipient, attemptedAt])
 }
 
 model AuditLog {

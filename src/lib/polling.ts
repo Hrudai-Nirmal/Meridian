@@ -42,8 +42,12 @@ function applyTransform(value: unknown, transform?: string | null) {
 }
 
 function thresholdExceeded(value: number, threshold?: unknown) {
-  if (!threshold || typeof threshold !== "object" || !("expression" in threshold)) return false
-  const expression = String((threshold as { expression?: string }).expression ?? "").trim()
+  const expression =
+    typeof threshold === "string"
+      ? threshold.trim()
+      : threshold && typeof threshold === "object" && "expression" in threshold
+        ? String((threshold as { expression?: string }).expression ?? "").trim()
+        : ""
   const match = expression.match(/^(>=|>|<=|<|=)\s*(-?\d+(\.\d+)?)$/)
   if (!match) return false
 
@@ -95,6 +99,13 @@ export async function runProjectPolling(): Promise<PollingResult> {
         },
       },
       mappings: true,
+      project: {
+        include: {
+          alertRules: {
+            where: { enabled: true },
+          },
+        },
+      },
     },
   })
 
@@ -160,9 +171,15 @@ export async function runProjectPolling(): Promise<PollingResult> {
           mappingId: mapping.id,
         })
 
-        if (thresholdExceeded(value, mapping.threshold)) {
+        const rule = node.project.alertRules.find(
+          (candidate) => candidate.nodeId === node.id && (candidate.mappingId === mapping.id || !candidate.mappingId)
+        )
+        const threshold = rule?.expression ?? mapping.threshold
+
+        if (thresholdExceeded(value, threshold)) {
           degraded = true
-          const title = `${mapping.label} threshold crossed`
+          const title = rule?.name ?? `${mapping.label} threshold crossed`
+          const severity = rule?.severity ?? "WARNING"
           const existing = await prisma.alertEvent.findFirst({
             where: {
               nodeId: node.id,
@@ -174,19 +191,21 @@ export async function runProjectPolling(): Promise<PollingResult> {
 
           if (!existing) {
             evaluatedAlerts += 1
-            await prisma.alertEvent.create({
+            const alertEvent = await prisma.alertEvent.create({
               data: {
                 title,
                 message: `${mapping.label} is ${value}${mapping.unit ? ` ${mapping.unit}` : ""}`,
-                severity: "WARNING",
+                severity,
                 nodeId: node.id,
+                ruleId: rule?.id,
               },
             })
             await notifyNewAlert(prisma, {
+              alertEventId: alertEvent.id,
               nodeId: node.id,
               title,
               message: `${mapping.label} is ${value}${mapping.unit ? ` ${mapping.unit}` : ""}`,
-              severity: "WARNING",
+              severity,
             })
           }
         }
@@ -265,7 +284,7 @@ export async function runProjectPolling(): Promise<PollingResult> {
 
       if (!existing) {
         evaluatedAlerts += 1
-        await prisma.alertEvent.create({
+        const alertEvent = await prisma.alertEvent.create({
           data: {
             title: "Endpoint polling failed",
             message,
@@ -274,6 +293,7 @@ export async function runProjectPolling(): Promise<PollingResult> {
           },
         })
         await notifyNewAlert(prisma, {
+          alertEventId: alertEvent.id,
           nodeId: node.id,
           title: "Endpoint polling failed",
           message,
