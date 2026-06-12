@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import {
   addEdge,
   Background,
@@ -20,7 +20,6 @@ import {
   Bell,
   Bot,
   ChevronDown,
-  CircleDollarSign,
   CheckCircle2,
   Copy,
   Edit3,
@@ -245,6 +244,7 @@ type SaveState = "saved" | "saving" | "error"
 type ProjectMode = "blank" | "demo"
 type ProjectAlert = WorkspacePayload["alerts"][number]
 type ProjectAlertRule = WorkspacePayload["alertRules"][number]
+type DashboardSection = "control-room" | "map" | "runs" | "alerts" | "reports" | "integrations" | "team" | "settings"
 type IngestionTokenRecord = {
   id: string
   name: string
@@ -263,6 +263,87 @@ type ReportShareRecord = {
   createdAt: string
 }
 
+type ProjectRunRecord = EndpointNodeData["runs"][number] & {
+  nodeId: string
+  nodeLabel: string
+}
+
+type ProjectMetricRecord = NonNullable<EndpointNodeData["realMetrics"]>[number] & {
+  nodeId: string
+  nodeLabel: string
+}
+
+const dashboardSections: {
+  id: DashboardSection
+  label: string
+  title: string
+  description: string
+  icon: typeof Bot
+}[] = [
+  {
+    id: "control-room",
+    label: "Control Room",
+    title: "Control Room",
+    description: "Live operating picture for reliability, value, and client proof.",
+    icon: LayoutDashboard,
+  },
+  {
+    id: "map",
+    label: "Automation Map",
+    title: "Automation Map",
+    description: "Graph-first dependency canvas for monitored AI workflows.",
+    icon: Network,
+  },
+  {
+    id: "runs",
+    label: "Runs",
+    title: "Runs",
+    description: "Workflow execution telemetry across the current project.",
+    icon: Activity,
+  },
+  {
+    id: "alerts",
+    label: "Alerts",
+    title: "Alerts",
+    description: "Active incidents, resolved alerts, and notification status.",
+    icon: Bell,
+  },
+  {
+    id: "reports",
+    label: "Reports",
+    title: "Client Reports",
+    description: "Secure read-only proof links for agency stakeholders.",
+    icon: Share2,
+  },
+  {
+    id: "integrations",
+    label: "Integrations",
+    title: "Integrations",
+    description: "Focused setup paths for Dify, n8n, GitHub Actions, and REST metrics.",
+    icon: Wand2,
+  },
+  {
+    id: "team",
+    label: "Team",
+    title: "Team",
+    description: "Members, pending invitations, and role controls.",
+    icon: Users,
+  },
+  {
+    id: "settings",
+    label: "Settings",
+    title: "Settings",
+    description: "Deployment readiness, polling, email, and telemetry tokens.",
+    icon: ShieldCheck,
+  },
+]
+
+function parseCurrencyValue(value?: string | null) {
+  if (!value) return 0
+  const parsed = Number(value.replace(/[^0-9.-]/g, ""))
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
 export function ArgusGridDashboard({
   initialWorkspace,
   currentUser,
@@ -270,6 +351,7 @@ export function ArgusGridDashboard({
   initialWorkspace: WorkspacePayload
   currentUser: NonNullable<Session["user"]>
 }) {
+  const [activeSection, setActiveSection] = useState<DashboardSection>("control-room")
   const [selectedId, setSelectedId] = useState(initialWorkspace.nodes[0]?.id ?? "")
   const [editMode, setEditMode] = useState(false)
   const [theme, setTheme] = useState<"light" | "dark">("light")
@@ -312,6 +394,7 @@ export function ArgusGridDashboard({
   const iconInputRef = useRef<HTMLInputElement | null>(null)
   const canManageOrganization = initialWorkspace.currentUserRole === "OWNER" || initialWorkspace.currentUserRole === "ADMIN"
   const canEditProject = canManageOrganization || initialWorkspace.currentUserRole === "MEMBER"
+  const activeSectionMeta = dashboardSections.find((section) => section.id === activeSection) ?? dashboardSections[0]
 
   const selectedNode = useMemo<EndpointNodeData | undefined>(
     () => (nodes.find((node) => node.id === selectedId)?.data as unknown as EndpointNodeData | undefined) ?? initialWorkspace.nodes[0],
@@ -325,6 +408,59 @@ export function ArgusGridDashboard({
       down: values.filter((node) => (node.override ?? node.status) === "down").length,
     }
   }, [nodes])
+  const endpointNodes = useMemo(
+    () => nodes.map((node) => node.data as unknown as EndpointNodeData),
+    [nodes]
+  )
+  const activeAlerts = useMemo(() => alerts.filter((alert) => !alert.resolvedAt), [alerts])
+  const projectRuns = useMemo<ProjectRunRecord[]>(
+    () =>
+      endpointNodes
+        .flatMap((node) =>
+          node.runs.map((run) => ({
+            ...run,
+            nodeId: node.id,
+            nodeLabel: node.label,
+          }))
+        )
+        .sort((a, b) => {
+          const aTime = a.startedAt ? new Date(a.startedAt).getTime() : 0
+          const bTime = b.startedAt ? new Date(b.startedAt).getTime() : 0
+          return bTime - aTime
+        }),
+    [endpointNodes]
+  )
+  const projectMetrics = useMemo<ProjectMetricRecord[]>(
+    () =>
+      endpointNodes.flatMap((node) =>
+        (node.realMetrics ?? []).map((metric) => ({
+          ...metric,
+          nodeId: node.id,
+          nodeLabel: node.label,
+        }))
+      ),
+    [endpointNodes]
+  )
+  const projectSummary = useMemo(() => {
+    const persistedRuns = projectRuns.filter((run) => run.startedAt)
+    const failedRuns = projectRuns.filter((run) => run.status === "failed" || run.status === "degraded")
+    const successRuns = projectRuns.filter((run) => run.status === "success").length
+    const successRate = projectRuns.length ? Math.round((successRuns / projectRuns.length) * 100) : null
+    const totalCost = projectRuns.reduce((sum, run) => sum + parseCurrencyValue(run.cost), 0)
+    const latestSampledAt = projectMetrics
+      .map((metric) => new Date(metric.sampledAt).getTime())
+      .filter(Number.isFinite)
+      .sort((a, b) => b - a)[0]
+
+    return {
+      persistedRuns,
+      failedRuns,
+      successRate,
+      totalCost,
+      latestSampledAt: latestSampledAt ? new Date(latestSampledAt).toISOString() : null,
+      staleNodes: endpointNodes.filter((node) => node.freshnessLabel?.toLowerCase().includes("stale")),
+    }
+  }, [endpointNodes, projectMetrics, projectRuns])
   const filteredAlerts = useMemo(
     () =>
       alerts.filter((alert) => {
@@ -1005,16 +1141,34 @@ export function ArgusGridDashboard({
           </div>
         </div>
 
-        <nav className="mt-5 grid grid-cols-2 gap-1 sm:grid-cols-3 lg:flex lg:flex-1 lg:flex-col">
-          <SidebarItem icon={LayoutDashboard} active label="Project Map" />
-          <SidebarItem icon={Activity} label="Runs & Steps" />
-          <SidebarItem icon={CircleDollarSign} label="Cost & Usage" />
-          <SidebarItem icon={Gauge} label="Quality & Evals" />
-          <SidebarItem icon={Bell} label="Alerts" count={String(alerts.filter((alert) => !alert.resolvedAt).length)} />
-          <SidebarItem icon={Share2} label="Client Reports" />
-          <SidebarItem icon={ShieldCheck} label="Security" />
+        <nav className="mt-5 grid grid-cols-2 gap-1 sm:grid-cols-4 lg:flex lg:flex-1 lg:flex-col">
+          {dashboardSections.map((section) => (
+            <SidebarItem
+              key={section.id}
+              icon={section.icon}
+              active={activeSection === section.id}
+              label={section.label}
+              count={
+                section.id === "alerts" && activeAlerts.length
+                  ? String(activeAlerts.length)
+                  : section.id === "runs" && projectSummary.failedRuns.length
+                    ? String(projectSummary.failedRuns.length)
+                    : undefined
+              }
+              onClick={() => {
+                setActiveSection(section.id)
+                if (section.id === "reports" && canManageOrganization && !reportShares.length) {
+                  void loadReportShares()
+                }
+                if (section.id === "settings" && canManageOrganization && !ingestionTokens.length) {
+                  void loadIngestionTokens()
+                }
+              }}
+            />
+          ))}
         </nav>
 
+        <div className="hidden">
         <Dialog>
           <DialogTrigger render={<Button variant="outline" className="mb-3 justify-start" />}>
             <Bell data-icon="inline-start" />
@@ -1344,6 +1498,7 @@ export function ArgusGridDashboard({
             </div>
           </DialogContent>
         </Dialog>
+        </div>
 
         <div className="rounded-xl border bg-background/70 p-3">
           <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
@@ -1359,10 +1514,12 @@ export function ArgusGridDashboard({
         <header className="flex min-h-16 flex-col gap-3 border-b px-5 py-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-w-0 flex-wrap items-center gap-3">
             <div>
-              <h1 className="truncate text-lg font-semibold">{initialWorkspace.project.name}</h1>
-              <p className="text-xs text-muted-foreground">AI automation control room for live ops, value, and client proof</p>
+              <h1 className="truncate text-lg font-semibold">{activeSectionMeta.title}</h1>
+              <p className="text-xs text-muted-foreground">
+                {initialWorkspace.project.name} / {activeSectionMeta.description}
+              </p>
             </div>
-            <Badge variant="secondary">Graph-first AI ops map</Badge>
+            <Badge variant="secondary">AI automation control room</Badge>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative hidden lg:block">
@@ -1375,14 +1532,23 @@ export function ArgusGridDashboard({
               </TooltipTrigger>
               <TooltipContent>Toggle theme</TooltipContent>
             </Tooltip>
-            <Button variant={editMode ? "default" : "outline"} onClick={() => setEditMode((value) => !value)} disabled={!canEditProject}>
-              <Edit3 data-icon="inline-start" />
-              {canEditProject ? (editMode ? "Editing" : "View mode") : "Read only"}
-            </Button>
-            <Button onClick={addEndpointNode} disabled={!canEditProject}>
-              <Plus data-icon="inline-start" />
-              Add node
-            </Button>
+            {activeSection === "map" ? (
+              <>
+                <Button variant={editMode ? "default" : "outline"} onClick={() => setEditMode((value) => !value)} disabled={!canEditProject}>
+                  <Edit3 data-icon="inline-start" />
+                  {canEditProject ? (editMode ? "Editing" : "View mode") : "Read only"}
+                </Button>
+                <Button onClick={addEndpointNode} disabled={!canEditProject}>
+                  <Plus data-icon="inline-start" />
+                  Add node
+                </Button>
+              </>
+            ) : (
+              <Button variant="outline" onClick={() => setActiveSection("map")}>
+                <Network data-icon="inline-start" />
+                Open map
+              </Button>
+            )}
             <Button variant="ghost" onClick={() => signOut({ callbackUrl: "/" })}>
               Sign out
             </Button>
@@ -1390,6 +1556,7 @@ export function ArgusGridDashboard({
           {actionMessage ? <div className="text-xs text-muted-foreground">{actionMessage}</div> : null}
         </header>
 
+        {activeSection === "map" ? (
         <section className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(640px,1fr)_420px]">
           <div className="flex min-w-0 flex-col bg-zinc-50 dark:bg-zinc-950">
             <div className="flex flex-col gap-3 border-b bg-background/80 px-5 py-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
@@ -1483,12 +1650,10 @@ export function ArgusGridDashboard({
             currentUser={currentUser}
             categories={initialWorkspace.categories}
             projectId={initialWorkspace.project.id}
-            alerts={alerts}
             alertRules={alertRules}
             canEditProject={canEditProject}
             isRefreshingProject={isRefreshingProject}
             onOverride={setStatusOverride}
-            onResolveAlert={resolveAlert}
             onRefreshProject={refreshProjectData}
             onRuleSaved={(rule) => {
               setAlertRules((currentRules) => {
@@ -1518,6 +1683,106 @@ export function ArgusGridDashboard({
             <EmptyInspector currentUser={currentUser} onAddNode={addEndpointNode} />
           )}
         </section>
+        ) : activeSection === "control-room" ? (
+          <ControlRoomSection
+            nodes={endpointNodes}
+            statusCounts={statusCounts}
+            activeAlerts={activeAlerts}
+            latestPoll={latestPoll}
+            latestEmail={latestEmail}
+            projectRuns={projectRuns}
+            projectMetrics={projectMetrics}
+            projectSummary={projectSummary}
+            onOpenSection={setActiveSection}
+            onSelectNode={(nodeId) => {
+              setSelectedId(nodeId)
+              setActiveSection("map")
+            }}
+          />
+        ) : activeSection === "runs" ? (
+          <RunsSection
+            runs={projectRuns}
+            isRefreshingProject={isRefreshingProject}
+            onRefreshProject={refreshProjectData}
+            onSelectNode={(nodeId) => {
+              setSelectedId(nodeId)
+              setActiveSection("map")
+            }}
+          />
+        ) : activeSection === "alerts" ? (
+          <AlertsSection
+            alerts={filteredAlerts}
+            statusFilter={alertStatusFilter}
+            severityFilter={alertSeverityFilter}
+            canEditProject={canEditProject}
+            onStatusFilterChange={setAlertStatusFilter}
+            onSeverityFilterChange={setAlertSeverityFilter}
+            onResolveAlert={resolveAlert}
+            onSelectAlert={setSelectedAlertDetail}
+          />
+        ) : activeSection === "reports" ? (
+          <ReportsSection
+            reportShares={reportShares}
+            reportTitle={reportTitle}
+            reportClientName={reportClientName}
+            reportExpiryDays={reportExpiryDays}
+            reportMessage={reportMessage}
+            canManageOrganization={canManageOrganization}
+            onReportTitleChange={setReportTitle}
+            onReportClientNameChange={setReportClientName}
+            onReportExpiryDaysChange={setReportExpiryDays}
+            onLoadReportShares={loadReportShares}
+            onCreateReportShare={createReportShare}
+            onCopyReportShareUrl={copyReportShareUrl}
+            onRevokeReportShare={revokeReportShare}
+          />
+        ) : activeSection === "integrations" ? (
+          <IntegrationsSection
+            selectedNode={selectedNode}
+            canEditProject={canEditProject}
+            onOpenMap={() => setActiveSection("map")}
+          />
+        ) : activeSection === "team" ? (
+          <TeamSection
+            members={members}
+            invitations={invitations}
+            inviteEmail={inviteEmail}
+            inviteRole={inviteRole}
+            teamMessage={teamMessage}
+            canManageOrganization={canManageOrganization}
+            onInviteEmailChange={setInviteEmail}
+            onInviteRoleChange={setInviteRole}
+            onInviteMember={inviteMember}
+            onUpdateMemberRole={updateMemberRole}
+            onRemoveMember={removeMember}
+            onCancelInvitation={cancelInvitation}
+          />
+        ) : (
+          <SettingsSection
+            diagnostics={initialWorkspace.diagnostics}
+            latestPoll={latestPoll}
+            latestEmail={latestEmail}
+            pollMessage={pollMessage}
+            emailEnabled={emailEnabled}
+            emailSeverity={emailSeverity}
+            emailMessage={emailMessage}
+            ingestionTokens={ingestionTokens}
+            ingestionTokenName={ingestionTokenName}
+            ingestionTokenMessage={ingestionTokenMessage}
+            generatedIngestionToken={generatedIngestionToken}
+            canManageOrganization={canManageOrganization}
+            onRunPollNow={runPollNow}
+            onEmailEnabledChange={setEmailEnabled}
+            onEmailSeverityChange={setEmailSeverity}
+            onSaveNotificationPreference={saveNotificationPreference}
+            onSendTestEmail={sendTestEmail}
+            onIngestionTokenNameChange={setIngestionTokenName}
+            onCreateWorkflowToken={createWorkflowToken}
+            onLoadIngestionTokens={loadIngestionTokens}
+            onRevokeWorkflowToken={revokeWorkflowToken}
+            onCopyGeneratedToken={() => copyText(generatedIngestionToken, "Token copied.")}
+          />
+        )}
       </main>
       <Sheet open={Boolean(selectedAlertDetail)} onOpenChange={(open) => !open && setSelectedAlertDetail(null)}>
         <SheetContent className="w-full sm:max-w-md">
@@ -1598,14 +1863,18 @@ function SidebarItem({
   label,
   active,
   count,
+  onClick,
 }: {
   icon: typeof Bot
   label: string
   active?: boolean
   count?: string
+  onClick?: () => void
 }) {
   return (
     <button
+      type="button"
+      onClick={onClick}
       className={cn(
         "flex h-9 items-center justify-between rounded-lg px-3 text-sm transition-colors hover:bg-sidebar-accent",
         active && "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
@@ -1626,6 +1895,778 @@ function ReadinessItem({ label, ready }: { label: string; ready: boolean }) {
       <span className="font-medium">{label}</span>
       <Badge variant={ready ? "secondary" : "destructive"}>{ready ? "Ready" : "Missing"}</Badge>
     </div>
+  )
+}
+
+function SectionShell({ children, className }: { children: ReactNode; className?: string }) {
+  return <section className={cn("min-h-0 flex-1 overflow-y-auto bg-zinc-50 p-5 dark:bg-zinc-950", className)}>{children}</section>
+}
+
+function MetricTile({
+  label,
+  value,
+  detail,
+  tone = "neutral",
+}: {
+  label: string
+  value: string
+  detail: string
+  tone?: keyof typeof toneClasses
+}) {
+  return (
+    <div className="rounded-lg border bg-background p-4">
+      <div className="text-xs font-medium uppercase tracking-normal text-muted-foreground">{label}</div>
+      <div className={cn("mt-2 text-2xl font-semibold", toneClasses[tone])}>{value}</div>
+      <div className="mt-1 text-xs text-muted-foreground">{detail}</div>
+    </div>
+  )
+}
+
+function ControlRoomSection({
+  nodes,
+  statusCounts,
+  activeAlerts,
+  latestPoll,
+  latestEmail,
+  projectRuns,
+  projectMetrics,
+  projectSummary,
+  onOpenSection,
+  onSelectNode,
+}: {
+  nodes: EndpointNodeData[]
+  statusCounts: { active: number; degraded: number; down: number }
+  activeAlerts: ProjectAlert[]
+  latestPoll: WorkspacePayload["diagnostics"]["latestPoll"]
+  latestEmail: WorkspacePayload["diagnostics"]["latestEmail"]
+  projectRuns: ProjectRunRecord[]
+  projectMetrics: ProjectMetricRecord[]
+  projectSummary: {
+    failedRuns: ProjectRunRecord[]
+    successRate: number | null
+    totalCost: number
+    latestSampledAt: string | null
+    staleNodes: EndpointNodeData[]
+  }
+  onOpenSection: (section: DashboardSection) => void
+  onSelectNode: (nodeId: string) => void
+}) {
+  const attentionItems = [
+    ...activeAlerts.slice(0, 4).map((alert) => ({
+      id: `alert-${alert.id}`,
+      title: alert.title,
+      detail: `${alert.nodeLabel ?? "Project"} / ${alert.severity}`,
+      tone: alert.severity === "CRITICAL" ? "bad" : "warn",
+      nodeId: null,
+    })),
+    ...projectSummary.failedRuns.slice(0, 3).map((run) => ({
+      id: `run-${run.id}`,
+      title: `${run.status} run`,
+      detail: `${run.nodeLabel} / ${run.externalId ?? run.id}`,
+      tone: run.status === "failed" ? "bad" : "warn",
+      nodeId: run.nodeId,
+    })),
+    ...projectSummary.staleNodes.slice(0, 3).map((node) => ({
+      id: `stale-${node.id}`,
+      title: "Stale metric data",
+      detail: `${node.label} / ${node.freshnessLabel}`,
+      tone: "neutral",
+      nodeId: node.id,
+    })),
+  ] as const
+
+  return (
+    <SectionShell>
+      <div className="mx-auto grid max-w-7xl gap-5">
+        <div className="grid gap-3 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="rounded-xl border bg-background p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-semibold">AI Automation Control Room</h2>
+                <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+                  One operating picture for automation health, workflow runs, cost, quality, alerts, and client proof.
+                </p>
+              </div>
+              <Button onClick={() => onOpenSection("map")}>
+                <Network data-icon="inline-start" />
+                Open automation map
+              </Button>
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <MetricTile label="Nodes monitored" value={String(nodes.length)} detail={`${statusCounts.active} active / ${statusCounts.degraded} degraded / ${statusCounts.down} down`} />
+              <MetricTile
+                label="Run success"
+                value={projectSummary.successRate === null ? "No runs" : `${projectSummary.successRate}%`}
+                detail={`${projectRuns.length} recent runs captured`}
+                tone={projectSummary.failedRuns.length ? "warn" : "good"}
+              />
+              <MetricTile
+                label="Active alerts"
+                value={String(activeAlerts.length)}
+                detail={activeAlerts.length ? "Needs operator attention" : "No open incidents"}
+                tone={activeAlerts.length ? "bad" : "good"}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-xl border bg-background p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-semibold">Production Signals</h3>
+                <p className="mt-1 text-xs text-muted-foreground">Safe readiness indicators from the deployed app.</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => onOpenSection("settings")}>
+                Settings
+              </Button>
+            </div>
+            <div className="mt-4 grid gap-2 text-sm">
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <span>Latest poll</span>
+                <Badge variant={latestPoll?.status === "SUCCESS" ? "secondary" : latestPoll ? "destructive" : "outline"}>
+                  {latestPoll?.status ?? "No poll"}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <span>Latest email</span>
+                <Badge variant={latestEmail?.status === "SENT" ? "secondary" : latestEmail ? "outline" : "secondary"}>
+                  {latestEmail?.status ?? "Not attempted"}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <span>Latest sample</span>
+                <span className="text-xs text-muted-foreground">
+                  {projectSummary.latestSampledAt ? formatSampledAt(projectSummary.latestSampledAt) : "No metric samples"}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-4">
+          <MetricTile label="Estimated cost" value={`$${projectSummary.totalCost.toFixed(2)}`} detail="From submitted workflow telemetry" />
+          <MetricTile label="Metric streams" value={String(projectMetrics.length)} detail="Persisted mapped values available" />
+          <MetricTile label="Failed/degraded runs" value={String(projectSummary.failedRuns.length)} detail="Shown in the runs section" tone={projectSummary.failedRuns.length ? "warn" : "good"} />
+          <MetricTile label="Client proof" value="Ready" detail="Share reports and export map PNGs" tone="good" />
+        </div>
+
+        <div className="grid gap-5 lg:grid-cols-[1fr_0.9fr]">
+          <Card>
+            <CardHeader>
+              <CardTitle>What Needs Attention</CardTitle>
+              <CardDescription>Alerts, failed runs, and stale signals across this project.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-2">
+              {attentionItems.length ? (
+                attentionItems.map((item) => (
+                  <button
+                    key={item.id}
+                    className="flex items-center justify-between gap-3 rounded-lg border bg-background p-3 text-left text-sm transition-colors hover:bg-muted/40"
+                    onClick={() => item.nodeId ? onSelectNode(item.nodeId) : onOpenSection("alerts")}
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">{item.title}</span>
+                      <span className="block truncate text-xs text-muted-foreground">{item.detail}</span>
+                    </span>
+                    <span className={cn("size-2.5 rounded-full", item.tone === "bad" ? "bg-rose-500" : item.tone === "warn" ? "bg-amber-500" : "bg-zinc-400")} />
+                  </button>
+                ))
+              ) : (
+                <div className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">
+                  Nothing needs attention right now. This is the quiet dashboard state we like.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Fast Paths</CardTitle>
+              <CardDescription>Jump into the setup and demo workflows private-beta users need most.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-2">
+              <Button variant="outline" className="justify-start" onClick={() => onOpenSection("integrations")}>
+                <Wand2 data-icon="inline-start" />
+                Connect Dify, n8n, GitHub Actions, or REST metrics
+              </Button>
+              <Button variant="outline" className="justify-start" onClick={() => onOpenSection("reports")}>
+                <Share2 data-icon="inline-start" />
+                Create a client report link
+              </Button>
+              <Button variant="outline" className="justify-start" onClick={() => onOpenSection("alerts")}>
+                <Bell data-icon="inline-start" />
+                Review alert center
+              </Button>
+              <Button variant="outline" className="justify-start" onClick={() => onOpenSection("team")}>
+                <Users data-icon="inline-start" />
+                Manage team access
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </SectionShell>
+  )
+}
+
+function RunsSection({
+  runs,
+  isRefreshingProject,
+  onRefreshProject,
+  onSelectNode,
+}: {
+  runs: ProjectRunRecord[]
+  isRefreshingProject: boolean
+  onRefreshProject: () => Promise<void>
+  onSelectNode: (nodeId: string) => void
+}) {
+  return (
+    <SectionShell>
+      <div className="mx-auto grid max-w-7xl gap-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold">Workflow Runs</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Recent run telemetry posted through ArgusGrid ingestion tokens.</p>
+          </div>
+          <Button variant="outline" onClick={onRefreshProject} disabled={isRefreshingProject}>
+            <Activity data-icon="inline-start" />
+            {isRefreshingProject ? "Refreshing" : "Refresh runs"}
+          </Button>
+        </div>
+        <div className="rounded-xl border bg-background">
+          {runs.length ? (
+            <div className="divide-y">
+              {runs.slice(0, 30).map((run) => (
+                <button key={`${run.nodeId}-${run.id}-${run.startedAt ?? run.started}`} className="grid w-full gap-3 p-4 text-left text-sm hover:bg-muted/40 md:grid-cols-[1fr_150px_120px_120px_90px]" onClick={() => onSelectNode(run.nodeId)}>
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{run.externalId ?? run.id}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{run.nodeLabel}</span>
+                  </span>
+                  <span className="text-xs text-muted-foreground">{run.startedAt ? formatSampledAt(run.startedAt) : run.started}</span>
+                  <span className="text-xs">{run.latency}</span>
+                  <span className="text-xs">{run.cost}</span>
+                  <Badge variant={runBadgeVariant(run.status)}>{run.status}</Badge>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="p-6 text-sm text-muted-foreground">No workflow runs have been ingested yet. Create a telemetry token in Settings, then use an integration template.</div>
+          )}
+        </div>
+      </div>
+    </SectionShell>
+  )
+}
+
+function AlertsSection({
+  alerts,
+  statusFilter,
+  severityFilter,
+  canEditProject,
+  onStatusFilterChange,
+  onSeverityFilterChange,
+  onResolveAlert,
+  onSelectAlert,
+}: {
+  alerts: ProjectAlert[]
+  statusFilter: "active" | "resolved" | "all"
+  severityFilter: string
+  canEditProject: boolean
+  onStatusFilterChange: (value: "active" | "resolved" | "all") => void
+  onSeverityFilterChange: (value: string) => void
+  onResolveAlert: (alertId: string) => void
+  onSelectAlert: (alert: ProjectAlert) => void
+}) {
+  return (
+    <SectionShell>
+      <div className="mx-auto grid max-w-7xl gap-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold">Project Alert Center</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Filter active and resolved alerts, inspect details, and resolve incidents.</p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <select className="h-9 rounded-lg border bg-background px-2 text-sm" value={statusFilter} onChange={(event) => onStatusFilterChange(event.target.value as "active" | "resolved" | "all")}>
+              <option value="active">Active alerts</option>
+              <option value="resolved">Resolved alerts</option>
+              <option value="all">All alerts</option>
+            </select>
+            <select className="h-9 rounded-lg border bg-background px-2 text-sm" value={severityFilter} onChange={(event) => onSeverityFilterChange(event.target.value)}>
+              <option value="all">All severities</option>
+              <option value="INFO">Info</option>
+              <option value="WARNING">Warning</option>
+              <option value="CRITICAL">Critical</option>
+            </select>
+          </div>
+        </div>
+        <div className="rounded-xl border bg-background">
+          {alerts.length ? (
+            <div className="divide-y">
+              {alerts.map((alert) => (
+                <div key={alert.id} className="flex items-start justify-between gap-3 p-4 text-sm">
+                  <button className="min-w-0 flex-1 text-left" onClick={() => onSelectAlert(alert)}>
+                    <div className="font-medium">{alert.title}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {alert.nodeLabel ?? "Project"} / {alert.severity} / {alert.resolvedAt ? "Resolved" : "Active"}
+                    </div>
+                    <div className="mt-2 text-xs text-muted-foreground">{alert.message}</div>
+                  </button>
+                  {!alert.resolvedAt && canEditProject ? (
+                    <Button variant="outline" size="sm" onClick={() => onResolveAlert(alert.id)}>
+                      Resolve
+                    </Button>
+                  ) : (
+                    <Badge variant={alert.resolvedAt ? "secondary" : "destructive"}>{alert.resolvedAt ? "Resolved" : "Active"}</Badge>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-6 text-sm text-muted-foreground">No alerts match the current filters.</div>
+          )}
+        </div>
+      </div>
+    </SectionShell>
+  )
+}
+
+function ReportsSection({
+  reportShares,
+  reportTitle,
+  reportClientName,
+  reportExpiryDays,
+  reportMessage,
+  canManageOrganization,
+  onReportTitleChange,
+  onReportClientNameChange,
+  onReportExpiryDaysChange,
+  onLoadReportShares,
+  onCreateReportShare,
+  onCopyReportShareUrl,
+  onRevokeReportShare,
+}: {
+  reportShares: ReportShareRecord[]
+  reportTitle: string
+  reportClientName: string
+  reportExpiryDays: string
+  reportMessage: string
+  canManageOrganization: boolean
+  onReportTitleChange: (value: string) => void
+  onReportClientNameChange: (value: string) => void
+  onReportExpiryDaysChange: (value: string) => void
+  onLoadReportShares: () => Promise<void>
+  onCreateReportShare: () => Promise<void>
+  onCopyReportShareUrl: (url: string) => Promise<void>
+  onRevokeReportShare: (shareId: string) => Promise<void>
+}) {
+  return (
+    <SectionShell>
+      <div className="mx-auto grid max-w-7xl gap-5 lg:grid-cols-[0.8fr_1.2fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle>Create Client Report</CardTitle>
+            <CardDescription>Share uptime, runs, cost, tokens, quality, incidents, and latest status without exposing secrets.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            <Input value={reportTitle} onChange={(event) => onReportTitleChange(event.target.value)} aria-label="Report title" disabled={!canManageOrganization} />
+            <Input value={reportClientName} onChange={(event) => onReportClientNameChange(event.target.value)} placeholder="Client name, optional" disabled={!canManageOrganization} />
+            <Input value={reportExpiryDays} onChange={(event) => onReportExpiryDaysChange(event.target.value)} placeholder="Expiry in days, optional" disabled={!canManageOrganization} />
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button onClick={onCreateReportShare} disabled={!canManageOrganization}>
+                <Share2 data-icon="inline-start" />
+                Create link
+              </Button>
+              <Button variant="outline" onClick={onLoadReportShares} disabled={!canManageOrganization}>
+                Refresh links
+              </Button>
+            </div>
+            {reportMessage ? <div className="text-xs text-muted-foreground">{reportMessage}</div> : null}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Report Links</CardTitle>
+            <CardDescription>Live links can be opened, copied, or revoked.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            {reportShares.length ? (
+              reportShares.map((share) => (
+                <div key={share.id} className="rounded-lg border bg-background p-3 text-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate font-medium">{share.title}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {share.clientName ?? "No client name"} / {share.revokedAt ? "Revoked" : share.expiresAt ? `Expires ${formatSampledAt(share.expiresAt)}` : "No expiry"}
+                      </div>
+                    </div>
+                    <Badge variant={share.revokedAt ? "secondary" : "outline"}>{share.revokedAt ? "Revoked" : "Live"}</Badge>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" onClick={() => onCopyReportShareUrl(share.url)}>
+                      <Copy data-icon="inline-start" />
+                      Copy
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => window.open(share.url, "_blank", "noopener,noreferrer")} disabled={Boolean(share.revokedAt)}>
+                      <ExternalLink data-icon="inline-start" />
+                      Open
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => onRevokeReportShare(share.id)} disabled={!canManageOrganization || Boolean(share.revokedAt)}>
+                      Revoke
+                    </Button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">No report links loaded yet.</div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </SectionShell>
+  )
+}
+
+function IntegrationsSection({
+  selectedNode,
+  canEditProject,
+  onOpenMap,
+}: {
+  selectedNode: EndpointNodeData | undefined
+  canEditProject: boolean
+  onOpenMap: () => void
+}) {
+  const [selectedTemplateId, setSelectedTemplateId] = useState<IntegrationTemplate["id"]>("dify")
+  const [message, setMessage] = useState("")
+  const selectedTemplate = integrationTemplates.find((template) => template.id === selectedTemplateId) ?? integrationTemplates[0]
+  const snippet = selectedNode ? buildIntegrationSnippet(selectedTemplate, selectedNode.id) : "Select a node on the Automation Map first."
+
+  const copySnippet = async () => {
+    await navigator.clipboard.writeText(snippet)
+    setMessage(`${selectedTemplate.name} snippet copied.`)
+  }
+
+  return (
+    <SectionShell>
+      <div className="mx-auto grid max-w-7xl gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+        <div className="grid content-start gap-3">
+          <div>
+            <h2 className="text-xl font-semibold">Integration Templates</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Focused setup accelerators for the core private-beta sources.</p>
+          </div>
+          {integrationTemplates.map((template) => (
+            <button
+              key={template.id}
+              className={cn("rounded-lg border bg-background p-4 text-left text-sm transition-colors hover:bg-muted/40", selectedTemplate.id === template.id && "border-primary/60")}
+              onClick={() => setSelectedTemplateId(template.id)}
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">{template.name}</span>
+                <Badge variant={template.setupKind === "metric" ? "secondary" : "outline"}>{template.setupKind === "metric" ? "Metric samples" : "Workflow runs"}</Badge>
+                <Badge variant="outline">{template.difficulty}</Badge>
+              </div>
+              <div className="mt-2 text-xs leading-5 text-muted-foreground">{template.description}</div>
+            </button>
+          ))}
+        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>{selectedTemplate.name}</CardTitle>
+            <CardDescription>
+              {selectedNode ? `Prepared for ${selectedNode.label}. Tokens remain placeholders.` : "Select a graph node to generate a node-specific snippet."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            <div className="flex flex-wrap gap-1">
+              {selectedTemplate.requiredFields.map((field) => (
+                <Badge key={field} variant="outline">
+                  {field}
+                </Badge>
+              ))}
+            </div>
+            <div className="rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
+              {selectedTemplate.basicSteps.map((step, index) => (
+                <div key={step}>{index + 1}. {step}</div>
+              ))}
+            </div>
+            <pre className="max-h-[48vh] overflow-auto rounded-md bg-muted p-3 font-mono text-[11px] text-muted-foreground">{snippet}</pre>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button onClick={copySnippet} disabled={!selectedNode}>
+                <Copy data-icon="inline-start" />
+                Copy snippet
+              </Button>
+              <Button variant="outline" onClick={onOpenMap}>
+                Open map
+              </Button>
+              {!canEditProject ? <Badge variant="outline">Read only</Badge> : null}
+              {message ? <span className="text-xs text-muted-foreground">{message}</span> : null}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </SectionShell>
+  )
+}
+
+function TeamSection({
+  members,
+  invitations,
+  inviteEmail,
+  inviteRole,
+  teamMessage,
+  canManageOrganization,
+  onInviteEmailChange,
+  onInviteRoleChange,
+  onInviteMember,
+  onUpdateMemberRole,
+  onRemoveMember,
+  onCancelInvitation,
+}: {
+  members: WorkspacePayload["members"]
+  invitations: WorkspacePayload["invitations"]
+  inviteEmail: string
+  inviteRole: string
+  teamMessage: string
+  canManageOrganization: boolean
+  onInviteEmailChange: (value: string) => void
+  onInviteRoleChange: (value: string) => void
+  onInviteMember: () => Promise<void>
+  onUpdateMemberRole: (memberId: string, role: string) => Promise<void>
+  onRemoveMember: (memberId: string) => Promise<void>
+  onCancelInvitation: (invitationId: string) => Promise<void>
+}) {
+  return (
+    <SectionShell>
+      <div className="mx-auto grid max-w-7xl gap-5 lg:grid-cols-[0.8fr_1.2fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle>Invite Teammate</CardTitle>
+            <CardDescription>Owners and admins can invite collaborators by email.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            <Input value={inviteEmail} onChange={(event) => onInviteEmailChange(event.target.value)} placeholder="teammate@example.com" disabled={!canManageOrganization} />
+            <select className="h-9 rounded-lg border bg-background px-2 text-sm disabled:opacity-50" value={inviteRole} onChange={(event) => onInviteRoleChange(event.target.value)} disabled={!canManageOrganization}>
+              <option value="ADMIN">Admin</option>
+              <option value="MEMBER">Member</option>
+              <option value="VIEWER">Viewer</option>
+            </select>
+            <Button onClick={onInviteMember} disabled={!canManageOrganization}>Save invitation</Button>
+            {teamMessage ? <div className="text-sm text-muted-foreground">{teamMessage}</div> : null}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Members And Pending Invites</CardTitle>
+            <CardDescription>Change roles, remove members, or cancel pending invitations.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-2">
+            {members.map((member) => (
+              <div key={member.id} className="flex items-center justify-between gap-3 rounded-lg border p-3 text-sm">
+                <span className="min-w-0">
+                  <span className="block truncate font-medium">{member.name}</span>
+                  <span className="block truncate text-xs text-muted-foreground">{member.email}</span>
+                </span>
+                {canManageOrganization && member.role !== "OWNER" ? (
+                  <div className="flex shrink-0 items-center gap-2">
+                    <select className="h-8 rounded-lg border bg-background px-2 text-xs" value={member.role} onChange={(event) => onUpdateMemberRole(member.id, event.target.value)}>
+                      <option value="ADMIN">Admin</option>
+                      <option value="MEMBER">Member</option>
+                      <option value="VIEWER">Viewer</option>
+                    </select>
+                    <Button variant="ghost" size="sm" onClick={() => onRemoveMember(member.id)}>
+                      Remove
+                    </Button>
+                  </div>
+                ) : (
+                  <Badge variant="secondary">{member.role}</Badge>
+                )}
+              </div>
+            ))}
+            {invitations.map((invitation) => (
+              <div key={invitation.id} className="flex items-center justify-between gap-3 rounded-lg border p-3 text-sm">
+                <span className="truncate">{invitation.email}</span>
+                <div className="flex shrink-0 items-center gap-2">
+                  <Badge variant="outline">{invitation.role} pending</Badge>
+                  {canManageOrganization ? (
+                    <Button variant="ghost" size="sm" onClick={() => onCancelInvitation(invitation.id)}>
+                      Cancel
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+    </SectionShell>
+  )
+}
+
+function SettingsSection({
+  diagnostics,
+  latestPoll,
+  latestEmail,
+  pollMessage,
+  emailEnabled,
+  emailSeverity,
+  emailMessage,
+  ingestionTokens,
+  ingestionTokenName,
+  ingestionTokenMessage,
+  generatedIngestionToken,
+  canManageOrganization,
+  onRunPollNow,
+  onEmailEnabledChange,
+  onEmailSeverityChange,
+  onSaveNotificationPreference,
+  onSendTestEmail,
+  onIngestionTokenNameChange,
+  onCreateWorkflowToken,
+  onLoadIngestionTokens,
+  onRevokeWorkflowToken,
+  onCopyGeneratedToken,
+}: {
+  diagnostics: WorkspacePayload["diagnostics"]
+  latestPoll: WorkspacePayload["diagnostics"]["latestPoll"]
+  latestEmail: WorkspacePayload["diagnostics"]["latestEmail"]
+  pollMessage: string
+  emailEnabled: boolean
+  emailSeverity: string
+  emailMessage: string
+  ingestionTokens: IngestionTokenRecord[]
+  ingestionTokenName: string
+  ingestionTokenMessage: string
+  generatedIngestionToken: string
+  canManageOrganization: boolean
+  onRunPollNow: () => Promise<void>
+  onEmailEnabledChange: (value: boolean) => void
+  onEmailSeverityChange: (value: string) => void
+  onSaveNotificationPreference: () => Promise<void>
+  onSendTestEmail: () => Promise<void>
+  onIngestionTokenNameChange: (value: string) => void
+  onCreateWorkflowToken: () => Promise<void>
+  onLoadIngestionTokens: () => Promise<void>
+  onRevokeWorkflowToken: (tokenId: string) => Promise<void>
+  onCopyGeneratedToken: () => void
+}) {
+  return (
+    <SectionShell>
+      <div className="mx-auto grid max-w-7xl gap-5 xl:grid-cols-[0.85fr_1.15fr]">
+        <div className="grid content-start gap-5">
+          <Card>
+            <CardHeader>
+              <CardTitle>Deployment Readiness</CardTitle>
+              <CardDescription>Safe production checks for the deployed demo. Secret values are never shown.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-2">
+              <ReadinessItem label="Database connected" ready={diagnostics.checks.database} />
+              <ReadinessItem label="GitHub OAuth ready" ready={diagnostics.checks.auth} />
+              <ReadinessItem label="Encryption enabled" ready={diagnostics.checks.encryption} />
+              <ReadinessItem label="Cron secret configured" ready={diagnostics.checks.cron} />
+              <ReadinessItem label="Email provider configured" ready={diagnostics.checks.email} />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Polling Control</CardTitle>
+              <CardDescription>Run the project poll manually for demos and QA.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3">
+              <Button onClick={onRunPollNow} disabled={!canManageOrganization}>
+                <Activity data-icon="inline-start" />
+                Run poll now
+              </Button>
+              {pollMessage ? <div className="text-xs text-muted-foreground">{pollMessage}</div> : null}
+              {latestPoll ? (
+                <div className="rounded-lg border bg-muted/20 p-3 text-sm">
+                  <div className="font-medium">Latest poll: {latestPoll.status}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {latestPoll.sampledNodes} nodes, {latestPoll.createdSamples} samples, {latestPoll.evaluatedAlerts} alerts, {latestPoll.deletedSamples} old samples cleaned.
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">No cron poll has run yet.</div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid content-start gap-5">
+          <Card>
+            <CardHeader>
+              <CardTitle>Email Notifications</CardTitle>
+              <CardDescription>Preferences and provider delivery status for alert emails.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3">
+              <div className="grid gap-2 sm:grid-cols-[1fr_180px]">
+                <label className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm">
+                  <input type="checkbox" checked={emailEnabled} onChange={(event) => onEmailEnabledChange(event.target.checked)} />
+                  Receive alert emails
+                </label>
+                <select className="h-10 rounded-lg border bg-background px-2 text-sm" value={emailSeverity} onChange={(event) => onEmailSeverityChange(event.target.value)}>
+                  <option value="INFO">Info and above</option>
+                  <option value="WARNING">Warning and above</option>
+                  <option value="CRITICAL">Critical only</option>
+                </select>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Button variant="outline" onClick={onSaveNotificationPreference}>Save preference</Button>
+                <Button onClick={onSendTestEmail} disabled={!canManageOrganization}>
+                  <Send data-icon="inline-start" />
+                  Send test email
+                </Button>
+              </div>
+              {emailMessage ? <div className="text-xs text-muted-foreground">{emailMessage}</div> : null}
+              <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
+                {latestEmail ? `Latest email: ${latestEmail.status} via ${latestEmail.provider} at ${new Date(latestEmail.attemptedAt).toLocaleString()}` : "No email delivery has been attempted yet."}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Workflow Telemetry Tokens</CardTitle>
+              <CardDescription>Project-scoped tokens for external automations posting run telemetry.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3">
+              <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                <Input value={ingestionTokenName} onChange={(event) => onIngestionTokenNameChange(event.target.value)} aria-label="Ingestion token name" disabled={!canManageOrganization} />
+                <Button onClick={onCreateWorkflowToken} disabled={!canManageOrganization}>Create token</Button>
+              </div>
+              {generatedIngestionToken ? (
+                <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+                  <div className="font-medium">Copy this token now. It will not be shown again.</div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <code className="min-w-0 flex-1 overflow-x-auto rounded bg-background px-2 py-1 text-[11px] text-foreground">{generatedIngestionToken}</code>
+                    <Button variant="outline" size="sm" onClick={onCopyGeneratedToken}>
+                      <Copy data-icon="inline-start" />
+                      Copy
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" size="sm" onClick={onLoadIngestionTokens} disabled={!canManageOrganization}>Refresh tokens</Button>
+                {ingestionTokenMessage ? <span className="text-xs text-muted-foreground">{ingestionTokenMessage}</span> : null}
+              </div>
+              {ingestionTokens.length ? (
+                <div className="grid gap-2">
+                  {ingestionTokens.map((token) => (
+                    <div key={token.id} className="flex items-center justify-between gap-3 rounded-md border bg-background p-2 text-xs">
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">{token.name}</div>
+                        <div className="mt-1 text-muted-foreground">{token.prefix}... / {token.revokedAt ? "Revoked" : token.lastUsedAt ? `Last used ${new Date(token.lastUsedAt).toLocaleString()}` : "Never used"}</div>
+                      </div>
+                      {token.revokedAt ? <Badge variant="secondary">Revoked</Badge> : <Button variant="ghost" size="sm" onClick={() => onRevokeWorkflowToken(token.id)} disabled={!canManageOrganization}>Revoke</Button>}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">No tokens loaded yet. Create one or refresh the project token list.</div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </SectionShell>
   )
 }
 
@@ -1665,12 +2706,10 @@ function NodeInspector({
   currentUser,
   categories,
   projectId,
-  alerts,
   alertRules,
   canEditProject,
   isRefreshingProject,
   onOverride,
-  onResolveAlert,
   onRefreshProject,
   onRuleSaved,
   onPatch,
@@ -1679,12 +2718,10 @@ function NodeInspector({
   currentUser: NonNullable<Session["user"]>
   categories: string[]
   projectId: string
-  alerts: WorkspacePayload["alerts"]
   alertRules: WorkspacePayload["alertRules"]
   canEditProject: boolean
   isRefreshingProject: boolean
   onOverride: (status: NodeStatus) => void
-  onResolveAlert: (alertId: string) => void
   onRefreshProject: () => Promise<void>
   onRuleSaved: (rule: ProjectAlertRule) => void
   onPatch: (patch: Partial<EndpointNodeData>) => void
@@ -2007,13 +3044,48 @@ function NodeInspector({
           </CardContent>
         </Card>
 
-        <Tabs defaultValue="analytics">
+        <Tabs defaultValue="overview">
           <TabsList>
-            <TabsTrigger value="analytics">Analytics</TabsTrigger>
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="metrics">Metrics</TabsTrigger>
             <TabsTrigger value="runs">Runs</TabsTrigger>
-            <TabsTrigger value="api">API</TabsTrigger>
+            <TabsTrigger value="alerts">Alerts</TabsTrigger>
+            <TabsTrigger value="setup">Setup</TabsTrigger>
           </TabsList>
-          <TabsContent value="analytics" className="mt-3 flex flex-col gap-4">
+          <TabsContent value="overview" className="mt-3 flex flex-col gap-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Node Operating Summary</CardTitle>
+                <CardDescription>Daily-read status before deeper configuration.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg border bg-muted/20 p-3">
+                    <div className="text-xs text-muted-foreground">API endpoint</div>
+                    <div className="mt-1 truncate text-sm font-medium">{selectedNode.apiUrl}</div>
+                  </div>
+                  <div className="rounded-lg border bg-muted/20 p-3">
+                    <div className="text-xs text-muted-foreground">Cadence</div>
+                    <div className="mt-1 text-sm font-medium">{selectedNode.cadence}</div>
+                  </div>
+                  <div className="rounded-lg border bg-muted/20 p-3">
+                    <div className="text-xs text-muted-foreground">Latest sample</div>
+                    <div className="mt-1 text-sm font-medium">{selectedNode.latestSampledAt ? formatSampledAt(selectedNode.latestSampledAt) : "No real sample yet"}</div>
+                  </div>
+                  <div className="rounded-lg border bg-muted/20 p-3">
+                    <div className="text-xs text-muted-foreground">Saved mappings</div>
+                    <div className="mt-1 text-sm font-medium">{selectedNode.parameters.filter((parameter) => parameter.id).length}</div>
+                  </div>
+                </div>
+                <Button variant="outline" onClick={onRefreshProject} disabled={isRefreshingProject}>
+                  <Activity data-icon="inline-start" />
+                  {isRefreshingProject ? "Refreshing" : "Refresh node data"}
+                </Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="metrics" className="mt-3 flex flex-col gap-4">
             <Card>
               <CardHeader>
                 <CardTitle>Metric Trend</CardTitle>
@@ -2132,10 +3204,13 @@ function NodeInspector({
               </CardContent>
             </Card>
 
+          </TabsContent>
+
+          <TabsContent value="alerts" className="mt-3 flex flex-col gap-4">
             <Card>
               <CardHeader>
                 <CardTitle>Alerts</CardTitle>
-                <CardDescription>In-app events, email delivery later</CardDescription>
+                <CardDescription>Node-level in-app events and current alert context</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-3">
                 {selectedNode.alerts.length ? (
@@ -2160,7 +3235,7 @@ function NodeInspector({
             </Card>
           </TabsContent>
 
-          <TabsContent value="api" className="mt-3 flex flex-col gap-4">
+          <TabsContent value="setup" className="mt-3 flex flex-col gap-4">
             <Card>
               <CardHeader>
                 <CardTitle>Node Basics</CardTitle>
@@ -2491,54 +3566,22 @@ function NodeInspector({
                     <div className="mt-1 text-xs text-muted-foreground">Transform: {parameter.transform}</div>
                   </div>
                 ))}
+                <Separator />
+                <div>
+                  <div className="text-sm font-medium">Default Monitoring Categories</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {categories.map((category) => (
+                      <Badge key={category} variant={category === selectedNode.category ? "default" : "secondary"}>
+                        {category}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
         </Tabs>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Alert Center</CardTitle>
-            <CardDescription>In-app alerts from cron polling</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            {alerts.length ? (
-              alerts.map((alert) => (
-                <div key={alert.id} className="flex items-start justify-between gap-2 rounded-lg border p-3 text-sm">
-                  <div className="min-w-0">
-                    <div className="font-medium">{alert.title}</div>
-                    <div className="text-xs text-muted-foreground">{alert.nodeLabel ?? "Project"} / {alert.severity}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">{alert.message}</div>
-                  </div>
-                  {alert.resolvedAt ? (
-                    <Badge variant="secondary">Resolved</Badge>
-                  ) : (
-                    <Button variant="outline" size="sm" onClick={() => onResolveAlert(alert.id)} disabled={!canEditProject}>
-                      <CheckCircle2 data-icon="inline-start" />
-                      Resolve
-                    </Button>
-                  )}
-                </div>
-              ))
-            ) : (
-              <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">No cron-generated alerts yet.</div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Default Monitoring Categories</CardTitle>
-            <CardDescription>Curated AI-ops taxonomy, editable per project</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            {categories.map((category) => (
-              <Badge key={category} variant={category === selectedNode.category ? "default" : "secondary"}>
-                {category}
-              </Badge>
-            ))}
-          </CardContent>
-        </Card>
         <div className="text-xs text-muted-foreground">Signed in as {currentUser.email ?? currentUser.name ?? "GitHub user"}</div>
       </div>
     </aside>
