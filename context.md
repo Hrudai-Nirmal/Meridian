@@ -37,6 +37,7 @@ ArgusGrid is a PC-first AI automation control room for agencies and teams. The p
 - Added a first-class Projects section with project cards, summary counts, latest sample timestamps, project switching, create, rename, and archive actions; the sidebar project dropdown has been replaced by a compact current-project pointer.
 - Updated alert handling so Resolve navigates to the alert source node on the Automation Map, while Ignore dismisses the alert through the existing resolution route; workspace alerts now expose safe `nodeId` values.
 - Improved Reports and Integrations UI: report creation fields now have visible labels and safety copy, and Integrations now has node selection, grouped telemetry/metric templates, readiness checks, environment blocks, setup checklists, and token/runs shortcuts.
+- Polished the section UI for deployed use: dark mode now defaults on first load and persists manual local theme choice, the sidebar current-project panel no longer contains project management controls, project cards now have edit dialogs, Alerts has 24h/7d/30d/All timeline filtering, and Projects/Reports/Settings use clearer sidebar icons.
 - Added Playwright smoke script for public deployed checks, optional authenticated checks, and optional private-beta mutation checks.
 - Added API stubs for project state and REST endpoint test/mapping behavior.
 - If database or GitHub OAuth env vars are missing, the app shows a setup-required screen instead of trying to start Auth.js against incomplete config.
@@ -53,6 +54,7 @@ ArgusGrid is a PC-first AI automation control room for agencies and teams. The p
 - Node graph edges are visual relationships only in v1.
 - Node status is computed from health rules but supports admin overrides.
 - Reports start as secure share links and PNG exports, not full client portals.
+- Project rename/archive remains an organization-shared owner/admin action for now; account-local project aliases, visibility, and per-user project lifecycle behavior are deferred to the future team hierarchy and permissions phase.
 - SSE live updates, baseline/anomaly alerting, CSV exports, Slack notifications, and SDK publishing are next-stage priorities.
 - Sankey and forecast/correlation views are deferred until usage data proves demand.
 
@@ -65,7 +67,8 @@ ArgusGrid is a PC-first AI automation control room for agencies and teams. The p
 - Browser-test the Deployment readiness dialog and the API tab setup dialogs at desktop height: content should stay within the viewport, scroll internally, and keep the inspector compact.
 - Browser-test client report creation, signed-out report access, copy/open/revoke actions, and PNG map export.
 - Browser-test the new Control Room IA: section switching, overview attention feed, project-level Runs/Alerts/Reports/Integrations/Team/Settings pages, and the cleaned-up node inspector tabs.
-- Browser-test the Projects grid, alert Resolve-to-node and Ignore flows, labelled report creation form, and expanded Integrations setup hub.
+- Browser-test the Projects grid edit dialogs, dark-default/local theme persistence, alert timeline filtering, alert Resolve-to-node and Ignore flows, labelled report creation form, and expanded Integrations setup hub.
+- Plan the next product phase as SSE-first Live Updates for new runs, alert changes, node health changes, and latest poll status, with manual refresh as fallback.
 - Validate the Prisma report-share migration with `prisma migrate deploy` before production use.
 - Test SDK preview snippets against a disposable ingestion token and confirm runs appear in the selected node.
 - Browser-test invited-user acceptance, role management, guided API setup, icon upload, alert center filtering, cron polling, deployment diagnostics, and alert resolution on the deployed site.

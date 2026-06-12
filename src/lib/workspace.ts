@@ -463,7 +463,7 @@ function projectToWorkspace(
   )
   const alerts = Array.from(alertEventsById.values())
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-    .slice(0, 20)
+    .slice(0, 100)
     .map((event) => {
       const latestDelivery = event.deliveries[0]
 
@@ -914,7 +914,7 @@ export async function getWorkspaceForUser(userId: string, projectId?: string) {
               },
             },
             orderBy: { createdAt: "desc" },
-            take: 20,
+            take: 100,
           },
         },
         orderBy: { createdAt: "asc" },
@@ -940,7 +940,7 @@ export async function getWorkspaceForUser(userId: string, projectId?: string) {
               },
             },
             orderBy: { createdAt: "desc" },
-            take: 20,
+            take: 100,
           },
         },
       },

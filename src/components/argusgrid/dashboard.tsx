@@ -28,14 +28,17 @@ import {
   Gauge,
   HardDriveUpload,
   KeyRound,
+  LayoutGrid,
   LayoutDashboard,
   MailCheck,
   Moon,
   Network,
+  NotebookText,
   Plus,
   Save,
   Search,
   Send,
+  Settings,
   Share2,
   ShieldCheck,
   Sparkles,
@@ -243,6 +246,7 @@ type SaveState = "saved" | "saving" | "error"
 type ProjectMode = "blank" | "demo"
 type ProjectAlert = WorkspacePayload["alerts"][number]
 type ProjectAlertRule = WorkspacePayload["alertRules"][number]
+type AlertTimelineFilter = "24h" | "7d" | "30d" | "all"
 type DashboardSection = "control-room" | "projects" | "map" | "runs" | "alerts" | "reports" | "integrations" | "team" | "settings"
 type IngestionTokenRecord = {
   id: string
@@ -291,7 +295,7 @@ const dashboardSections: {
     label: "Projects",
     title: "Projects",
     description: "Choose, create, rename, and archive client workspaces.",
-    icon: Bot,
+    icon: LayoutGrid,
   },
   {
     id: "map",
@@ -319,7 +323,7 @@ const dashboardSections: {
     label: "Reports",
     title: "Client Reports",
     description: "Secure read-only proof links for agency stakeholders.",
-    icon: Share2,
+    icon: NotebookText,
   },
   {
     id: "integrations",
@@ -340,9 +344,21 @@ const dashboardSections: {
     label: "Settings",
     title: "Settings",
     description: "Deployment readiness, polling, email, and telemetry tokens.",
-    icon: ShieldCheck,
+    icon: Settings,
   },
 ]
+
+const alertTimelineWindows: Record<Exclude<AlertTimelineFilter, "all">, number> = {
+  "24h": 24 * 60 * 60 * 1000,
+  "7d": 7 * 24 * 60 * 60 * 1000,
+  "30d": 30 * 24 * 60 * 60 * 1000,
+}
+
+function getInitialTheme(): "light" | "dark" {
+  if (typeof window === "undefined") return "dark"
+  const storedTheme = window.localStorage.getItem("argusgrid-theme")
+  return storedTheme === "light" || storedTheme === "dark" ? storedTheme : "dark"
+}
 
 function parseCurrencyValue(value?: string | null) {
   if (!value) return 0
@@ -360,11 +376,12 @@ export function ArgusGridDashboard({
   const [activeSection, setActiveSection] = useState<DashboardSection>("control-room")
   const [selectedId, setSelectedId] = useState(initialWorkspace.nodes[0]?.id ?? "")
   const [editMode, setEditMode] = useState(false)
-  const [theme, setTheme] = useState<"light" | "dark">("light")
+  const [theme, setTheme] = useState<"light" | "dark">(getInitialTheme)
   const [saveState, setSaveState] = useState<SaveState>("saved")
   const [newProjectName, setNewProjectName] = useState("New AI workflow")
   const [newProjectMode, setNewProjectMode] = useState<ProjectMode>("blank")
-  const [projectName, setProjectName] = useState(initialWorkspace.project.name)
+  const [editingProject, setEditingProject] = useState<WorkspacePayload["projects"][number] | null>(null)
+  const [editingProjectName, setEditingProjectName] = useState("")
   const [inviteEmail, setInviteEmail] = useState("")
   const [inviteRole, setInviteRole] = useState("MEMBER")
   const [teamMessage, setTeamMessage] = useState("")
@@ -375,6 +392,8 @@ export function ArgusGridDashboard({
   const [alertRules, setAlertRules] = useState(initialWorkspace.alertRules)
   const [alertStatusFilter, setAlertStatusFilter] = useState<"active" | "resolved" | "all">("active")
   const [alertSeverityFilter, setAlertSeverityFilter] = useState("all")
+  const [alertTimelineFilter, setAlertTimelineFilter] = useState<AlertTimelineFilter>("7d")
+  const [alertTimelineReferenceTime, setAlertTimelineReferenceTime] = useState(() => new Date().getTime())
   const [selectedAlertDetail, setSelectedAlertDetail] = useState<ProjectAlert | null>(null)
   const [emailEnabled, setEmailEnabled] = useState(initialWorkspace.notificationPreference.enabled)
   const [emailSeverity, setEmailSeverity] = useState(initialWorkspace.notificationPreference.severity)
@@ -401,6 +420,10 @@ export function ArgusGridDashboard({
   const canManageOrganization = initialWorkspace.currentUserRole === "OWNER" || initialWorkspace.currentUserRole === "ADMIN"
   const canEditProject = canManageOrganization || initialWorkspace.currentUserRole === "MEMBER"
   const activeSectionMeta = dashboardSections.find((section) => section.id === activeSection) ?? dashboardSections[0]
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", theme === "dark")
+  }, [theme])
 
   const selectedNode = useMemo<EndpointNodeData | undefined>(
     () => (nodes.find((node) => node.id === selectedId)?.data as unknown as EndpointNodeData | undefined) ?? initialWorkspace.nodes[0],
@@ -468,15 +491,24 @@ export function ArgusGridDashboard({
     }
   }, [endpointNodes, projectMetrics, projectRuns])
   const filteredAlerts = useMemo(
-    () =>
-      alerts.filter((alert) => {
+    () => {
+      const cutoff =
+        alertTimelineFilter === "all" ? null : alertTimelineReferenceTime - alertTimelineWindows[alertTimelineFilter]
+      return alerts.filter((alert) => {
         if (alertStatusFilter === "active" && alert.resolvedAt) return false
         if (alertStatusFilter === "resolved" && !alert.resolvedAt) return false
         if (alertSeverityFilter !== "all" && alert.severity !== alertSeverityFilter) return false
+        if (cutoff && new Date(alert.createdAt).getTime() < cutoff) return false
         return true
-      }),
-    [alertSeverityFilter, alertStatusFilter, alerts]
+      })
+    },
+    [alertSeverityFilter, alertStatusFilter, alertTimelineFilter, alertTimelineReferenceTime, alerts]
   )
+
+  const changeAlertTimelineFilter = (value: AlertTimelineFilter) => {
+    setAlertTimelineFilter(value)
+    setAlertTimelineReferenceTime(new Date().getTime())
+  }
 
   const refreshProjectData = useCallback(async () => {
     setIsRefreshingProject(true)
@@ -656,33 +688,40 @@ export function ArgusGridDashboard({
     setActionMessage(payload.error ?? "Project creation failed.")
   }
 
-  const renameProject = async () => {
+  const openProjectEditor = (project: WorkspacePayload["projects"][number]) => {
+    setEditingProject(project)
+    setEditingProjectName(project.name)
+  }
+
+  const renameEditedProject = async () => {
+    if (!editingProject) return
     if (!canManageOrganization) {
       setActionMessage("Only owners and admins can rename projects.")
       return
     }
     setActionMessage("Renaming project...")
-    const response = await fetch(`/api/projects/${initialWorkspace.project.id}`, {
+    const response = await fetch(`/api/projects/${editingProject.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: projectName }),
+      body: JSON.stringify({ name: editingProjectName }),
     })
     if (response.ok) {
-      window.location.href = `/?project=${initialWorkspace.project.id}`
+      window.location.href = `/?project=${editingProject.id}`
       return
     }
     setActionMessage("Project rename failed.")
   }
 
-  const archiveProject = async () => {
+  const archiveEditedProject = async () => {
+    if (!editingProject) return
     if (!canManageOrganization) {
       setActionMessage("Only owners and admins can archive projects.")
       return
     }
     setActionMessage("Archiving project...")
-    const response = await fetch(`/api/projects/${initialWorkspace.project.id}`, { method: "DELETE" })
+    const response = await fetch(`/api/projects/${editingProject.id}`, { method: "DELETE" })
     if (response.ok) {
-      window.location.href = "/"
+      window.location.href = editingProject.id === initialWorkspace.project.id ? "/" : `/?project=${initialWorkspace.project.id}`
       return
     }
     setActionMessage("Project archive failed.")
@@ -1076,7 +1115,7 @@ export function ArgusGridDashboard({
   const toggleTheme = () => {
     const next = theme === "light" ? "dark" : "light"
     setTheme(next)
-    document.documentElement.classList.toggle("dark", next === "dark")
+    window.localStorage.setItem("argusgrid-theme", next)
   }
 
   return (
@@ -1103,10 +1142,7 @@ export function ArgusGridDashboard({
         <div className="mt-3 rounded-xl border bg-background/70 p-3">
           <div className="text-xs text-muted-foreground">Current project</div>
           <div className="mt-1 truncate text-sm font-medium">{initialWorkspace.project.name}</div>
-          <Button variant="outline" size="sm" className="mt-3 w-full justify-start" onClick={() => setActiveSection("projects")}>
-            <Bot data-icon="inline-start" />
-            Manage projects
-          </Button>
+          <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{initialWorkspace.project.slug}</div>
         </div>
 
         <nav className="mt-5 grid grid-cols-2 gap-1 sm:grid-cols-4 lg:flex lg:flex-1 lg:flex-col">
@@ -1528,17 +1564,14 @@ export function ArgusGridDashboard({
           <ProjectsSection
             projects={initialWorkspace.projects}
             currentProject={initialWorkspace.project}
-            projectName={projectName}
             newProjectName={newProjectName}
             newProjectMode={newProjectMode}
             canManageOrganization={canManageOrganization}
             actionMessage={actionMessage}
-            onProjectNameChange={setProjectName}
             onNewProjectNameChange={setNewProjectName}
             onNewProjectModeChange={setNewProjectMode}
             onCreateProject={createProject}
-            onRenameProject={renameProject}
-            onArchiveProject={archiveProject}
+            onEditProject={openProjectEditor}
             onOpenProject={(projectId) => {
               window.location.href = `/?project=${projectId}`
             }}
@@ -1704,6 +1737,8 @@ export function ArgusGridDashboard({
             canEditProject={canEditProject}
             onStatusFilterChange={setAlertStatusFilter}
             onSeverityFilterChange={setAlertSeverityFilter}
+            timelineFilter={alertTimelineFilter}
+            onTimelineFilterChange={changeAlertTimelineFilter}
             onOpenAlertSource={openAlertSource}
             onIgnoreAlert={resolveAlert}
             onSelectAlert={setSelectedAlertDetail}
@@ -1777,6 +1812,39 @@ export function ArgusGridDashboard({
           />
         )}
       </main>
+      <Dialog open={Boolean(editingProject)} onOpenChange={(open) => !open && setEditingProject(null)}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Edit project</DialogTitle>
+            <DialogDescription>
+              Rename or archive this organization project. Account-local project aliases and visibility are planned for the team hierarchy phase.
+            </DialogDescription>
+          </DialogHeader>
+          {editingProject ? (
+            <div className="grid gap-4">
+              <div className="rounded-lg border bg-muted/20 p-3 text-sm">
+                <div className="text-xs text-muted-foreground">Project</div>
+                <div className="mt-1 font-medium">{editingProject.name}</div>
+                <div className="mt-1 font-mono text-xs text-muted-foreground">{editingProject.slug}</div>
+              </div>
+              <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+                Project name
+                <Input value={editingProjectName} onChange={(event) => setEditingProjectName(event.target.value)} disabled={!canManageOrganization} />
+              </label>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Button variant="outline" onClick={renameEditedProject} disabled={!canManageOrganization || !editingProjectName.trim()}>
+                  Rename project
+                </Button>
+                <Button variant="destructive" onClick={archiveEditedProject} disabled={!canManageOrganization}>
+                  <Trash2 data-icon="inline-start" />
+                  Archive project
+                </Button>
+              </div>
+              {actionMessage ? <div className="text-xs text-muted-foreground">{actionMessage}</div> : null}
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
       <Sheet open={Boolean(selectedAlertDetail)} onOpenChange={(open) => !open && setSelectedAlertDetail(null)}>
         <SheetContent className="w-full sm:max-w-md">
           <SheetHeader>
@@ -1924,32 +1992,26 @@ function MetricTile({
 function ProjectsSection({
   projects,
   currentProject,
-  projectName,
   newProjectName,
   newProjectMode,
   canManageOrganization,
   actionMessage,
-  onProjectNameChange,
   onNewProjectNameChange,
   onNewProjectModeChange,
   onCreateProject,
-  onRenameProject,
-  onArchiveProject,
+  onEditProject,
   onOpenProject,
 }: {
   projects: WorkspacePayload["projects"]
   currentProject: WorkspacePayload["project"]
-  projectName: string
   newProjectName: string
   newProjectMode: ProjectMode
   canManageOrganization: boolean
   actionMessage: string
-  onProjectNameChange: (value: string) => void
   onNewProjectNameChange: (value: string) => void
   onNewProjectModeChange: (value: ProjectMode) => void
   onCreateProject: () => Promise<void>
-  onRenameProject: () => Promise<void>
-  onArchiveProject: () => Promise<void>
+  onEditProject: (project: WorkspacePayload["projects"][number]) => void
   onOpenProject: (projectId: string) => void
 }) {
   return (
@@ -1963,52 +2025,41 @@ function ProjectsSection({
           <Badge variant="secondary">{projects.length} projects</Badge>
         </div>
 
-        <div className="grid gap-5 xl:grid-cols-[0.75fr_1.25fr]">
+        <div className="grid gap-5 xl:grid-cols-[0.9fr_1.25fr]">
           <div className="grid content-start gap-5">
             <Card>
               <CardHeader>
                 <CardTitle>Create Project</CardTitle>
-                <CardDescription>Start a blank workspace or seed a demo control room.</CardDescription>
+                <CardDescription>Start a blank workspace or seed a demo control room. More project presets can live here later.</CardDescription>
               </CardHeader>
-              <CardContent className="grid gap-3">
+              <CardContent className="grid gap-4">
                 <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
                   Project name
                   <Input value={newProjectName} onChange={(event) => onNewProjectNameChange(event.target.value)} disabled={!canManageOrganization} />
                 </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <Button variant={newProjectMode === "blank" ? "default" : "outline"} onClick={() => onNewProjectModeChange("blank")} disabled={!canManageOrganization}>
-                    Blank
-                  </Button>
-                  <Button variant={newProjectMode === "demo" ? "default" : "outline"} onClick={() => onNewProjectModeChange("demo")} disabled={!canManageOrganization}>
-                    Demo
-                  </Button>
+                <div className="grid gap-2">
+                  <div className="text-xs font-medium text-muted-foreground">Project starter</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button variant={newProjectMode === "blank" ? "default" : "outline"} onClick={() => onNewProjectModeChange("blank")} disabled={!canManageOrganization}>
+                      Blank
+                    </Button>
+                    <Button variant={newProjectMode === "demo" ? "default" : "outline"} onClick={() => onNewProjectModeChange("demo")} disabled={!canManageOrganization}>
+                      Demo
+                    </Button>
+                  </div>
+                </div>
+                <div className="grid gap-2 rounded-lg border border-dashed bg-muted/20 p-3 text-xs text-muted-foreground">
+                  <div className="font-medium text-foreground">Coming next</div>
+                  <div className="grid gap-1 sm:grid-cols-3">
+                    <span>Client name</span>
+                    <span>Template type</span>
+                    <span>Monitoring mode</span>
+                  </div>
                 </div>
                 <Button onClick={onCreateProject} disabled={!canManageOrganization}>
                   <Plus data-icon="inline-start" />
                   Create project
                 </Button>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Current Project</CardTitle>
-                <CardDescription>Rename or archive the active project.</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-3">
-                <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
-                  Project name
-                  <Input value={projectName} onChange={(event) => onProjectNameChange(event.target.value)} disabled={!canManageOrganization} />
-                </label>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <Button variant="outline" onClick={onRenameProject} disabled={!canManageOrganization}>
-                    Rename
-                  </Button>
-                  <Button variant="destructive" onClick={onArchiveProject} disabled={!canManageOrganization}>
-                    <Trash2 data-icon="inline-start" />
-                    Archive
-                  </Button>
-                </div>
                 {actionMessage ? <div className="text-xs text-muted-foreground">{actionMessage}</div> : null}
               </CardContent>
             </Card>
@@ -2045,6 +2096,10 @@ function ProjectsSection({
                   <div className="mt-4 flex flex-wrap items-center gap-2">
                     <Button size="sm" variant={isCurrent ? "secondary" : "default"} onClick={() => onOpenProject(project.id)} disabled={isCurrent}>
                       {isCurrent ? "Currently open" : "Open project"}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => onEditProject(project)} disabled={!canManageOrganization}>
+                      <Edit3 data-icon="inline-start" />
+                      Edit
                     </Button>
                     {project.updatedAt ? <span className="text-xs text-muted-foreground">Updated {formatSampledAt(project.updatedAt)}</span> : null}
                   </div>
@@ -2297,9 +2352,11 @@ function AlertsSection({
   alerts,
   statusFilter,
   severityFilter,
+  timelineFilter,
   canEditProject,
   onStatusFilterChange,
   onSeverityFilterChange,
+  onTimelineFilterChange,
   onOpenAlertSource,
   onIgnoreAlert,
   onSelectAlert,
@@ -2307,9 +2364,11 @@ function AlertsSection({
   alerts: ProjectAlert[]
   statusFilter: "active" | "resolved" | "all"
   severityFilter: string
+  timelineFilter: AlertTimelineFilter
   canEditProject: boolean
   onStatusFilterChange: (value: "active" | "resolved" | "all") => void
   onSeverityFilterChange: (value: string) => void
+  onTimelineFilterChange: (value: AlertTimelineFilter) => void
   onOpenAlertSource: (alert: ProjectAlert) => void
   onIgnoreAlert: (alertId: string) => void
   onSelectAlert: (alert: ProjectAlert) => void
@@ -2322,7 +2381,7 @@ function AlertsSection({
             <h2 className="text-xl font-semibold">Project Alert Center</h2>
             <p className="mt-1 text-sm text-muted-foreground">Filter active and resolved alerts, inspect details, and resolve incidents.</p>
           </div>
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-2 sm:grid-cols-3">
             <select className="h-9 rounded-lg border bg-background px-2 text-sm" value={statusFilter} onChange={(event) => onStatusFilterChange(event.target.value as "active" | "resolved" | "all")}>
               <option value="active">Active alerts</option>
               <option value="resolved">Resolved alerts</option>
@@ -2333,6 +2392,12 @@ function AlertsSection({
               <option value="INFO">Info</option>
               <option value="WARNING">Warning</option>
               <option value="CRITICAL">Critical</option>
+            </select>
+            <select className="h-9 rounded-lg border bg-background px-2 text-sm" value={timelineFilter} onChange={(event) => onTimelineFilterChange(event.target.value as AlertTimelineFilter)}>
+              <option value="24h">Last 24h</option>
+              <option value="7d">Last 7d</option>
+              <option value="30d">Last 30d</option>
+              <option value="all">All time</option>
             </select>
           </div>
         </div>
