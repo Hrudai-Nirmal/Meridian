@@ -34,6 +34,9 @@ ArgusGrid is a PC-first AI automation control room for agencies and teams. The p
 - Added premium Control Room information architecture: real sidebar sections for Control Room, Automation Map, Runs, Alerts, Reports, Integrations, Team, and Settings; Control Room now summarizes node health, run success, active alerts, poll/email readiness, cost, metric streams, and attention items.
 - Moved project-level runs, alerts, reports, integration templates, team management, and deployment/telemetry settings into first-class section views while preserving the graph-first Automation Map and existing API behavior.
 - Cleaned up the selected-node inspector into operational tabs: Overview, Metrics, Runs, Alerts, and Setup, with configuration-heavy templates/API setup/alert rules kept under Setup.
+- Added a first-class Projects section with project cards, summary counts, latest sample timestamps, project switching, create, rename, and archive actions; the sidebar project dropdown has been replaced by a compact current-project pointer.
+- Updated alert handling so Resolve navigates to the alert source node on the Automation Map, while Ignore dismisses the alert through the existing resolution route; workspace alerts now expose safe `nodeId` values.
+- Improved Reports and Integrations UI: report creation fields now have visible labels and safety copy, and Integrations now has node selection, grouped telemetry/metric templates, readiness checks, environment blocks, setup checklists, and token/runs shortcuts.
 - Added Playwright smoke script for public deployed checks, optional authenticated checks, and optional private-beta mutation checks.
 - Added API stubs for project state and REST endpoint test/mapping behavior.
 - If database or GitHub OAuth env vars are missing, the app shows a setup-required screen instead of trying to start Auth.js against incomplete config.
@@ -62,6 +65,7 @@ ArgusGrid is a PC-first AI automation control room for agencies and teams. The p
 - Browser-test the Deployment readiness dialog and the API tab setup dialogs at desktop height: content should stay within the viewport, scroll internally, and keep the inspector compact.
 - Browser-test client report creation, signed-out report access, copy/open/revoke actions, and PNG map export.
 - Browser-test the new Control Room IA: section switching, overview attention feed, project-level Runs/Alerts/Reports/Integrations/Team/Settings pages, and the cleaned-up node inspector tabs.
+- Browser-test the Projects grid, alert Resolve-to-node and Ignore flows, labelled report creation form, and expanded Integrations setup hub.
 - Validate the Prisma report-share migration with `prisma migrate deploy` before production use.
 - Test SDK preview snippets against a disposable ingestion token and confirm runs appear in the selected node.
 - Browser-test invited-user acceptance, role management, guided API setup, icon upload, alert center filtering, cron polling, deployment diagnostics, and alert resolution on the deployed site.

@@ -54,7 +54,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -244,7 +243,7 @@ type SaveState = "saved" | "saving" | "error"
 type ProjectMode = "blank" | "demo"
 type ProjectAlert = WorkspacePayload["alerts"][number]
 type ProjectAlertRule = WorkspacePayload["alertRules"][number]
-type DashboardSection = "control-room" | "map" | "runs" | "alerts" | "reports" | "integrations" | "team" | "settings"
+type DashboardSection = "control-room" | "projects" | "map" | "runs" | "alerts" | "reports" | "integrations" | "team" | "settings"
 type IngestionTokenRecord = {
   id: string
   name: string
@@ -286,6 +285,13 @@ const dashboardSections: {
     title: "Control Room",
     description: "Live operating picture for reliability, value, and client proof.",
     icon: LayoutDashboard,
+  },
+  {
+    id: "projects",
+    label: "Projects",
+    title: "Projects",
+    description: "Choose, create, rename, and archive client workspaces.",
+    icon: Bot,
   },
   {
     id: "map",
@@ -1021,6 +1027,16 @@ export function ArgusGridDashboard({
     setSelectedAlertDetail((alert) => (alert?.id === alertId ? { ...alert, resolvedAt } : alert))
   }
 
+  const openAlertSource = (alert: ProjectAlert) => {
+    if (!alert.nodeId) {
+      setSelectedAlertDetail(alert)
+      return
+    }
+    setSelectedId(alert.nodeId)
+    setSelectedAlertDetail(null)
+    setActiveSection("map")
+  }
+
   const uploadSelectedIcon = async (file: File | undefined) => {
     if (!file || !selectedNode || !canEditProject) return
     setIconMessage("Uploading icon...")
@@ -1085,60 +1101,12 @@ export function ArgusGridDashboard({
         </div>
 
         <div className="mt-3 rounded-xl border bg-background/70 p-3">
-          <div className="text-xs text-muted-foreground">Project</div>
-          <select
-            className="mt-2 h-9 w-full rounded-lg border bg-background px-2 text-sm"
-            value={initialWorkspace.project.id}
-            onChange={(event) => {
-              window.location.href = `/?project=${event.target.value}`
-            }}
-          >
-            {initialWorkspace.projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <Dialog>
-              <DialogTrigger render={<Button variant="outline" size="sm" disabled={!canManageOrganization} />}>New</DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Create project</DialogTitle>
-                  <DialogDescription>Add a deployed project workspace.</DialogDescription>
-                </DialogHeader>
-                <Input value={newProjectName} onChange={(event) => setNewProjectName(event.target.value)} />
-                <div className="grid grid-cols-2 gap-2">
-                  <Button variant={newProjectMode === "blank" ? "default" : "outline"} onClick={() => setNewProjectMode("blank")}>
-                    Blank
-                  </Button>
-                  <Button variant={newProjectMode === "demo" ? "default" : "outline"} onClick={() => setNewProjectMode("demo")}>
-                    Demo
-                  </Button>
-                </div>
-                <DialogFooter>
-                  <Button onClick={createProject}>Create</Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-            <Dialog>
-              <DialogTrigger render={<Button variant="outline" size="sm" disabled={!canManageOrganization} />}>Manage</DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Manage project</DialogTitle>
-                  <DialogDescription>Rename or archive this project.</DialogDescription>
-                </DialogHeader>
-                <Input value={projectName} onChange={(event) => setProjectName(event.target.value)} />
-                <DialogFooter>
-                  <Button variant="destructive" onClick={archiveProject}>
-                    <Trash2 data-icon="inline-start" />
-                    Archive
-                  </Button>
-                  <Button onClick={renameProject}>Rename</Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </div>
+          <div className="text-xs text-muted-foreground">Current project</div>
+          <div className="mt-1 truncate text-sm font-medium">{initialWorkspace.project.name}</div>
+          <Button variant="outline" size="sm" className="mt-3 w-full justify-start" onClick={() => setActiveSection("projects")}>
+            <Bot data-icon="inline-start" />
+            Manage projects
+          </Button>
         </div>
 
         <nav className="mt-5 grid grid-cols-2 gap-1 sm:grid-cols-4 lg:flex lg:flex-1 lg:flex-col">
@@ -1556,7 +1524,26 @@ export function ArgusGridDashboard({
           {actionMessage ? <div className="text-xs text-muted-foreground">{actionMessage}</div> : null}
         </header>
 
-        {activeSection === "map" ? (
+        {activeSection === "projects" ? (
+          <ProjectsSection
+            projects={initialWorkspace.projects}
+            currentProject={initialWorkspace.project}
+            projectName={projectName}
+            newProjectName={newProjectName}
+            newProjectMode={newProjectMode}
+            canManageOrganization={canManageOrganization}
+            actionMessage={actionMessage}
+            onProjectNameChange={setProjectName}
+            onNewProjectNameChange={setNewProjectName}
+            onNewProjectModeChange={setNewProjectMode}
+            onCreateProject={createProject}
+            onRenameProject={renameProject}
+            onArchiveProject={archiveProject}
+            onOpenProject={(projectId) => {
+              window.location.href = `/?project=${projectId}`
+            }}
+          />
+        ) : activeSection === "map" ? (
         <section className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(640px,1fr)_420px]">
           <div className="flex min-w-0 flex-col bg-zinc-50 dark:bg-zinc-950">
             <div className="flex flex-col gap-3 border-b bg-background/80 px-5 py-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
@@ -1717,7 +1704,8 @@ export function ArgusGridDashboard({
             canEditProject={canEditProject}
             onStatusFilterChange={setAlertStatusFilter}
             onSeverityFilterChange={setAlertSeverityFilter}
-            onResolveAlert={resolveAlert}
+            onOpenAlertSource={openAlertSource}
+            onIgnoreAlert={resolveAlert}
             onSelectAlert={setSelectedAlertDetail}
           />
         ) : activeSection === "reports" ? (
@@ -1738,9 +1726,14 @@ export function ArgusGridDashboard({
           />
         ) : activeSection === "integrations" ? (
           <IntegrationsSection
-            selectedNode={selectedNode}
+            nodes={endpointNodes}
+            selectedNodeId={selectedId}
+            alertRules={alertRules}
             canEditProject={canEditProject}
+            onSelectNode={setSelectedId}
             onOpenMap={() => setActiveSection("map")}
+            onOpenSettings={() => setActiveSection("settings")}
+            onOpenRuns={() => setActiveSection("runs")}
           />
         ) : activeSection === "team" ? (
           <TeamSection
@@ -1845,10 +1838,16 @@ export function ArgusGridDashboard({
                   <div className="font-medium">{new Date(selectedAlertDetail.resolvedAt).toLocaleString()}</div>
                 </div>
               ) : canEditProject ? (
-                <Button onClick={() => resolveAlert(selectedAlertDetail.id)}>
-                  <CheckCircle2 data-icon="inline-start" />
-                  Resolve alert
-                </Button>
+                <div className="grid gap-2">
+                  <Button onClick={() => openAlertSource(selectedAlertDetail)}>
+                    <Network data-icon="inline-start" />
+                    Resolve at source node
+                  </Button>
+                  <Button variant="outline" onClick={() => resolveAlert(selectedAlertDetail.id)}>
+                    <CheckCircle2 data-icon="inline-start" />
+                    Ignore alert
+                  </Button>
+                </div>
               ) : null}
             </div>
           ) : null}
@@ -1922,6 +1921,143 @@ function MetricTile({
   )
 }
 
+function ProjectsSection({
+  projects,
+  currentProject,
+  projectName,
+  newProjectName,
+  newProjectMode,
+  canManageOrganization,
+  actionMessage,
+  onProjectNameChange,
+  onNewProjectNameChange,
+  onNewProjectModeChange,
+  onCreateProject,
+  onRenameProject,
+  onArchiveProject,
+  onOpenProject,
+}: {
+  projects: WorkspacePayload["projects"]
+  currentProject: WorkspacePayload["project"]
+  projectName: string
+  newProjectName: string
+  newProjectMode: ProjectMode
+  canManageOrganization: boolean
+  actionMessage: string
+  onProjectNameChange: (value: string) => void
+  onNewProjectNameChange: (value: string) => void
+  onNewProjectModeChange: (value: ProjectMode) => void
+  onCreateProject: () => Promise<void>
+  onRenameProject: () => Promise<void>
+  onArchiveProject: () => Promise<void>
+  onOpenProject: (projectId: string) => void
+}) {
+  return (
+    <SectionShell>
+      <div className="mx-auto grid max-w-7xl gap-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold">Project Workspace</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Open client automation maps, review operational signal, and manage project lifecycle.</p>
+          </div>
+          <Badge variant="secondary">{projects.length} projects</Badge>
+        </div>
+
+        <div className="grid gap-5 xl:grid-cols-[0.75fr_1.25fr]">
+          <div className="grid content-start gap-5">
+            <Card>
+              <CardHeader>
+                <CardTitle>Create Project</CardTitle>
+                <CardDescription>Start a blank workspace or seed a demo control room.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3">
+                <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+                  Project name
+                  <Input value={newProjectName} onChange={(event) => onNewProjectNameChange(event.target.value)} disabled={!canManageOrganization} />
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button variant={newProjectMode === "blank" ? "default" : "outline"} onClick={() => onNewProjectModeChange("blank")} disabled={!canManageOrganization}>
+                    Blank
+                  </Button>
+                  <Button variant={newProjectMode === "demo" ? "default" : "outline"} onClick={() => onNewProjectModeChange("demo")} disabled={!canManageOrganization}>
+                    Demo
+                  </Button>
+                </div>
+                <Button onClick={onCreateProject} disabled={!canManageOrganization}>
+                  <Plus data-icon="inline-start" />
+                  Create project
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Current Project</CardTitle>
+                <CardDescription>Rename or archive the active project.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3">
+                <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+                  Project name
+                  <Input value={projectName} onChange={(event) => onProjectNameChange(event.target.value)} disabled={!canManageOrganization} />
+                </label>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Button variant="outline" onClick={onRenameProject} disabled={!canManageOrganization}>
+                    Rename
+                  </Button>
+                  <Button variant="destructive" onClick={onArchiveProject} disabled={!canManageOrganization}>
+                    <Trash2 data-icon="inline-start" />
+                    Archive
+                  </Button>
+                </div>
+                {actionMessage ? <div className="text-xs text-muted-foreground">{actionMessage}</div> : null}
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            {projects.map((project) => {
+              const isCurrent = project.id === currentProject.id
+              return (
+                <div key={project.id} className={cn("rounded-xl border bg-background p-4", isCurrent && "border-primary/60 shadow-sm")}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold">{project.name}</div>
+                      <div className="mt-1 truncate font-mono text-xs text-muted-foreground">{project.slug}</div>
+                    </div>
+                    <Badge variant={isCurrent ? "default" : "outline"}>{isCurrent ? "Open" : "Available"}</Badge>
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-lg border bg-muted/20 p-2">
+                      <div className="text-muted-foreground">Nodes</div>
+                      <div className="mt-1 text-base font-semibold">{project.nodeCount}</div>
+                    </div>
+                    <div className="rounded-lg border bg-muted/20 p-2">
+                      <div className="text-muted-foreground">Active alerts</div>
+                      <div className={cn("mt-1 text-base font-semibold", project.activeAlertCount ? toneClasses.bad : toneClasses.good)}>
+                        {project.activeAlertCount}
+                      </div>
+                    </div>
+                    <div className="col-span-2 rounded-lg border bg-muted/20 p-2">
+                      <div className="text-muted-foreground">Latest sample</div>
+                      <div className="mt-1 font-medium">{project.latestSampledAt ? formatSampledAt(project.latestSampledAt) : "No samples yet"}</div>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <Button size="sm" variant={isCurrent ? "secondary" : "default"} onClick={() => onOpenProject(project.id)} disabled={isCurrent}>
+                      {isCurrent ? "Currently open" : "Open project"}
+                    </Button>
+                    {project.updatedAt ? <span className="text-xs text-muted-foreground">Updated {formatSampledAt(project.updatedAt)}</span> : null}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    </SectionShell>
+  )
+}
+
 function ControlRoomSection({
   nodes,
   statusCounts,
@@ -1957,7 +2093,7 @@ function ControlRoomSection({
       title: alert.title,
       detail: `${alert.nodeLabel ?? "Project"} / ${alert.severity}`,
       tone: alert.severity === "CRITICAL" ? "bad" : "warn",
-      nodeId: null,
+      nodeId: alert.nodeId,
     })),
     ...projectSummary.failedRuns.slice(0, 3).map((run) => ({
       id: `run-${run.id}`,
@@ -2164,7 +2300,8 @@ function AlertsSection({
   canEditProject,
   onStatusFilterChange,
   onSeverityFilterChange,
-  onResolveAlert,
+  onOpenAlertSource,
+  onIgnoreAlert,
   onSelectAlert,
 }: {
   alerts: ProjectAlert[]
@@ -2173,7 +2310,8 @@ function AlertsSection({
   canEditProject: boolean
   onStatusFilterChange: (value: "active" | "resolved" | "all") => void
   onSeverityFilterChange: (value: string) => void
-  onResolveAlert: (alertId: string) => void
+  onOpenAlertSource: (alert: ProjectAlert) => void
+  onIgnoreAlert: (alertId: string) => void
   onSelectAlert: (alert: ProjectAlert) => void
 }) {
   return (
@@ -2211,9 +2349,14 @@ function AlertsSection({
                     <div className="mt-2 text-xs text-muted-foreground">{alert.message}</div>
                   </button>
                   {!alert.resolvedAt && canEditProject ? (
-                    <Button variant="outline" size="sm" onClick={() => onResolveAlert(alert.id)}>
-                      Resolve
-                    </Button>
+                    <div className="grid shrink-0 gap-2">
+                      <Button variant="outline" size="sm" onClick={() => onOpenAlertSource(alert)}>
+                        Resolve
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => onIgnoreAlert(alert.id)}>
+                        Ignore
+                      </Button>
+                    </div>
                   ) : (
                     <Badge variant={alert.resolvedAt ? "secondary" : "destructive"}>{alert.resolvedAt ? "Resolved" : "Active"}</Badge>
                   )}
@@ -2267,9 +2410,21 @@ function ReportsSection({
             <CardDescription>Share uptime, runs, cost, tokens, quality, incidents, and latest status without exposing secrets.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
-            <Input value={reportTitle} onChange={(event) => onReportTitleChange(event.target.value)} aria-label="Report title" disabled={!canManageOrganization} />
-            <Input value={reportClientName} onChange={(event) => onReportClientNameChange(event.target.value)} placeholder="Client name, optional" disabled={!canManageOrganization} />
-            <Input value={reportExpiryDays} onChange={(event) => onReportExpiryDaysChange(event.target.value)} placeholder="Expiry in days, optional" disabled={!canManageOrganization} />
+            <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+              Report title
+              <Input value={reportTitle} onChange={(event) => onReportTitleChange(event.target.value)} aria-label="Report title" disabled={!canManageOrganization} />
+            </label>
+            <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+              Client name
+              <Input value={reportClientName} onChange={(event) => onReportClientNameChange(event.target.value)} placeholder="Optional" disabled={!canManageOrganization} />
+            </label>
+            <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+              Expiry window
+              <Input value={reportExpiryDays} onChange={(event) => onReportExpiryDaysChange(event.target.value)} placeholder="Days, optional" disabled={!canManageOrganization} />
+            </label>
+            <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+              Report links never expose API secrets, ingestion tokens, or private credentials.
+            </div>
             <div className="grid gap-2 sm:grid-cols-2">
               <Button onClick={onCreateReportShare} disabled={!canManageOrganization}>
                 <Share2 data-icon="inline-start" />
@@ -2326,53 +2481,115 @@ function ReportsSection({
 }
 
 function IntegrationsSection({
-  selectedNode,
+  nodes,
+  selectedNodeId,
+  alertRules,
   canEditProject,
+  onSelectNode,
   onOpenMap,
+  onOpenSettings,
+  onOpenRuns,
 }: {
-  selectedNode: EndpointNodeData | undefined
+  nodes: EndpointNodeData[]
+  selectedNodeId: string
+  alertRules: WorkspacePayload["alertRules"]
   canEditProject: boolean
+  onSelectNode: (nodeId: string) => void
   onOpenMap: () => void
+  onOpenSettings: () => void
+  onOpenRuns: () => void
 }) {
   const [selectedTemplateId, setSelectedTemplateId] = useState<IntegrationTemplate["id"]>("dify")
   const [message, setMessage] = useState("")
+  const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? nodes[0]
   const selectedTemplate = integrationTemplates.find((template) => template.id === selectedTemplateId) ?? integrationTemplates[0]
   const snippet = selectedNode ? buildIntegrationSnippet(selectedTemplate, selectedNode.id) : "Select a node on the Automation Map first."
+  const envBlock = selectedTemplate.setupKind === "telemetry"
+    ? `ARGUSGRID_INGESTION_TOKEN=<ingestion-token>\nARGUSGRID_NODE_ID=${selectedNode?.id ?? "<node-id>"}\nARGUSGRID_INGEST_URL=https://argusgrid.hrudainirmal.in/api/ingest/runs`
+    : `ARGUSGRID_ENDPOINT_URL=https://api.example.com/automation/health\nARGUSGRID_JSONPATH=${selectedTemplate.preset?.jsonPath ?? "$.value"}\nARGUSGRID_THRESHOLD=${selectedTemplate.preset?.threshold ?? "> 90"}`
+  const workflowTemplates = integrationTemplates.filter((template) => template.setupKind === "telemetry")
+  const metricTemplates = integrationTemplates.filter((template) => template.setupKind === "metric")
+  const readiness = selectedNode
+    ? [
+        { label: "API configured", ready: selectedNode.parameters.some((parameter) => parameter.id) || !selectedNode.apiUrl.includes("example.com") },
+        { label: "Mappings saved", ready: selectedNode.parameters.some((parameter) => parameter.id) },
+        { label: "Alert rule saved", ready: alertRules.some((rule) => rule.nodeId === selectedNode.id) },
+        { label: "Recent run received", ready: Boolean(selectedNode.hasPersistedRuns) },
+        { label: "Latest sample received", ready: Boolean(selectedNode.latestSampledAt) },
+      ]
+    : []
 
   const copySnippet = async () => {
     await navigator.clipboard.writeText(snippet)
     setMessage(`${selectedTemplate.name} snippet copied.`)
   }
 
+  const copyEnvBlock = async () => {
+    await navigator.clipboard.writeText(envBlock)
+    setMessage(`${selectedTemplate.name} environment block copied.`)
+  }
+
+  const TemplateButton = ({ template }: { template: IntegrationTemplate }) => (
+    <button
+      key={template.id}
+      type="button"
+      className={cn("rounded-lg border bg-background p-4 text-left text-sm transition-colors hover:bg-muted/40", selectedTemplate.id === template.id && "border-primary/60 shadow-sm")}
+      onClick={() => setSelectedTemplateId(template.id)}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-medium">{template.name}</span>
+        <Badge variant={template.setupKind === "metric" ? "secondary" : "outline"}>{template.setupKind === "metric" ? "Metric polling" : "Workflow telemetry"}</Badge>
+        <Badge variant="outline">{template.difficulty}</Badge>
+      </div>
+      <div className="mt-2 text-xs leading-5 text-muted-foreground">{template.description}</div>
+    </button>
+  )
+
   return (
     <SectionShell>
-      <div className="mx-auto grid max-w-7xl gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+      <div className="mx-auto grid max-w-7xl gap-5 xl:grid-cols-[0.9fr_1.1fr]">
         <div className="grid content-start gap-3">
           <div>
             <h2 className="text-xl font-semibold">Integration Templates</h2>
             <p className="mt-1 text-sm text-muted-foreground">Focused setup accelerators for the core private-beta sources.</p>
           </div>
-          {integrationTemplates.map((template) => (
-            <button
-              key={template.id}
-              className={cn("rounded-lg border bg-background p-4 text-left text-sm transition-colors hover:bg-muted/40", selectedTemplate.id === template.id && "border-primary/60")}
-              onClick={() => setSelectedTemplateId(template.id)}
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-medium">{template.name}</span>
-                <Badge variant={template.setupKind === "metric" ? "secondary" : "outline"}>{template.setupKind === "metric" ? "Metric samples" : "Workflow runs"}</Badge>
-                <Badge variant="outline">{template.difficulty}</Badge>
-              </div>
-              <div className="mt-2 text-xs leading-5 text-muted-foreground">{template.description}</div>
-            </button>
-          ))}
+          <Card>
+            <CardHeader>
+              <CardTitle>Target Node</CardTitle>
+              <CardDescription>Choose the node that should receive runs or metric samples.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3">
+              <select className="h-10 rounded-lg border bg-background px-2 text-sm" value={selectedNode?.id ?? ""} onChange={(event) => onSelectNode(event.target.value)}>
+                {nodes.map((node) => (
+                  <option key={node.id} value={node.id}>{node.label}</option>
+                ))}
+              </select>
+              {selectedNode ? (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {readiness.map((item) => (
+                    <div key={item.label} className="flex items-center justify-between gap-2 rounded-lg border p-2 text-xs">
+                      <span>{item.label}</span>
+                      <Badge variant={item.ready ? "secondary" : "outline"}>{item.ready ? "Ready" : "Missing"}</Badge>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-2">
+            <div className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Workflow telemetry</div>
+            {workflowTemplates.map((template) => <TemplateButton key={template.id} template={template} />)}
+          </div>
+          <div className="grid gap-2">
+            <div className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Metric polling</div>
+            {metricTemplates.map((template) => <TemplateButton key={template.id} template={template} />)}
+          </div>
         </div>
         <Card>
           <CardHeader>
             <CardTitle>{selectedTemplate.name}</CardTitle>
-            <CardDescription>
-              {selectedNode ? `Prepared for ${selectedNode.label}. Tokens remain placeholders.` : "Select a graph node to generate a node-specific snippet."}
-            </CardDescription>
+            <CardDescription>{selectedNode ? `Prepared for ${selectedNode.label}. Tokens remain placeholders.` : "Select a graph node to generate a node-specific snippet."}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
             <div className="flex flex-wrap gap-1">
@@ -2387,11 +2604,65 @@ function IntegrationsSection({
                 <div key={step}>{index + 1}. {step}</div>
               ))}
             </div>
+            <div className="grid gap-2 rounded-lg border bg-background p-3 text-xs">
+              <div className="font-medium">Setup checklist</div>
+              <div className="grid gap-1 text-muted-foreground">
+                <div>1. Select or create the target node.</div>
+                <div>2. Create an ingestion token in Settings if this template sends workflow telemetry.</div>
+                <div>3. Copy the environment block and snippet.</div>
+                <div>4. Send a test run or save the metric API setup.</div>
+                <div>5. Refresh Runs or Metrics to confirm data arrived.</div>
+              </div>
+            </div>
+            <div className="rounded-lg border bg-background p-3 text-xs">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="font-medium">Environment block</span>
+                <Button variant="outline" size="sm" onClick={copyEnvBlock} disabled={!selectedNode}>
+                  <Copy data-icon="inline-start" />
+                  Copy env
+                </Button>
+              </div>
+              <pre className="max-h-32 overflow-auto rounded-md bg-muted p-3 font-mono text-[11px] text-muted-foreground">{envBlock}</pre>
+            </div>
+            {selectedTemplate.preset ? (
+              <div className="rounded-lg border bg-background p-3 text-xs">
+                <div className="font-medium">Metric polling preset</div>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <div>
+                    <div className="text-muted-foreground">Endpoint URL</div>
+                    <div className="truncate font-mono">{selectedTemplate.preset.apiUrl}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">JSONPath</div>
+                    <div className="font-mono">{selectedTemplate.preset.jsonPath}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Threshold</div>
+                    <div className="font-mono">{selectedTemplate.preset.ruleExpression}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Visualization</div>
+                    <div>{selectedTemplate.preset.visualization}</div>
+                  </div>
+                </div>
+                <div className="mt-3 text-muted-foreground">
+                  Open the selected node on the map, then use Setup / Templates to apply and save this preset.
+                </div>
+              </div>
+            ) : null}
             <pre className="max-h-[48vh] overflow-auto rounded-md bg-muted p-3 font-mono text-[11px] text-muted-foreground">{snippet}</pre>
             <div className="flex flex-wrap items-center gap-2">
               <Button onClick={copySnippet} disabled={!selectedNode}>
                 <Copy data-icon="inline-start" />
                 Copy snippet
+              </Button>
+              <Button variant="outline" onClick={onOpenSettings}>
+                <KeyRound data-icon="inline-start" />
+                Tokens
+              </Button>
+              <Button variant="outline" onClick={onOpenRuns}>
+                <Activity data-icon="inline-start" />
+                Runs
               </Button>
               <Button variant="outline" onClick={onOpenMap}>
                 Open map

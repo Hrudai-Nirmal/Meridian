@@ -112,6 +112,10 @@ export type WorkspacePayload = {
     id: string
     name: string
     slug: string
+    nodeCount: number
+    activeAlertCount: number
+    latestSampledAt: string | null
+    updatedAt: string | null
   }[]
   project: {
     id: string
@@ -137,6 +141,7 @@ export type WorkspacePayload = {
     severity: string
     createdAt: string
     resolvedAt: string | null
+    nodeId: string | null
     nodeLabel: string | null
     source: string
     firstSeen: string
@@ -438,7 +443,7 @@ function getRuleMappingLabel(rule: DbProject["alertRules"][number], nodes: Endpo
 function projectToWorkspace(
   organization: { id: string; name: string; slug: string; onboardingCompleted: boolean },
   currentUserRole: MembershipRole,
-  projects: { id: string; name: string; slug: string }[],
+  projects: WorkspacePayload["projects"],
   project: DbProject,
   members: WorkspacePayload["members"],
   invitations: WorkspacePayload["invitations"],
@@ -469,6 +474,7 @@ function projectToWorkspace(
         severity: event.severity,
         createdAt: event.createdAt.toISOString(),
         resolvedAt: event.resolvedAt?.toISOString() ?? null,
+        nodeId: event.nodeId,
         nodeLabel: event.node?.label ?? null,
         source: event.ruleId ? "Threshold rule" : event.nodeId ? "Endpoint polling" : "Project",
         firstSeen: event.createdAt.toISOString(),
@@ -695,7 +701,34 @@ export async function ensureWorkspaceForUser(user: { id: string; name?: string |
           projects: {
             where: { archivedAt: null },
             orderBy: { createdAt: "asc" },
-            select: { id: true, name: true, slug: true },
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              updatedAt: true,
+              nodes: {
+                select: {
+                  id: true,
+                  samples: {
+                    orderBy: { sampledAt: "desc" },
+                    take: 1,
+                    select: { sampledAt: true },
+                  },
+                  alertEvents: {
+                    where: { resolvedAt: null },
+                    select: { id: true },
+                  },
+                },
+              },
+              alertRules: {
+                select: {
+                  events: {
+                    where: { resolvedAt: null },
+                    select: { id: true },
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -752,7 +785,34 @@ export async function getWorkspaceForUser(userId: string, projectId?: string) {
           projects: {
             where: { archivedAt: null },
             orderBy: { createdAt: "asc" },
-            select: { id: true, name: true, slug: true },
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              updatedAt: true,
+              nodes: {
+                select: {
+                  id: true,
+                  samples: {
+                    orderBy: { sampledAt: "desc" },
+                    take: 1,
+                    select: { sampledAt: true },
+                  },
+                  alertEvents: {
+                    where: { resolvedAt: null },
+                    select: { id: true },
+                  },
+                },
+              },
+              alertRules: {
+                select: {
+                  events: {
+                    where: { resolvedAt: null },
+                    select: { id: true },
+                  },
+                },
+              },
+            },
           },
           memberships: {
             include: {
@@ -929,11 +989,31 @@ export async function getWorkspaceForUser(userId: string, projectId?: string) {
     enabled: emailPreference?.enabled ?? membership.role !== "VIEWER",
     severity: emailPreference?.severity ?? "WARNING",
   }
+  const projectCards = membership.organization.projects.map((workspaceProject) => {
+    const latestSampledAt = workspaceProject.nodes
+      .flatMap((node) => node.samples.map((sample) => sample.sampledAt.getTime()))
+      .sort((a, b) => b - a)[0]
+    const activeAlertIds = new Set(
+      workspaceProject.nodes
+        .flatMap((node) => node.alertEvents.map((event) => event.id))
+        .concat(workspaceProject.alertRules.flatMap((rule) => rule.events.map((event) => event.id)))
+    )
+
+    return {
+      id: workspaceProject.id,
+      name: workspaceProject.name,
+      slug: workspaceProject.slug,
+      nodeCount: workspaceProject.nodes.length,
+      activeAlertCount: activeAlertIds.size,
+      latestSampledAt: latestSampledAt ? new Date(latestSampledAt).toISOString() : null,
+      updatedAt: workspaceProject.updatedAt?.toISOString() ?? null,
+    }
+  })
 
   return projectToWorkspace(
     membership.organization,
     membership.role,
-    membership.organization.projects,
+    projectCards,
     project,
     members,
     invitations,
