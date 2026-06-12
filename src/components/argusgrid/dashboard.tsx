@@ -247,6 +247,7 @@ type ProjectMode = "blank" | "demo"
 type ProjectAlert = WorkspacePayload["alerts"][number]
 type ProjectAlertRule = WorkspacePayload["alertRules"][number]
 type AlertTimelineFilter = "24h" | "7d" | "30d" | "all"
+type LiveConnectionState = "connecting" | "live" | "reconnecting" | "manual"
 type DashboardSection = "control-room" | "projects" | "map" | "runs" | "alerts" | "reports" | "integrations" | "team" | "settings"
 type IngestionTokenRecord = {
   id: string
@@ -274,6 +275,14 @@ type ProjectRunRecord = EndpointNodeData["runs"][number] & {
 type ProjectMetricRecord = NonNullable<EndpointNodeData["realMetrics"]>[number] & {
   nodeId: string
   nodeLabel: string
+}
+
+type ProjectLiveEvent = {
+  type: "connected" | "heartbeat" | "refresh"
+  projectId: string
+  cursor: string
+  changed: string[]
+  checkedAt: string
 }
 
 const dashboardSections: {
@@ -360,6 +369,19 @@ function getInitialTheme(): "light" | "dark" {
   return storedTheme === "light" || storedTheme === "dark" ? storedTheme : "dark"
 }
 
+function getInitialLiveConnectionState(): LiveConnectionState {
+  if (typeof window === "undefined") return "connecting"
+  return typeof window.EventSource === "undefined" ? "manual" : "connecting"
+}
+
+function parseProjectLiveEvent(event: MessageEvent<string>) {
+  try {
+    return JSON.parse(event.data) as ProjectLiveEvent
+  } catch {
+    return null
+  }
+}
+
 function parseCurrencyValue(value?: string | null) {
   if (!value) return 0
   const parsed = Number(value.replace(/[^0-9.-]/g, ""))
@@ -402,6 +424,9 @@ export function ArgusGridDashboard({
   const [latestEmail, setLatestEmail] = useState(initialWorkspace.diagnostics.latestEmail)
   const [pollMessage, setPollMessage] = useState("")
   const [isRefreshingProject, setIsRefreshingProject] = useState(false)
+  const [liveConnectionState, setLiveConnectionState] = useState<LiveConnectionState>(getInitialLiveConnectionState)
+  const [liveCheckedAt, setLiveCheckedAt] = useState<string | null>(null)
+  const [liveChangedAreas, setLiveChangedAreas] = useState<string[]>([])
   const [iconMessage, setIconMessage] = useState("")
   const [ingestionTokens, setIngestionTokens] = useState<IngestionTokenRecord[]>([])
   const [ingestionTokenName, setIngestionTokenName] = useState("Workflow telemetry token")
@@ -416,6 +441,9 @@ export function ArgusGridDashboard({
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialWorkspace.edges.map(toFlowEdge))
   const didMountRef = useRef(false)
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const liveReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const liveEventSourceRef = useRef<EventSource | null>(null)
+  const liveRefreshInFlightRef = useRef(false)
   const iconInputRef = useRef<HTMLInputElement | null>(null)
   const canManageOrganization = initialWorkspace.currentUserRole === "OWNER" || initialWorkspace.currentUserRole === "ADMIN"
   const canEditProject = canManageOrganization || initialWorkspace.currentUserRole === "MEMBER"
@@ -510,15 +538,17 @@ export function ArgusGridDashboard({
     setAlertTimelineReferenceTime(new Date().getTime())
   }
 
-  const refreshProjectData = useCallback(async () => {
-    setIsRefreshingProject(true)
-    setActionMessage("Refreshing project telemetry...")
+  const refreshProjectData = useCallback(async (options: { silent?: boolean } = {}) => {
+    if (!options.silent) {
+      setIsRefreshingProject(true)
+      setActionMessage("Refreshing project telemetry...")
+    }
     try {
       const response = await fetch(`/api/projects/${initialWorkspace.project.id}`)
       const payload = (await response.json()) as WorkspacePayload & { error?: string }
 
       if (!response.ok) {
-        setActionMessage(payload.error ?? "Could not refresh project telemetry.")
+        if (!options.silent) setActionMessage(payload.error ?? "Could not refresh project telemetry.")
         return
       }
 
@@ -535,13 +565,71 @@ export function ArgusGridDashboard({
       )
       setAlerts(payload.alerts)
       setAlertRules(payload.alertRules)
-      setActionMessage("Project telemetry refreshed.")
+      setLatestPoll(payload.diagnostics.latestPoll)
+      setLatestEmail(payload.diagnostics.latestEmail)
+      if (!options.silent) setActionMessage("Project telemetry refreshed.")
     } catch {
-      setActionMessage("Could not refresh project telemetry.")
+      if (!options.silent) setActionMessage("Could not refresh project telemetry.")
     } finally {
-      setIsRefreshingProject(false)
+      if (!options.silent) setIsRefreshingProject(false)
     }
   }, [initialWorkspace.project.id, setNodes])
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.EventSource === "undefined") {
+      return
+    }
+
+    let closed = false
+
+    const closeCurrentSource = () => {
+      liveEventSourceRef.current?.close()
+      liveEventSourceRef.current = null
+    }
+
+    const scheduleReconnect = () => {
+      if (closed) return
+      setLiveConnectionState("reconnecting")
+      closeCurrentSource()
+      if (liveReconnectTimerRef.current) clearTimeout(liveReconnectTimerRef.current)
+      liveReconnectTimerRef.current = setTimeout(connect, 2_000)
+    }
+
+    const handleLiveEvent = (event: MessageEvent<string>, shouldRefresh: boolean) => {
+      const payload = parseProjectLiveEvent(event)
+      if (!payload || payload.projectId !== initialWorkspace.project.id) return
+      setLiveConnectionState("live")
+      setLiveCheckedAt(payload.checkedAt)
+      if (payload.changed.length) setLiveChangedAreas(payload.changed)
+      if (!shouldRefresh || liveRefreshInFlightRef.current) return
+
+      liveRefreshInFlightRef.current = true
+      refreshProjectData({ silent: true })
+        .catch(() => setLiveConnectionState("reconnecting"))
+        .finally(() => {
+          liveRefreshInFlightRef.current = false
+        })
+    }
+
+    function connect() {
+      if (closed) return
+      setLiveConnectionState((state) => (state === "live" ? "reconnecting" : "connecting"))
+      const source = new EventSource(`/api/projects/${initialWorkspace.project.id}/events`)
+      liveEventSourceRef.current = source
+      source.addEventListener("connected", (event) => handleLiveEvent(event as MessageEvent<string>, false))
+      source.addEventListener("heartbeat", (event) => handleLiveEvent(event as MessageEvent<string>, false))
+      source.addEventListener("refresh", (event) => handleLiveEvent(event as MessageEvent<string>, true))
+      source.onerror = scheduleReconnect
+    }
+
+    connect()
+
+    return () => {
+      closed = true
+      if (liveReconnectTimerRef.current) clearTimeout(liveReconnectTimerRef.current)
+      closeCurrentSource()
+    }
+  }, [initialWorkspace.project.id, refreshProjectData])
 
   const persistGraph = useCallback(async () => {
     setSaveState("saving")
@@ -1524,6 +1612,27 @@ export function ArgusGridDashboard({
               </p>
             </div>
             <Badge variant="secondary">AI automation control room</Badge>
+            <Badge
+              variant={liveConnectionState === "live" ? "secondary" : liveConnectionState === "manual" ? "outline" : "destructive"}
+              className="gap-1.5"
+              title={
+                liveCheckedAt
+                  ? `Last live check ${new Date(liveCheckedAt).toLocaleTimeString()}${liveChangedAreas.length ? ` / ${liveChangedAreas.join(", ")}` : ""}`
+                  : "Connecting to project live updates"
+              }
+            >
+              <span
+                className={cn(
+                  "size-2 rounded-full",
+                  liveConnectionState === "live"
+                    ? "bg-emerald-500"
+                    : liveConnectionState === "manual"
+                      ? "bg-zinc-400"
+                      : "bg-amber-500"
+                )}
+              />
+              {liveConnectionState === "live" ? "Live" : liveConnectionState === "manual" ? "Manual" : "Reconnecting"}
+            </Badge>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative hidden lg:block">

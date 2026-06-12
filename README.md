@@ -56,6 +56,8 @@ Owners/admins can also run a project poll manually from Deployment diagnostics f
 
 Owners/admins can create secure client-facing report links from the dashboard. Report links render a read-only project summary with uptime, run volume, success rate, cost, token usage, active alerts, quality score, node summaries, and recent incidents. Links can expire and can be revoked.
 
+Authenticated dashboards connect to `/api/projects/[projectId]/events` for lightweight live updates. The SSE stream only sends safe project-scoped metadata such as cursors and changed areas, then the client refreshes the existing project payload. If the stream disconnects, the dashboard shows a reconnecting/manual state and the existing refresh controls remain available.
+
 Owners/admins can create project-scoped workflow telemetry tokens from Deployment diagnostics. The raw token is shown once, then only its prefix/hash metadata is retained. External automations can post run telemetry with:
 
 ```bash
@@ -120,6 +122,8 @@ Manual post-deploy checklist:
 - Owner/admin manual poll run updates latest poll diagnostics without exposing `CRON_SECRET`.
 - Owner/admin workflow telemetry token creation shows the raw token once, token refresh lists only prefixes, revoke blocks future ingestion, and `/api/ingest/runs` rejects missing/wrong tokens.
 - Posting valid workflow run telemetry updates the selected node's Runs tab after refresh and records step details without sending alert email.
+- While signed in, the dashboard live indicator reaches `Live`; posting valid workflow run telemetry or running a manual poll updates Runs, node health, alerts, metrics, and latest poll status without a full page reload.
+- If live updates disconnect, the dashboard shows a reconnecting/manual state and manual refresh still works.
 - Basic and Advanced integration templates render in the API tab; custom REST metric applies fields without saving, and telemetry snippets include the selected node id but no real token.
 - Client report links can be created, opened in a signed-out browser, copied, and revoked without exposing secrets.
 - Project maps can be exported as PNGs for stakeholder reports.
@@ -145,4 +149,4 @@ npm run dev
 
 On first GitHub login, ArgusGrid creates a personal organization and owner membership, then shows onboarding to confirm organization/project names and choose demo or blank setup.
 
-The app now includes project management, team invitation acceptance, member management, encrypted API credential storage, guided metric mapping tests, focused basic/advanced integration templates, compact alert-rule management, cron/manual polling, workflow run telemetry ingestion with hashed project tokens, secure client report links, PNG map export, SDK previews, a deterministic demo metric source, real metric cards and trend charts from persisted samples/rollups, poll execution logs, readiness diagnostics, raw sample retention cleanup, in-app alerts, Resend email delivery logging/test flow/preferences, and small custom node icon uploads.
+The app now includes project management, team invitation acceptance, member management, encrypted API credential storage, guided metric mapping tests, focused basic/advanced integration templates, compact alert-rule management, cron/manual polling, SSE-first live update signals, workflow run telemetry ingestion with hashed project tokens, secure client report links, PNG map export, SDK previews, a deterministic demo metric source, real metric cards and trend charts from persisted samples/rollups, poll execution logs, readiness diagnostics, raw sample retention cleanup, in-app alerts, Resend email delivery logging/test flow/preferences, and small custom node icon uploads.

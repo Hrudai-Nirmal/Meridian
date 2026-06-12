@@ -52,6 +52,9 @@ try {
   const manualPollResponse = await publicPage.request.post(`${baseUrl}/api/projects/not-a-real-project/poll/run`)
   assert(manualPollResponse.status() === 401, "Manual poll route did not require authentication.")
 
+  const liveEventsResponse = await publicPage.request.get(`${baseUrl}/api/projects/not-a-real-project/events`)
+  assert(liveEventsResponse.status() === 401, "Project live events route did not require authentication.")
+
   const ingestResponse = await publicPage.request.post(`${baseUrl}/api/ingest/runs`, {
     data: {
       nodeId: "not-a-real-node",
