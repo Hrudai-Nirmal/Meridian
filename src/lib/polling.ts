@@ -2,6 +2,7 @@ import "server-only"
 
 import { JSONPath } from "jsonpath-plus"
 
+import { normalizeAlertRuleMetadata, type AnomalyDirection } from "@/lib/alert-rule-metadata"
 import { decryptSecret } from "@/lib/crypto"
 import { notifyNewAlert } from "@/lib/notifications"
 import { getPrisma } from "@/lib/prisma"
@@ -68,10 +69,92 @@ function thresholdExceeded(value: number, threshold?: unknown) {
   }
 }
 
+function thresholdExpression(threshold?: unknown) {
+  if (typeof threshold === "string") return threshold.trim()
+  if (threshold && typeof threshold === "object" && "expression" in threshold) {
+    return String((threshold as { expression?: unknown }).expression ?? "").trim()
+  }
+  return ""
+}
+
+function average(values: number[]) {
+  return values.reduce((sum, value) => sum + value, 0) / values.length
+}
+
+function standardDeviation(values: number[], mean: number) {
+  const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length
+  return Math.sqrt(variance)
+}
+
+function anomalyExceeded(input: {
+  value: number
+  mean: number
+  stdDev: number
+  direction: AnomalyDirection
+  sigma: number
+}) {
+  const highLimit = input.mean + input.sigma * input.stdDev
+  const lowLimit = input.mean - input.sigma * input.stdDev
+  const highBreach = input.value > highLimit
+  const lowBreach = input.value < lowLimit
+
+  return {
+    breached:
+      input.direction === "both" ? highBreach || lowBreach : input.direction === "low" ? lowBreach : highBreach,
+    highLimit,
+    lowLimit,
+    breachedDirection: highBreach ? "high" : lowBreach ? "low" : null,
+  }
+}
+
+function formatNumber(value: number) {
+  return new Intl.NumberFormat("en", { maximumFractionDigits: Math.abs(value) >= 100 ? 0 : 2 }).format(value)
+}
+
 function bucketHour(date: Date) {
   const bucket = new Date(date)
   bucket.setMinutes(0, 0, 0)
   return bucket
+}
+
+async function createAlertIfNeeded(
+  prisma: ReturnType<typeof getPrisma>,
+  input: {
+    nodeId: string
+    title: string
+    message: string
+    severity: "INFO" | "WARNING" | "CRITICAL"
+    ruleId?: string | null
+  }
+) {
+  const existing = await prisma.alertEvent.findFirst({
+    where: {
+      nodeId: input.nodeId,
+      title: input.title,
+      resolvedAt: null,
+    },
+    select: { id: true },
+  })
+
+  if (existing) return false
+
+  const alertEvent = await prisma.alertEvent.create({
+    data: {
+      title: input.title,
+      message: input.message,
+      severity: input.severity,
+      nodeId: input.nodeId,
+      ruleId: input.ruleId,
+    },
+  })
+  await notifyNewAlert(prisma, {
+    alertEventId: alertEvent.id,
+    nodeId: input.nodeId,
+    title: input.title,
+    message: input.message,
+    severity: input.severity,
+  })
+  return true
 }
 
 export async function runProjectPolling(options: { projectId?: string } = {}): Promise<PollingResult> {
@@ -158,6 +241,7 @@ export async function runProjectPolling(options: { projectId?: string } = {}): P
 
       const samples = []
       let degraded = !response.ok
+      const breachReasons: string[] = []
 
       for (const mapping of node.mappings) {
         const extracted = JSONPath({ path: mapping.jsonPath, json, wrap: false })
@@ -172,42 +256,73 @@ export async function runProjectPolling(options: { projectId?: string } = {}): P
           mappingId: mapping.id,
         })
 
-        const rule = node.project.alertRules.find(
+        const matchingRules = node.project.alertRules.filter(
           (candidate) => candidate.nodeId === node.id && (candidate.mappingId === mapping.id || !candidate.mappingId)
         )
-        const threshold = rule?.expression ?? mapping.threshold
 
-        if (thresholdExceeded(value, threshold)) {
+        if (matchingRules.length) {
+          for (const rule of matchingRules) {
+            const metadata = normalizeAlertRuleMetadata(rule.metadata)
+
+            if (metadata.mode === "anomaly" && metadata.anomaly) {
+              const cutoff = new Date(checkedAt.getTime() - metadata.anomaly.windowDays * 24 * 60 * 60 * 1000)
+              const priorSamples = await prisma.metricSample.findMany({
+                where: {
+                  mappingId: mapping.id,
+                  sampledAt: {
+                    gte: cutoff,
+                    lt: checkedAt,
+                  },
+                },
+                orderBy: { sampledAt: "desc" },
+                take: 1000,
+                select: { value: true },
+              })
+
+              if (priorSamples.length < metadata.anomaly.minSamples) continue
+
+              const values = priorSamples.map((sample) => sample.value)
+              const mean = average(values)
+              const stdDev = standardDeviation(values, mean)
+              const anomaly = anomalyExceeded({
+                value,
+                mean,
+                stdDev,
+                direction: metadata.anomaly.direction,
+                sigma: metadata.anomaly.sigma,
+              })
+
+              if (!anomaly.breached) continue
+
+              degraded = true
+              const direction = anomaly.breachedDirection ?? metadata.anomaly.direction
+              const unit = mapping.unit ? ` ${mapping.unit}` : ""
+              const title = rule.name
+              const message = `${mapping.label} anomaly: ${formatNumber(value)}${unit} is a ${direction} outlier vs ${metadata.anomaly.windowDays}d baseline mean ${formatNumber(mean)}${unit}, std dev ${formatNumber(stdDev)}${unit}, ${metadata.anomaly.sigma}σ.`
+              breachReasons.push(`Anomaly breach: ${mapping.label} ${direction} outlier`)
+              if (await createAlertIfNeeded(prisma, { nodeId: node.id, title, message, severity: rule.severity, ruleId: rule.id })) {
+                evaluatedAlerts += 1
+              }
+              continue
+            }
+
+            if (thresholdExceeded(value, rule.expression)) {
+              degraded = true
+              const title = rule.name
+              const message = `${mapping.label} is ${value}${mapping.unit ? ` ${mapping.unit}` : ""} (${thresholdExpression(rule.expression)}).`
+              breachReasons.push(`Threshold breach: ${mapping.label} ${thresholdExpression(rule.expression)}`)
+              if (await createAlertIfNeeded(prisma, { nodeId: node.id, title, message, severity: rule.severity, ruleId: rule.id })) {
+                evaluatedAlerts += 1
+              }
+            }
+          }
+        } else if (thresholdExceeded(value, mapping.threshold)) {
           degraded = true
-          const title = rule?.name ?? `${mapping.label} threshold crossed`
-          const severity = rule?.severity ?? "WARNING"
-          const existing = await prisma.alertEvent.findFirst({
-            where: {
-              nodeId: node.id,
-              title,
-              resolvedAt: null,
-            },
-            select: { id: true },
-          })
-
-          if (!existing) {
+          const title = `${mapping.label} threshold crossed`
+          const message = `${mapping.label} is ${value}${mapping.unit ? ` ${mapping.unit}` : ""} (${thresholdExpression(mapping.threshold)}).`
+          breachReasons.push(`Threshold breach: ${mapping.label} ${thresholdExpression(mapping.threshold)}`)
+          if (await createAlertIfNeeded(prisma, { nodeId: node.id, title, message, severity: "WARNING", ruleId: null })) {
             evaluatedAlerts += 1
-            const alertEvent = await prisma.alertEvent.create({
-              data: {
-                title,
-                message: `${mapping.label} is ${value}${mapping.unit ? ` ${mapping.unit}` : ""}`,
-                severity,
-                nodeId: node.id,
-                ruleId: rule?.id,
-              },
-            })
-            await notifyNewAlert(prisma, {
-              alertEventId: alertEvent.id,
-              nodeId: node.id,
-              title,
-              message: `${mapping.label} is ${value}${mapping.unit ? ` ${mapping.unit}` : ""}`,
-              severity,
-            })
           }
         }
       }
@@ -221,7 +336,11 @@ export async function runProjectPolling(options: { projectId?: string } = {}): P
         where: { id: node.id },
         data: {
           status: response.ok ? (degraded ? "DEGRADED" : "ACTIVE") : "DOWN",
-          statusReason: response.ok ? `Last poll completed at ${checkedAt.toISOString()}.` : `HTTP ${response.status} from endpoint.`,
+          statusReason: response.ok
+            ? breachReasons.length
+              ? `${breachReasons.slice(0, 2).join(" | ")} at ${checkedAt.toISOString()}.`
+              : `Last poll completed at ${checkedAt.toISOString()}.`
+            : `HTTP ${response.status} from endpoint.`,
         },
       })
 
@@ -284,22 +403,16 @@ export async function runProjectPolling(options: { projectId?: string } = {}): P
       })
 
       if (!existing) {
-        evaluatedAlerts += 1
-        const alertEvent = await prisma.alertEvent.create({
-          data: {
+        if (
+          await createAlertIfNeeded(prisma, {
+            nodeId: node.id,
             title: "Endpoint polling failed",
             message,
             severity: "CRITICAL",
-            nodeId: node.id,
-          },
-        })
-        await notifyNewAlert(prisma, {
-          alertEventId: alertEvent.id,
-          nodeId: node.id,
-          title: "Endpoint polling failed",
-          message,
-          severity: "CRITICAL",
-        })
+          })
+        ) {
+          evaluatedAlerts += 1
+        }
       }
     } finally {
       clearTimeout(timeout)

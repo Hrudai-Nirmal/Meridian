@@ -12,6 +12,7 @@ import {
   type IconKind,
   type NodeStatus,
 } from "@/lib/argusgrid-data"
+import { normalizeAlertRuleMetadata, type AlertRuleMode, type AnomalyDirection } from "@/lib/alert-rule-metadata"
 import { getReadinessStatus, type ReadinessStatus } from "@/lib/health"
 import { getPrisma } from "@/lib/prisma"
 
@@ -162,6 +163,11 @@ export type WorkspacePayload = {
     mappingId: string | null
     nodeLabel: string | null
     mappingLabel: string | null
+    mode: AlertRuleMode
+    anomalyDirection: AnomalyDirection | null
+    anomalySigma: number | null
+    anomalyWindowDays: number | null
+    anomalyMinSamples: number | null
     createdAt: string
     updatedAt: string
   }[]
@@ -434,10 +440,7 @@ function getRuleMappingLabel(rule: DbProject["alertRules"][number], nodes: Endpo
   const node = nodes.find((candidate) => candidate.id === rule.nodeId)
   const parameter = node?.parameters.find((candidate) => candidate.id === rule.mappingId)
   if (parameter) return parameter.label
-  if (rule.metadata && typeof rule.metadata === "object" && "mappingLabel" in rule.metadata) {
-    return String((rule.metadata as { mappingLabel?: unknown }).mappingLabel ?? "")
-  }
-  return null
+  return normalizeAlertRuleMetadata(rule.metadata).mappingLabel
 }
 
 function projectToWorkspace(
@@ -466,6 +469,8 @@ function projectToWorkspace(
     .slice(0, 100)
     .map((event) => {
       const latestDelivery = event.deliveries[0]
+      const rule = event.ruleId ? project.alertRules.find((candidate) => candidate.id === event.ruleId) : null
+      const ruleMode = rule ? normalizeAlertRuleMetadata(rule.metadata).mode : null
 
       return {
         id: event.id,
@@ -476,7 +481,7 @@ function projectToWorkspace(
         resolvedAt: event.resolvedAt?.toISOString() ?? null,
         nodeId: event.nodeId,
         nodeLabel: event.node?.label ?? null,
-        source: event.ruleId ? "Threshold rule" : event.nodeId ? "Endpoint polling" : "Project",
+        source: ruleMode === "anomaly" ? "Anomaly baseline" : event.ruleId ? "Threshold rule" : event.nodeId ? "Endpoint polling" : "Project",
         firstSeen: event.createdAt.toISOString(),
         lastSeen: event.createdAt.toISOString(),
         deliveryStatus: latestDelivery?.status ?? null,
@@ -490,6 +495,7 @@ function projectToWorkspace(
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
     .map((rule) => {
       const node = nodes.find((candidate) => candidate.id === rule.nodeId)
+      const metadata = normalizeAlertRuleMetadata(rule.metadata)
 
       return {
         id: rule.id,
@@ -501,6 +507,11 @@ function projectToWorkspace(
         mappingId: rule.mappingId,
         nodeLabel: node?.label ?? null,
         mappingLabel: getRuleMappingLabel(rule, nodes),
+        mode: metadata.mode,
+        anomalyDirection: metadata.anomaly?.direction ?? null,
+        anomalySigma: metadata.anomaly?.sigma ?? null,
+        anomalyWindowDays: metadata.anomaly?.windowDays ?? null,
+        anomalyMinSamples: metadata.anomaly?.minSamples ?? null,
         createdAt: rule.createdAt.toISOString(),
         updatedAt: rule.updatedAt.toISOString(),
       }

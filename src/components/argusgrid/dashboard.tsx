@@ -70,6 +70,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { CostQualityChart, IncidentHeatmap, LatencyChart } from "@/components/argusgrid/charts"
 import { EndpointGraphNode } from "@/components/argusgrid/endpoint-node"
+import { anomalyDefaults, type AlertRuleMode, type AnomalyDirection } from "@/lib/alert-rule-metadata"
 import {
   allEndpointNodes,
   iconRegistry,
@@ -1687,7 +1688,7 @@ export function ArgusGridDashboard({
           />
         ) : activeSection === "map" ? (
         <section className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(640px,1fr)_420px]">
-          <div className="flex min-w-0 flex-col bg-zinc-50 dark:bg-zinc-950">
+          <div className="flex min-w-0 flex-col bg-zinc-100 dark:bg-zinc-950">
             <div className="flex flex-col gap-3 border-b bg-background/80 px-5 py-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="outline" className="gap-1.5">
@@ -1754,7 +1755,7 @@ export function ArgusGridDashboard({
                   gap={GRAPH_GRID_SIZE}
                   size={1.8}
                   color="currentColor"
-                  className="text-zinc-500 dark:text-zinc-700"
+                  className="text-zinc-600 dark:text-zinc-700"
                 />
                 <MiniMap pannable zoomable nodeStrokeWidth={3} className="!bg-background !shadow-sm" />
                 <Controls className="!border !bg-background !shadow-sm" />
@@ -2075,7 +2076,7 @@ function ReadinessItem({ label, ready }: { label: string; ready: boolean }) {
 }
 
 function SectionShell({ children, className }: { children: ReactNode; className?: string }) {
-  return <section className={cn("min-h-0 flex-1 overflow-y-auto bg-zinc-50 p-5 dark:bg-zinc-950", className)}>{children}</section>
+  return <section className={cn("min-h-0 flex-1 overflow-y-auto bg-zinc-100 p-5 dark:bg-zinc-950", className)}>{children}</section>
 }
 
 function MetricTile({
@@ -2518,7 +2519,7 @@ function AlertsSection({
                   <button className="min-w-0 flex-1 text-left" onClick={() => onSelectAlert(alert)}>
                     <div className="font-medium">{alert.title}</div>
                     <div className="mt-1 text-xs text-muted-foreground">
-                      {alert.nodeLabel ?? "Project"} / {alert.severity} / {alert.resolvedAt ? "Resolved" : "Active"}
+                      {alert.nodeLabel ?? "Project"} / {alert.source} / {alert.severity} / {alert.resolvedAt ? "Resolved" : "Active"}
                     </div>
                     <div className="mt-2 text-xs text-muted-foreground">{alert.message}</div>
                   </button>
@@ -3187,10 +3188,13 @@ function NodeInspector({
   const [apiTestResult, setApiTestResult] = useState<ApiTestResult | null>(null)
   const nodeAlertRules = alertRules.filter((rule) => rule.nodeId === selectedNode.id)
   const firstPersistedParameter = selectedNode.parameters.find((parameter) => parameter.id)
+  const firstAlertRule = nodeAlertRules[0]
   const [ruleId, setRuleId] = useState(nodeAlertRules[0]?.id ?? "")
   const [ruleMappingId, setRuleMappingId] = useState(nodeAlertRules[0]?.mappingId ?? firstPersistedParameter?.id ?? "")
   const [ruleName, setRuleName] = useState(nodeAlertRules[0]?.name ?? `${firstPersistedParameter?.label ?? mappingLabel} threshold crossed`)
   const [ruleExpression, setRuleExpression] = useState(nodeAlertRules[0]?.expression ?? threshold)
+  const [ruleMode, setRuleMode] = useState<AlertRuleMode>(firstAlertRule?.mode ?? "threshold")
+  const [anomalyDirection, setAnomalyDirection] = useState<AnomalyDirection>(firstAlertRule?.anomalyDirection ?? anomalyDefaults.direction)
   const [ruleSeverity, setRuleSeverity] = useState(nodeAlertRules[0]?.severity ?? "WARNING")
   const [ruleEnabled, setRuleEnabled] = useState(nodeAlertRules[0]?.enabled ?? true)
   const [ruleMessage, setRuleMessage] = useState("")
@@ -3243,6 +3247,8 @@ function NodeInspector({
     setVisualization("NUMBER")
     setRuleName("Demo metric threshold crossed")
     setRuleExpression("> 90")
+    setRuleMode("threshold")
+    setAnomalyDirection(anomalyDefaults.direction)
     setRuleSeverity("WARNING")
     setRuleEnabled(true)
     setApiMessage("Demo metric loaded. Test and save the API setup, then save the alert rule.")
@@ -3265,6 +3271,8 @@ function NodeInspector({
       setVisualization(template.preset.visualization)
       setRuleName(template.preset.ruleName)
       setRuleExpression(template.preset.ruleExpression)
+      setRuleMode("threshold")
+      setAnomalyDirection(anomalyDefaults.direction)
       setRuleSeverity(template.preset.ruleSeverity)
       setRuleEnabled(true)
       setApiMessage("Template applied. Replace the endpoint URL, test it, then save API setup.")
@@ -3384,7 +3392,12 @@ function NodeInspector({
         mappingId: parameter.id,
         mappingLabel: parameter.label,
         name: ruleName,
-        expression: ruleExpression,
+        expression: ruleMode === "threshold" ? ruleExpression : undefined,
+        mode: ruleMode,
+        anomalyDirection,
+        sigma: anomalyDefaults.sigma,
+        windowDays: anomalyDefaults.windowDays,
+        minSamples: anomalyDefaults.minSamples,
         severity: ruleSeverity,
         enabled: ruleEnabled,
       }),
@@ -3401,6 +3414,11 @@ function NodeInspector({
       updatedAt: payload.rule.updatedAt ?? new Date().toISOString(),
       nodeLabel: selectedNode.label,
       mappingLabel: parameter.label,
+      mode: ruleMode,
+      anomalyDirection: ruleMode === "anomaly" ? anomalyDirection : null,
+      anomalySigma: ruleMode === "anomaly" ? anomalyDefaults.sigma : null,
+      anomalyWindowDays: ruleMode === "anomaly" ? anomalyDefaults.windowDays : null,
+      anomalyMinSamples: ruleMode === "anomaly" ? anomalyDefaults.minSamples : null,
     } as ProjectAlertRule
     setRuleId(savedRule.id)
     onRuleSaved(savedRule)
@@ -3909,16 +3927,40 @@ function NodeInspector({
                     <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-3xl">
                       <DialogHeader>
                         <DialogTitle>Alert rule</DialogTitle>
-                        <DialogDescription>Create a threshold rule from a saved parameter mapping.</DialogDescription>
+                        <DialogDescription>Create a static threshold or anomaly-baseline rule from a saved parameter mapping.</DialogDescription>
                       </DialogHeader>
                       <div className="grid gap-4 lg:grid-cols-[1fr_0.9fr]">
                         <div className="grid content-start gap-3 rounded-lg border bg-muted/20 p-3">
                           <div className="flex items-start justify-between gap-3">
                             <div>
-                              <div className="text-sm font-medium">Threshold rule</div>
+                              <div className="text-sm font-medium">{ruleMode === "anomaly" ? "Anomaly baseline" : "Static threshold"}</div>
                               <div className="mt-1 text-xs text-muted-foreground">Attach this rule to a saved API mapping.</div>
                             </div>
                             <Badge variant={ruleEnabled ? "secondary" : "outline"}>{ruleEnabled ? "Enabled" : "Disabled"}</Badge>
+                          </div>
+                          <div className="grid grid-cols-2 rounded-lg border bg-background p-1 text-xs">
+                            <button
+                              className={cn("rounded-md px-2 py-1.5 font-medium", ruleMode === "threshold" ? "bg-primary text-primary-foreground" : "text-muted-foreground")}
+                              type="button"
+                              onClick={() => {
+                                setRuleMode("threshold")
+                                if (ruleName.toLowerCase().includes("anomaly")) setRuleName(`${firstPersistedParameter?.label ?? mappingLabel} threshold crossed`)
+                              }}
+                              disabled={!canEditProject}
+                            >
+                              Static threshold
+                            </button>
+                            <button
+                              className={cn("rounded-md px-2 py-1.5 font-medium", ruleMode === "anomaly" ? "bg-primary text-primary-foreground" : "text-muted-foreground")}
+                              type="button"
+                              onClick={() => {
+                                setRuleMode("anomaly")
+                                if (ruleName.toLowerCase().includes("threshold")) setRuleName(`${firstPersistedParameter?.label ?? mappingLabel} anomaly detected`)
+                              }}
+                              disabled={!canEditProject}
+                            >
+                              Anomaly baseline
+                            </button>
                           </div>
                           <select
                             className="h-9 rounded-lg border bg-background px-2 text-sm disabled:opacity-50"
@@ -3945,13 +3987,26 @@ function NodeInspector({
                           </select>
                           <Input value={ruleName} onChange={(event) => setRuleName(event.target.value)} aria-label="Alert rule name" disabled={!canEditProject} />
                           <div className="grid gap-2 sm:grid-cols-[1fr_130px]">
-                            <Input
-                              value={ruleExpression}
-                              onChange={(event) => setRuleExpression(event.target.value)}
-                              aria-label="Alert rule threshold"
-                              placeholder="> 90"
-                              disabled={!canEditProject}
-                            />
+                            {ruleMode === "threshold" ? (
+                              <Input
+                                value={ruleExpression}
+                                onChange={(event) => setRuleExpression(event.target.value)}
+                                aria-label="Alert rule threshold"
+                                placeholder="> 90"
+                                disabled={!canEditProject}
+                              />
+                            ) : (
+                              <select
+                                className="h-9 rounded-lg border bg-background px-2 text-sm disabled:opacity-50"
+                                value={anomalyDirection}
+                                onChange={(event) => setAnomalyDirection(event.target.value as AnomalyDirection)}
+                                disabled={!canEditProject}
+                              >
+                                <option value="high">High spike</option>
+                                <option value="low">Low dip</option>
+                                <option value="both">Both directions</option>
+                              </select>
+                            )}
                             <select
                               className="h-9 rounded-lg border bg-background px-2 text-sm disabled:opacity-50"
                               value={ruleSeverity}
@@ -3963,6 +4018,11 @@ function NodeInspector({
                               <option value="CRITICAL">Critical</option>
                             </select>
                           </div>
+                          {ruleMode === "anomaly" ? (
+                            <div className="rounded-lg border border-dashed bg-background/80 p-3 text-xs text-muted-foreground">
+                              Learns a {anomalyDefaults.windowDays} day baseline and alerts when the next value is more than {anomalyDefaults.sigma}σ outside the selected direction. Requires {anomalyDefaults.minSamples} prior samples before firing.
+                            </div>
+                          ) : null}
                           <label className="flex items-center gap-2 text-sm">
                             <input type="checkbox" checked={ruleEnabled} onChange={(event) => setRuleEnabled(event.target.checked)} disabled={!canEditProject} />
                             Rule enabled
@@ -3979,10 +4039,15 @@ function NodeInspector({
                               <div key={rule.id} className="rounded-md border bg-background/70 p-2 text-xs">
                                 <div className="flex items-center justify-between gap-2">
                                   <span className="font-medium">{rule.name}</span>
-                                  <Badge variant={rule.enabled ? "secondary" : "outline"}>{rule.severity}</Badge>
+                                  <div className="flex shrink-0 items-center gap-1">
+                                    <Badge variant={rule.mode === "anomaly" ? "default" : "outline"}>{rule.mode === "anomaly" ? "Anomaly" : "Threshold"}</Badge>
+                                    <Badge variant={rule.enabled ? "secondary" : "outline"}>{rule.severity}</Badge>
+                                  </div>
                                 </div>
                                 <div className="mt-1 text-muted-foreground">
-                                  {rule.mappingLabel ?? "Mapping"} {rule.expression}
+                                  {rule.mode === "anomaly"
+                                    ? `${rule.mappingLabel ?? "Mapping"} ${rule.anomalyDirection ?? "high"} ${rule.anomalySigma ?? anomalyDefaults.sigma}σ / ${rule.anomalyWindowDays ?? anomalyDefaults.windowDays}d / ${rule.anomalyMinSamples ?? anomalyDefaults.minSamples} samples`
+                                    : `${rule.mappingLabel ?? "Mapping"} ${rule.expression}`}
                                 </div>
                               </div>
                             ))

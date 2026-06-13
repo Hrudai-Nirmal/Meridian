@@ -50,38 +50,38 @@
 }
 
 :root {
-  --background: oklch(0.99 0.004 240);
-  --foreground: oklch(0.17 0.018 252);
+  --background: oklch(0.972 0.006 245);
+  --foreground: oklch(0.13 0.022 252);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.17 0.018 252);
+  --card-foreground: oklch(0.13 0.022 252);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.17 0.018 252);
-  --primary: oklch(0.48 0.126 227);
+  --popover-foreground: oklch(0.13 0.022 252);
+  --primary: oklch(0.42 0.14 227);
   --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.955 0.012 240);
-  --secondary-foreground: oklch(0.22 0.026 252);
-  --muted: oklch(0.956 0.01 240);
-  --muted-foreground: oklch(0.48 0.03 252);
-  --accent: oklch(0.94 0.025 220);
-  --accent-foreground: oklch(0.22 0.026 252);
+  --secondary: oklch(0.925 0.017 245);
+  --secondary-foreground: oklch(0.16 0.026 252);
+  --muted: oklch(0.91 0.014 245);
+  --muted-foreground: oklch(0.34 0.034 252);
+  --accent: oklch(0.9 0.032 220);
+  --accent-foreground: oklch(0.15 0.026 252);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.905 0.013 240);
-  --input: oklch(0.905 0.013 240);
-  --ring: oklch(0.65 0.116 227);
+  --border: oklch(0.805 0.018 245);
+  --input: oklch(0.775 0.02 245);
+  --ring: oklch(0.53 0.13 227);
   --chart-1: oklch(0.62 0.16 224);
   --chart-2: oklch(0.68 0.16 160);
   --chart-3: oklch(0.73 0.17 70);
   --chart-4: oklch(0.58 0.18 292);
   --chart-5: oklch(0.62 0.21 25);
   --radius: 0.5rem;
-  --sidebar: oklch(0.975 0.006 240);
-  --sidebar-foreground: oklch(0.19 0.018 252);
-  --sidebar-primary: oklch(0.48 0.126 227);
+  --sidebar: oklch(0.94 0.011 245);
+  --sidebar-foreground: oklch(0.14 0.022 252);
+  --sidebar-primary: oklch(0.42 0.14 227);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.94 0.025 220);
-  --sidebar-accent-foreground: oklch(0.19 0.018 252);
-  --sidebar-border: oklch(0.905 0.013 240);
-  --sidebar-ring: oklch(0.65 0.116 227);
+  --sidebar-accent: oklch(0.885 0.027 220);
+  --sidebar-accent-foreground: oklch(0.14 0.022 252);
+  --sidebar-border: oklch(0.78 0.018 245);
+  --sidebar-ring: oklch(0.53 0.13 227);
 }
 
 .dark {
@@ -138,4 +138,12 @@
   color: var(--foreground);
   background: var(--background);
   border-color: var(--border);
+}
+
+:root:not(.dark) .react-flow__controls-button {
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.12);
+}
+
+:root:not(.dark) .react-flow__minimap {
+  border: 1px solid var(--border);
 }

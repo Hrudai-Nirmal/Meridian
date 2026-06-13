@@ -48,7 +48,7 @@ export default async function ReportPage({ params }: { params: Promise<{ shareTo
   ]
 
   return (
-    <main className="min-h-screen bg-zinc-50 text-foreground dark:bg-zinc-950">
+    <main className="min-h-screen bg-zinc-100 text-foreground dark:bg-zinc-950">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-6 py-8">
         <header className="flex flex-col gap-4 border-b pb-6 lg:flex-row lg:items-end lg:justify-between">
           <div>

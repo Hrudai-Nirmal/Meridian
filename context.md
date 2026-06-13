@@ -39,6 +39,8 @@ ArgusGrid is a PC-first AI automation control room for agencies and teams. The p
 - Improved Reports and Integrations UI: report creation fields now have visible labels and safety copy, and Integrations now has node selection, grouped telemetry/metric templates, readiness checks, environment blocks, setup checklists, and token/runs shortcuts.
 - Polished the section UI for deployed use: dark mode now defaults on first load and persists manual local theme choice, the sidebar current-project panel no longer contains project management controls, project cards now have edit dialogs, Alerts has 24h/7d/30d/All timeline filtering, and Projects/Reports/Settings use clearer sidebar icons.
 - Added SSE-first live update signals for authenticated project dashboards through `/api/projects/[projectId]/events`; the stream sends safe cursors/changed areas only and the client refreshes the existing project payload for runs, alerts, metrics, node health, and latest poll status.
+- Added baseline/anomaly alert rules using existing `AlertRule.metadata`: users can choose high spike, low dip, or both directions; polling compares against the previous 7 days of samples with 2 sigma and 8 minimum prior samples; alert messages include baseline context.
+- Improved light-mode contrast across global tokens, dashboard section surfaces, graph canvas dots, report pages, borders, muted text, and focus/input colors while preserving the neutral black/grey dark theme.
 - Added Playwright smoke script for public deployed checks, optional authenticated checks, and optional private-beta mutation checks.
 - Added API stubs for project state and REST endpoint test/mapping behavior.
 - If database or GitHub OAuth env vars are missing, the app shows a setup-required screen instead of trying to start Auth.js against incomplete config.
@@ -56,7 +58,7 @@ ArgusGrid is a PC-first AI automation control room for agencies and teams. The p
 - Node status is computed from health rules but supports admin overrides.
 - Reports start as secure share links and PNG exports, not full client portals.
 - Project rename/archive remains an organization-shared owner/admin action for now; account-local project aliases, visibility, and per-user project lifecycle behavior are deferred to the future team hierarchy and permissions phase.
-- SSE live updates are implemented as a lightweight signal channel; durable event logs, baseline/anomaly alerting, CSV exports, Slack notifications, and SDK publishing remain next-stage priorities.
+- SSE live updates are implemented as a lightweight signal channel; anomaly alerting is implemented for metric samples; durable event logs, CSV exports, Slack notifications, and SDK publishing remain next-stage priorities.
 - WebSockets and true multi-user graph collaboration remain deferred until the product needs lower-latency editing or explicit shared-presence behavior.
 - Sankey and forecast/correlation views are deferred until usage data proves demand.
 
@@ -71,6 +73,8 @@ ArgusGrid is a PC-first AI automation control room for agencies and teams. The p
 - Browser-test the new Control Room IA: section switching, overview attention feed, project-level Runs/Alerts/Reports/Integrations/Team/Settings pages, and the cleaned-up node inspector tabs.
 - Browser-test the Projects grid edit dialogs, dark-default/local theme persistence, alert timeline filtering, alert Resolve-to-node and Ignore flows, labelled report creation form, and expanded Integrations setup hub.
 - Browser-test the SSE live indicator and live refresh path for new runs, manual polling, alert resolution, node health changes, and latest poll status, with manual refresh as fallback.
+- Browser-test anomaly alert rules with controlled sample history: not enough history should not alert, high/low/both direction breaches should alert, duplicate unresolved alerts should not resend email, and resolved anomalies should allow future notifications.
+- Browser-test light mode at desktop and smaller widths for readable text, clearer borders, visible graph dots, report contrast, and no regressions to dark mode.
 - Validate the Prisma report-share migration with `prisma migrate deploy` before production use.
 - Test SDK preview snippets against a disposable ingestion token and confirm runs appear in the selected node.
 - Browser-test invited-user acceptance, role management, guided API setup, icon upload, alert center filtering, cron polling, deployment diagnostics, and alert resolution on the deployed site.
