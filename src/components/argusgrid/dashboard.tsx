@@ -243,6 +243,29 @@ Threshold: < 70`
   }'`
 }
 
+function buildIntegrationTestPayload(template: IntegrationTemplate, node: EndpointNodeData) {
+  const finishedAt = new Date()
+  const startedAt = new Date(finishedAt.getTime() - 2400)
+
+  return {
+    nodeId: node.id,
+    externalId: `argusgrid-test-${template.id}-${finishedAt.getTime()}`,
+    status: "success",
+    startedAt: startedAt.toISOString(),
+    finishedAt: finishedAt.toISOString(),
+    costUsd: template.testRun.costUsd ?? 0,
+    tokens: template.testRun.tokens ?? 0,
+    steps: [
+      {
+        name: template.testRun.name,
+        status: "success",
+        latencyMs: 2400,
+        toolName: template.testRun.toolName,
+      },
+    ],
+  }
+}
+
 type SaveState = "saved" | "saving" | "error"
 type ProjectMode = "blank" | "demo"
 type ProjectAlert = WorkspacePayload["alerts"][number]
@@ -925,26 +948,31 @@ export function ArgusGridDashboard({
     setIngestionTokenMessage("Tokens loaded.")
   }
 
-  const createWorkflowToken = async () => {
+  const createWorkflowTokenForName = async (name: string) => {
     if (!canManageOrganization) {
       setIngestionTokenMessage("Only owners and admins can create ingestion tokens.")
-      return
+      return null
     }
 
     setIngestionTokenMessage("Creating token...")
     const response = await fetch(`/api/projects/${initialWorkspace.project.id}/ingestion-tokens`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: ingestionTokenName }),
+      body: JSON.stringify({ name }),
     })
     const payload = await response.json().catch(() => null)
     if (!response.ok) {
       setIngestionTokenMessage(payload?.error ?? "Token creation failed.")
-      return
+      return null
     }
     setGeneratedIngestionToken(payload.token)
     setIngestionTokens((current) => [payload.tokenRecord, ...current])
     setIngestionTokenMessage("Token created. Copy it now; it will not be shown again.")
+    return typeof payload.token === "string" ? payload.token : null
+  }
+
+  const createWorkflowToken = async () => {
+    await createWorkflowTokenForName(ingestionTokenName)
   }
 
   const revokeWorkflowToken = async (tokenId: string) => {
@@ -1875,10 +1903,14 @@ export function ArgusGridDashboard({
             selectedNodeId={selectedId}
             alertRules={alertRules}
             canEditProject={canEditProject}
+            canManageOrganization={canManageOrganization}
             onSelectNode={setSelectedId}
             onOpenMap={() => setActiveSection("map")}
             onOpenSettings={() => setActiveSection("settings")}
             onOpenRuns={() => setActiveSection("runs")}
+            onCreateWorkflowToken={createWorkflowTokenForName}
+            onLoadIngestionTokens={loadIngestionTokens}
+            onRefreshProject={() => refreshProjectData({ silent: true })}
           />
         ) : activeSection === "team" ? (
           <TeamSection
@@ -2660,22 +2692,35 @@ function IntegrationsSection({
   selectedNodeId,
   alertRules,
   canEditProject,
+  canManageOrganization,
   onSelectNode,
   onOpenMap,
   onOpenSettings,
   onOpenRuns,
+  onCreateWorkflowToken,
+  onLoadIngestionTokens,
+  onRefreshProject,
 }: {
   nodes: EndpointNodeData[]
   selectedNodeId: string
   alertRules: WorkspacePayload["alertRules"]
   canEditProject: boolean
+  canManageOrganization: boolean
   onSelectNode: (nodeId: string) => void
   onOpenMap: () => void
   onOpenSettings: () => void
   onOpenRuns: () => void
+  onCreateWorkflowToken: (name: string) => Promise<string | null>
+  onLoadIngestionTokens: () => Promise<void>
+  onRefreshProject: () => Promise<void>
 }) {
   const [selectedTemplateId, setSelectedTemplateId] = useState<IntegrationTemplate["id"]>("dify")
   const [message, setMessage] = useState("")
+  const [tokenMessage, setTokenMessage] = useState("")
+  const [testMessage, setTestMessage] = useState("")
+  const [integrationToken, setIntegrationToken] = useState("")
+  const [isCreatingToken, setIsCreatingToken] = useState(false)
+  const [isSendingTestRun, setIsSendingTestRun] = useState(false)
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? nodes[0]
   const selectedTemplate = integrationTemplates.find((template) => template.id === selectedTemplateId) ?? integrationTemplates[0]
   const snippet = selectedNode ? buildIntegrationSnippet(selectedTemplate, selectedNode.id) : "Select a node on the Automation Map first."
@@ -2693,6 +2738,10 @@ function IntegrationsSection({
         { label: "Latest sample received", ready: Boolean(selectedNode.latestSampledAt) },
       ]
     : []
+  const telemetryReady = selectedTemplate.setupKind === "telemetry"
+  const setupSummary = telemetryReady
+    ? "Create a one-time token, send a synthetic test run, then paste the provider-specific snippet into the external workflow."
+    : "Apply the metric preset on the selected node, test the endpoint, save mappings, then run polling."
 
   const copySnippet = async () => {
     await navigator.clipboard.writeText(snippet)
@@ -2704,12 +2753,81 @@ function IntegrationsSection({
     setMessage(`${selectedTemplate.name} environment block copied.`)
   }
 
+  const createProviderToken = async () => {
+    if (!telemetryReady) {
+      setTokenMessage("Metric polling does not need a workflow ingestion token.")
+      return
+    }
+    if (!canManageOrganization) {
+      setTokenMessage("Only owners and admins can create ingestion tokens.")
+      return
+    }
+
+    setIsCreatingToken(true)
+    setTokenMessage("Creating provider token...")
+    setTestMessage("")
+    const token = await onCreateWorkflowToken(selectedTemplate.tokenName)
+    setIsCreatingToken(false)
+
+    if (!token) {
+      setTokenMessage("Token creation failed.")
+      return
+    }
+
+    setIntegrationToken(token)
+    setTokenMessage("Token created. Copy it now or use it for the built-in test run.")
+  }
+
+  const copyIntegrationToken = async () => {
+    await navigator.clipboard.writeText(integrationToken)
+    setTokenMessage("Token copied.")
+  }
+
+  const sendTestRun = async () => {
+    if (!selectedNode || !telemetryReady) {
+      setTestMessage("Select a telemetry template and target node first.")
+      return
+    }
+    if (!integrationToken) {
+      setTestMessage("Create a one-time token before sending the test run.")
+      return
+    }
+
+    setIsSendingTestRun(true)
+    setTestMessage("Sending synthetic test run...")
+    const response = await fetch("/api/ingest/runs", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${integrationToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(buildIntegrationTestPayload(selectedTemplate, selectedNode)),
+    })
+    const payload = await response.json().catch(() => null)
+    setIsSendingTestRun(false)
+
+    if (!response.ok) {
+      setTestMessage(payload?.error ?? "Test run failed.")
+      return
+    }
+
+    setTestMessage(`Test run received for ${selectedNode.label}. Runs and readiness refreshed.`)
+    await onLoadIngestionTokens()
+    await onRefreshProject()
+  }
+
   const TemplateButton = ({ template }: { template: IntegrationTemplate }) => (
     <button
       key={template.id}
       type="button"
       className={cn("rounded-lg border bg-background p-4 text-left text-sm transition-colors hover:bg-muted/40", selectedTemplate.id === template.id && "border-primary/60 shadow-sm")}
-      onClick={() => setSelectedTemplateId(template.id)}
+      onClick={() => {
+        setSelectedTemplateId(template.id)
+        setIntegrationToken("")
+        setMessage("")
+        setTokenMessage("")
+        setTestMessage("")
+      }}
     >
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">{template.name}</span>
@@ -2767,6 +2885,10 @@ function IntegrationsSection({
             <CardDescription>{selectedNode ? `Prepared for ${selectedNode.label}. Tokens remain placeholders.` : "Select a graph node to generate a node-specific snippet."}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
+            <div className="rounded-lg border bg-muted/20 p-3 text-sm">
+              <div className="font-medium">Setup path</div>
+              <div className="mt-1 text-xs leading-5 text-muted-foreground">{setupSummary}</div>
+            </div>
             <div className="flex flex-wrap gap-1">
               {selectedTemplate.requiredFields.map((field) => (
                 <Badge key={field} variant="outline">
@@ -2789,6 +2911,67 @@ function IntegrationsSection({
                 <div>5. Refresh Runs or Metrics to confirm data arrived.</div>
               </div>
             </div>
+            {telemetryReady ? (
+              <div className="grid gap-3 rounded-lg border bg-background p-3 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div className="font-medium">One-time telemetry test</div>
+                    <div className="mt-1 text-muted-foreground">Creates a project token named {selectedTemplate.tokenName} and posts a harmless run to the selected node.</div>
+                  </div>
+                  <Badge variant={selectedNode?.hasPersistedRuns ? "secondary" : "outline"}>
+                    {selectedNode?.hasPersistedRuns ? "Runs detected" : "Awaiting run"}
+                  </Badge>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" onClick={createProviderToken} disabled={!selectedNode || !canManageOrganization || isCreatingToken}>
+                    <KeyRound data-icon="inline-start" />
+                    {isCreatingToken ? "Creating..." : "Create token"}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={sendTestRun} disabled={!integrationToken || isSendingTestRun}>
+                    <Send data-icon="inline-start" />
+                    {isSendingTestRun ? "Sending..." : "Send test run"}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={onOpenRuns}>
+                    <Activity data-icon="inline-start" />
+                    Open Runs
+                  </Button>
+                </div>
+                {integrationToken ? (
+                  <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+                    <div className="font-medium">Copy this token now. It will not be shown again.</div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <code className="min-w-0 flex-1 overflow-x-auto rounded bg-background px-2 py-1 font-mono text-[11px] text-foreground">{integrationToken}</code>
+                      <Button variant="outline" size="sm" onClick={copyIntegrationToken}>
+                        <Copy data-icon="inline-start" />
+                        Copy
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+                {(tokenMessage || testMessage) ? (
+                  <div className="text-muted-foreground">
+                    {tokenMessage ? <div>{tokenMessage}</div> : null}
+                    {testMessage ? <div>{testMessage}</div> : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="rounded-lg border bg-background p-3 text-xs">
+                <div className="font-medium">Metric polling path</div>
+                <div className="mt-1 text-muted-foreground">
+                  Open the selected node on the Automation Map, apply this preset in Setup / Templates, then test and save API setup plus the alert rule.
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button size="sm" onClick={onOpenMap} disabled={!canEditProject}>
+                    Open map setup
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={onOpenSettings}>
+                    <ShieldCheck data-icon="inline-start" />
+                    Readiness
+                  </Button>
+                </div>
+              </div>
+            )}
             <div className="rounded-lg border bg-background p-3 text-xs">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <span className="font-medium">Environment block</span>

@@ -8,6 +8,13 @@ export type IntegrationTemplate = {
   description: string
   requiredFields: string[]
   basicSteps: string[]
+  tokenName: string
+  testRun: {
+    name: string
+    toolName: string
+    tokens?: number
+    costUsd?: number
+  }
   preset?: {
     apiUrl: string
     authType: "NONE" | "API_KEY_HEADER" | "BEARER_TOKEN" | "BASIC" | "CUSTOM_HEADERS"
@@ -34,7 +41,14 @@ export const integrationTemplates: IntegrationTemplate[] = [
     setupKind: "telemetry",
     description: "Use this to report Dify workflow or agent executions into the selected ArgusGrid node.",
     requiredFields: ["Ingestion token", "Dify workflow id", "Dify execution status"],
-    basicSteps: ["Create an ingestion token.", "Add an HTTP request step at the end of the Dify workflow.", "Map Dify run fields into the template.", "Refresh Runs."],
+    basicSteps: ["Create an ingestion token.", "Send the built-in test run.", "Add an HTTP request step at the end of the Dify workflow.", "Map Dify run fields into the template.", "Refresh Runs."],
+    tokenName: "Dify workflow telemetry",
+    testRun: {
+      name: "Dify workflow test",
+      toolName: "dify",
+      tokens: 840,
+      costUsd: 0.018,
+    },
   },
   {
     id: "n8n",
@@ -45,7 +59,14 @@ export const integrationTemplates: IntegrationTemplate[] = [
     setupKind: "telemetry",
     description: "Use this to report n8n workflow executions with step names, status, and duration.",
     requiredFields: ["Ingestion token", "Workflow execution id", "Node status"],
-    basicSteps: ["Create an ingestion token.", "Add an HTTP Request node after your workflow.", "Paste the JSON body template.", "Refresh Runs."],
+    basicSteps: ["Create an ingestion token.", "Send the built-in test run.", "Add an HTTP Request node after your workflow.", "Paste the JSON body template.", "Refresh Runs."],
+    tokenName: "n8n workflow telemetry",
+    testRun: {
+      name: "n8n workflow test",
+      toolName: "n8n",
+      tokens: 240,
+      costUsd: 0.004,
+    },
   },
   {
     id: "github-actions",
@@ -56,7 +77,14 @@ export const integrationTemplates: IntegrationTemplate[] = [
     setupKind: "telemetry",
     description: "Use this to report CI workflow status, timing, and job steps from a GitHub Actions workflow.",
     requiredFields: ["Ingestion token secret", "Selected node id", "GitHub run metadata"],
-    basicSteps: ["Store the ingestion token as a GitHub secret.", "Add the reporting step to your workflow.", "Run the workflow.", "Refresh Runs."],
+    basicSteps: ["Create an ingestion token.", "Send the built-in test run.", "Store the ingestion token as a GitHub secret.", "Add the reporting step to your workflow.", "Run the workflow.", "Refresh Runs."],
+    tokenName: "GitHub Actions telemetry",
+    testRun: {
+      name: "GitHub Actions job test",
+      toolName: "github-actions",
+      tokens: 0,
+      costUsd: 0,
+    },
   },
   {
     id: "custom-rest-metric",
@@ -68,6 +96,13 @@ export const integrationTemplates: IntegrationTemplate[] = [
     description: "Use this for OpenAI usage endpoints or any JSON endpoint ArgusGrid should poll on a schedule.",
     requiredFields: ["Endpoint URL", "Auth method", "JSONPath", "Threshold"],
     basicSteps: ["Apply the metric preset.", "Replace the endpoint URL.", "Test the endpoint.", "Save API setup and alert rule."],
+    tokenName: "Custom REST metric reference",
+    testRun: {
+      name: "Custom REST setup note",
+      toolName: "custom-rest",
+      tokens: 0,
+      costUsd: 0,
+    },
     preset: {
       apiUrl: "https://api.example.com/automation/health",
       authType: "BEARER_TOKEN",
