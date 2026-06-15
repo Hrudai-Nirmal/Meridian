@@ -70,9 +70,20 @@ Owners/admins can send a harmless test alert email from Deployment diagnostics a
 
 Owners/admins can also run a project poll manually from Deployment diagnostics for demos. The public `/api/demo/metric` route returns a deterministic sample for private-beta alert QA.
 
-Owners/admins can create secure client-facing report links from the dashboard. Report links render a read-only project summary with uptime, run volume, success rate, cost, token usage, active alerts, quality score, node summaries, and recent incidents. Links can expire and can be revoked.
+Owners/admins can create secure client-facing report links from the dashboard. Report links render a read-only project summary with uptime, run volume, success rate, cost, token usage, active alerts, quality score, node summaries, map imagery, and recent incidents. Links can expire and can be revoked.
 
-The Reports section includes an in-app report preview and owner/admin CSV exports for runs, metric samples, and alerts. Exports and public reports never include API credentials, ingestion tokens, encrypted secrets, or private team/member details.
+The Reports section includes an in-app report preview, minimal client/agency customization fields, manual map PNG attachment, browser print/save-as-PDF support, and owner/admin CSV exports for runs, metric samples, and alerts. Exports and public reports never include API credentials, ingestion tokens, encrypted secrets, or private team/member details.
+
+Client report flow:
+
+1. Open `Reports`.
+2. Fill report title, client name, subtitle/period, prepared-by, executive note, and expiry window.
+3. Click `Attach current map` to store the current Automation Map PNG with the next report link.
+4. Confirm the in-app preview shows summary metrics and the attached map.
+5. Click `Create link`, then open the public report link in a signed-out browser.
+6. Use `Print / Save PDF` on the public report page for a browser-generated PDF.
+
+Attached maps are served through `/reports/[shareToken]/map.png`; expired or revoked report links return `404` for both the report page and map image.
 
 Authenticated dashboards connect to `/api/projects/[projectId]/events` for lightweight live updates. The SSE stream only sends safe project-scoped metadata such as cursors and changed areas, then the client refreshes the existing project payload. If the stream disconnects, the dashboard shows a reconnecting/manual state and the existing refresh controls remain available.
 
@@ -146,6 +157,7 @@ Manual post-deploy checklist:
 - If live updates disconnect, the dashboard shows a reconnecting/manual state and manual refresh still works.
 - Basic and Advanced integration templates render in the API tab; custom REST metric applies fields without saving, and telemetry snippets include the selected node id but no real token.
 - Client report links can be created, opened in a signed-out browser, copied, and revoked without exposing secrets.
+- Client reports can include subtitle/prepared-by/executive note fields, attached map PNGs, and browser print/save-as-PDF output.
 - Project maps can be exported as PNGs for stakeholder reports.
 - The demo metric shortcut can configure a node with `$.value > 90` for controlled alert QA.
 - After saving the demo metric and running poll now, the selected node shows a real `95 score` metric card, persisted sample trend, freshness label, and alert context after refresh.

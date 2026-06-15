@@ -296,6 +296,11 @@ model ReportShare {
   token       String    @unique
   title       String
   clientName  String?
+  subtitle    String?
+  preparedBy  String?
+  executiveNote String?
+  mapImageMimeType String?
+  mapImageData Bytes?
   projectId   String
   createdById String
   project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)

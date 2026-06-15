@@ -30,6 +30,7 @@ ArgusGrid is a PC-first AI automation control room for agencies and teams. The p
 - Replanned the product around the "AI automation control room" positioning: graph-first map, AI value monitoring, reliable alerts, agency client reports, and open-source SDK instrumentation as the growth loop.
 - Added secure client-facing report links with public read-only report pages, expiry/revocation support, agency-friendly summary metrics, and no secret exposure.
 - Added Client Proof reporting improvements: in-app report preview, owner/admin CSV exports for runs/metrics/alerts, and a more agency-facing signed-out report executive summary.
+- Added Client Proof v2 report customization: subtitle, prepared-by, executive note, optional stored map PNG attachments, `/reports/[shareToken]/map.png`, and browser print/save-as-PDF support for public reports.
 - Added client-side PNG export for the current project map so agencies can include visual automation maps in stakeholder reports.
 - Added Python and JavaScript SDK previews in `sdk/python` and `sdk/js`, plus `docs/sdk.md`, using the existing `/api/ingest/runs` telemetry contract.
 - Focused integration template breadth around Dify, n8n, GitHub Actions, and OpenAI/custom REST instead of broad generic template sprawl.

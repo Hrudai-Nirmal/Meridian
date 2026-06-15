@@ -285,6 +285,10 @@ type ReportShareRecord = {
   id: string
   title: string
   clientName: string | null
+  subtitle: string | null
+  preparedBy: string | null
+  executiveNote: string | null
+  hasMapImage: boolean
   url: string
   expiresAt: string | null
   revokedAt: string | null
@@ -459,6 +463,10 @@ export function ArgusGridDashboard({
   const [reportShares, setReportShares] = useState<ReportShareRecord[]>([])
   const [reportTitle, setReportTitle] = useState("Client automation report")
   const [reportClientName, setReportClientName] = useState("")
+  const [reportSubtitle, setReportSubtitle] = useState("Monthly automation operations review")
+  const [reportPreparedBy, setReportPreparedBy] = useState(initialWorkspace.organization.name)
+  const [reportExecutiveNote, setReportExecutiveNote] = useState("This report summarizes automation reliability, workflow volume, AI usage, cost, and open incidents for the selected project.")
+  const [reportMapDataUrl, setReportMapDataUrl] = useState("")
   const [reportExpiryDays, setReportExpiryDays] = useState("90")
   const [reportMessage, setReportMessage] = useState("")
   const [nodes, setNodes, onNodesChange] = useNodesState(initialWorkspace.nodes.map(toFlowNode))
@@ -1019,7 +1027,11 @@ export function ArgusGridDashboard({
       body: JSON.stringify({
         title: reportTitle,
         clientName: reportClientName.trim() || undefined,
+        subtitle: reportSubtitle.trim() || undefined,
+        preparedBy: reportPreparedBy.trim() || undefined,
+        executiveNote: reportExecutiveNote.trim() || undefined,
         expiresInDays: Number.isFinite(expiresInDays) ? expiresInDays : undefined,
+        mapImage: reportMapDataUrl ? { mimeType: "image/png", dataUrl: reportMapDataUrl } : undefined,
       }),
     })
     const payload = await response.json().catch(() => null)
@@ -1079,7 +1091,7 @@ export function ArgusGridDashboard({
     )
   }
 
-  const exportGraphPng = () => {
+  const createGraphPngDataUrl = () => {
     const graphNodes = nodes.map((node) => ({
       id: node.id,
       position: node.position,
@@ -1088,7 +1100,7 @@ export function ArgusGridDashboard({
 
     if (!graphNodes.length) {
       setActionMessage("Add a node before exporting the map.")
-      return
+      return null
     }
 
     const nodeWidth = 220
@@ -1108,7 +1120,7 @@ export function ArgusGridDashboard({
 
     if (!context) {
       setActionMessage("Map export is not available in this browser.")
-      return
+      return null
     }
 
     context.scale(scale, scale)
@@ -1168,11 +1180,36 @@ export function ArgusGridDashboard({
       context.fillText(statusCopy[status], x + 42, y + 72)
     })
 
+    return canvas.toDataURL("image/png")
+  }
+
+  const exportGraphPng = () => {
+    const dataUrl = createGraphPngDataUrl()
+    if (!dataUrl) return
+
     const link = document.createElement("a")
     link.download = `${initialWorkspace.project.slug}-argusgrid-map.png`
-    link.href = canvas.toDataURL("image/png")
+    link.href = dataUrl
     link.click()
     setActionMessage("Project map exported as PNG.")
+  }
+
+  const attachReportMap = () => {
+    const dataUrl = createGraphPngDataUrl()
+    if (!dataUrl) {
+      setReportMessage("Map attachment failed.")
+      return
+    }
+
+    const base64 = dataUrl.split(",")[1] ?? ""
+    const sizeBytes = Math.ceil((base64.length * 3) / 4)
+    if (sizeBytes > 2 * 1024 * 1024) {
+      setReportMessage("Map image is larger than 2MB. Reduce the map and try again.")
+      return
+    }
+
+    setReportMapDataUrl(dataUrl)
+    setReportMessage("Current map attached to the report preview.")
   }
 
   const resolveAlert = async (alertId: string) => {
@@ -1892,11 +1929,23 @@ export function ArgusGridDashboard({
             reportShares={reportShares}
             reportTitle={reportTitle}
             reportClientName={reportClientName}
+            reportSubtitle={reportSubtitle}
+            reportPreparedBy={reportPreparedBy}
+            reportExecutiveNote={reportExecutiveNote}
+            reportMapDataUrl={reportMapDataUrl}
             reportExpiryDays={reportExpiryDays}
             reportMessage={reportMessage}
             canManageOrganization={canManageOrganization}
             onReportTitleChange={setReportTitle}
             onReportClientNameChange={setReportClientName}
+            onReportSubtitleChange={setReportSubtitle}
+            onReportPreparedByChange={setReportPreparedBy}
+            onReportExecutiveNoteChange={setReportExecutiveNote}
+            onAttachReportMap={attachReportMap}
+            onClearReportMap={() => {
+              setReportMapDataUrl("")
+              setReportMessage("Report map attachment cleared.")
+            }}
             onReportExpiryDaysChange={setReportExpiryDays}
             onLoadReportShares={loadReportShares}
             onCreateReportShare={createReportShare}
@@ -2595,11 +2644,20 @@ function ReportsSection({
   reportShares,
   reportTitle,
   reportClientName,
+  reportSubtitle,
+  reportPreparedBy,
+  reportExecutiveNote,
+  reportMapDataUrl,
   reportExpiryDays,
   reportMessage,
   canManageOrganization,
   onReportTitleChange,
   onReportClientNameChange,
+  onReportSubtitleChange,
+  onReportPreparedByChange,
+  onReportExecutiveNoteChange,
+  onAttachReportMap,
+  onClearReportMap,
   onReportExpiryDaysChange,
   onLoadReportShares,
   onCreateReportShare,
@@ -2619,11 +2677,20 @@ function ReportsSection({
   reportShares: ReportShareRecord[]
   reportTitle: string
   reportClientName: string
+  reportSubtitle: string
+  reportPreparedBy: string
+  reportExecutiveNote: string
+  reportMapDataUrl: string
   reportExpiryDays: string
   reportMessage: string
   canManageOrganization: boolean
   onReportTitleChange: (value: string) => void
   onReportClientNameChange: (value: string) => void
+  onReportSubtitleChange: (value: string) => void
+  onReportPreparedByChange: (value: string) => void
+  onReportExecutiveNoteChange: (value: string) => void
+  onAttachReportMap: () => void
+  onClearReportMap: () => void
   onReportExpiryDaysChange: (value: string) => void
   onLoadReportShares: () => Promise<void>
   onCreateReportShare: () => Promise<void>
@@ -2635,6 +2702,12 @@ function ReportsSection({
   const totalTokens = projectRuns.reduce((sum, run) => sum + (run.tokens ?? 0), 0)
   const exportCsv = (kind: "runs" | "metrics" | "alerts") => {
     window.open(`/api/projects/${projectId}/exports/${kind}.csv`, "_blank", "noopener,noreferrer")
+  }
+  const latestLiveShare = reportShares.find((share) => !share.revokedAt)
+  const previewReport = () => {
+    if (latestLiveShare) {
+      window.open(latestLiveShare.url, "_blank", "noopener,noreferrer")
+    }
   }
 
   return (
@@ -2657,19 +2730,51 @@ function ReportsSection({
                   <Input value={reportClientName} onChange={(event) => onReportClientNameChange(event.target.value)} placeholder="Optional" disabled={!canManageOrganization} />
                 </label>
                 <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+                  Subtitle / period
+                  <Input value={reportSubtitle} onChange={(event) => onReportSubtitleChange(event.target.value)} placeholder="June 2026 operations review" disabled={!canManageOrganization} />
+                </label>
+                <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+                  Prepared by
+                  <Input value={reportPreparedBy} onChange={(event) => onReportPreparedByChange(event.target.value)} placeholder="Agency or team name" disabled={!canManageOrganization} />
+                </label>
+                <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+                  Executive note
+                  <Textarea value={reportExecutiveNote} onChange={(event) => onReportExecutiveNoteChange(event.target.value)} placeholder="Short client-facing summary" disabled={!canManageOrganization} />
+                </label>
+                <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
                   Expiry window
                   <Input value={reportExpiryDays} onChange={(event) => onReportExpiryDaysChange(event.target.value)} placeholder="Days, optional" disabled={!canManageOrganization} />
                 </label>
+                <div className="grid gap-2 rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
+                  <div className="font-medium text-foreground">Automation map attachment</div>
+                  <div>Attach the current Automation Map PNG to the next report link you create.</div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" onClick={onAttachReportMap} disabled={!canManageOrganization}>
+                      <FileImage data-icon="inline-start" />
+                      Attach current map
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={onClearReportMap} disabled={!canManageOrganization || !reportMapDataUrl}>
+                      Clear map
+                    </Button>
+                  </div>
+                  {reportMapDataUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- This previews a freshly generated client-side PNG data URL.
+                    <img src={reportMapDataUrl} alt="Attached report map preview" className="mt-2 max-h-40 rounded-md border bg-background object-contain" />
+                  ) : null}
+                </div>
                 <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
                   Report links and exports never expose API secrets, ingestion tokens, encrypted credentials, or private team details.
                 </div>
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid gap-2 sm:grid-cols-3">
                   <Button onClick={onCreateReportShare} disabled={!canManageOrganization}>
                     <Share2 data-icon="inline-start" />
                     Create link
                   </Button>
                   <Button variant="outline" onClick={onLoadReportShares} disabled={!canManageOrganization}>
                     Refresh links
+                  </Button>
+                  <Button variant="outline" onClick={previewReport} disabled={!latestLiveShare}>
+                    Preview report
                   </Button>
                 </div>
                 {reportMessage ? <div className="text-xs text-muted-foreground">{reportMessage}</div> : null}
@@ -2697,8 +2802,19 @@ function ReportsSection({
               <div className="rounded-xl border bg-muted/20 p-4">
                 <div className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Client proof summary</div>
                 <div className="mt-2 text-xl font-semibold">{reportTitle || "Client automation report"}</div>
-                <div className="mt-1 text-sm text-muted-foreground">{reportClientName.trim() || "Client name optional"}</div>
+                <div className="mt-1 text-sm text-muted-foreground">{reportSubtitle.trim() || "Report period optional"}</div>
+                <div className="mt-1 text-sm text-muted-foreground">
+                  {reportClientName.trim() || "Client name optional"} {reportPreparedBy.trim() ? `/ Prepared by ${reportPreparedBy.trim()}` : ""}
+                </div>
+                {reportExecutiveNote.trim() ? <p className="mt-3 text-sm leading-6 text-muted-foreground">{reportExecutiveNote.trim()}</p> : null}
               </div>
+              {reportMapDataUrl ? (
+                <div className="rounded-xl border bg-background p-3">
+                  <div className="mb-2 text-xs font-medium uppercase tracking-normal text-muted-foreground">Attached automation map</div>
+                  {/* eslint-disable-next-line @next/next/no-img-element -- This previews a freshly generated client-side PNG data URL. */}
+                  <img src={reportMapDataUrl} alt="Attached automation map preview" className="max-h-72 w-full rounded-md border object-contain" />
+                </div>
+              ) : null}
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <MetricTile label="Uptime" value={`${uptimePercent}%`} detail={`${activeNodeCount}/${nodes.length} nodes active`} tone={uptimePercent >= 80 ? "good" : "warn"} />
                 <MetricTile label="Run success" value={projectSummary.successRate === null ? "n/a" : `${projectSummary.successRate}%`} detail={`${projectRuns.length} recent runs`} tone={(projectSummary.successRate ?? 100) >= 90 ? "good" : "warn"} />
@@ -2727,6 +2843,9 @@ function ReportsSection({
                       <div className="truncate font-medium">{share.title}</div>
                       <div className="mt-1 text-xs text-muted-foreground">
                         {share.clientName ?? "No client name"} / {share.revokedAt ? "Revoked" : share.expiresAt ? `Expires ${formatSampledAt(share.expiresAt)}` : "No expiry"}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {share.subtitle ?? "No subtitle"} / {share.preparedBy ?? "No prepared-by"} / {share.hasMapImage ? "Map attached" : "No map"}
                       </div>
                     </div>
                     <Badge variant={share.revokedAt ? "secondary" : "outline"}>{share.revokedAt ? "Revoked" : "Live"}</Badge>

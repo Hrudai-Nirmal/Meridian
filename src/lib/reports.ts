@@ -8,6 +8,10 @@ export type ReportSharePayload = {
   id: string
   title: string
   clientName: string | null
+  subtitle: string | null
+  preparedBy: string | null
+  executiveNote: string | null
+  hasMapImage: boolean
   url: string
   expiresAt: string | null
   revokedAt: string | null
@@ -17,9 +21,13 @@ export type ReportSharePayload = {
 export type PublicReportPayload = {
   title: string
   clientName: string | null
+  subtitle: string | null
+  preparedBy: string | null
+  executiveNote: string | null
   organizationName: string
   projectName: string
   generatedAt: string
+  mapImageUrl: string | null
   summary: {
     uptimePercent: number
     totalRuns: number
@@ -62,11 +70,19 @@ export function reportShareUrl(origin: string, token: string) {
   return `${origin.replace(/\/$/, "")}/reports/${token}`
 }
 
+export function reportMapImageUrl(origin: string, token: string) {
+  return `${reportShareUrl(origin, token)}/map.png`
+}
+
 export function serializeReportShare(share: {
   id: string
   token: string
   title: string
   clientName: string | null
+  subtitle: string | null
+  preparedBy: string | null
+  executiveNote: string | null
+  mapImageMimeType: string | null
   expiresAt: Date | null
   revokedAt: Date | null
   createdAt: Date
@@ -75,6 +91,10 @@ export function serializeReportShare(share: {
     id: share.id,
     title: share.title,
     clientName: share.clientName,
+    subtitle: share.subtitle,
+    preparedBy: share.preparedBy,
+    executiveNote: share.executiveNote,
+    hasMapImage: Boolean(share.mapImageMimeType),
     url: reportShareUrl(origin, share.token),
     expiresAt: share.expiresAt?.toISOString() ?? null,
     revokedAt: share.revokedAt?.toISOString() ?? null,
@@ -177,9 +197,13 @@ export async function getPublicReport(token: string): Promise<PublicReportPayloa
   return {
     title: share.title,
     clientName: share.clientName,
+    subtitle: share.subtitle,
+    preparedBy: share.preparedBy,
+    executiveNote: share.executiveNote,
     organizationName: share.project.organization.name,
     projectName: share.project.name,
     generatedAt: new Date().toISOString(),
+    mapImageUrl: share.mapImageMimeType ? reportMapImageUrl("", share.token) : null,
     summary: {
       uptimePercent,
       totalRuns,
@@ -204,5 +228,27 @@ export async function getPublicReport(token: string): Promise<PublicReportPayloa
         createdAt: event.createdAt.toISOString(),
         resolvedAt: event.resolvedAt?.toISOString() ?? null,
       })),
+  }
+}
+
+export async function getPublicReportMapImage(token: string) {
+  const prisma = getPrisma()
+  const share = await prisma.reportShare.findUnique({
+    where: { token },
+    select: {
+      revokedAt: true,
+      expiresAt: true,
+      mapImageMimeType: true,
+      mapImageData: true,
+    },
+  })
+
+  if (!share || share.revokedAt) return null
+  if (share.expiresAt && share.expiresAt.getTime() < Date.now()) return null
+  if (share.mapImageMimeType !== "image/png" || !share.mapImageData) return null
+
+  return {
+    mimeType: share.mapImageMimeType,
+    data: share.mapImageData,
   }
 }

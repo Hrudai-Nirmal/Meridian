@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { getPublicReport } from "@/lib/reports"
+import { PrintReportButton } from "./print-report-button"
 
 function formatDateTime(value: string | null) {
   if (!value) return "No data yet"
@@ -56,23 +57,28 @@ export default async function ReportPage({ params }: { params: Promise<{ shareTo
           : "Review recommended"
 
   return (
-    <main className="min-h-screen bg-zinc-100 text-foreground dark:bg-zinc-950">
+    <main className="min-h-screen bg-zinc-100 text-foreground dark:bg-zinc-950 print:bg-white">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-6 py-8">
-        <header className="flex flex-col gap-4 border-b pb-6 lg:flex-row lg:items-end lg:justify-between">
+        <header className="flex flex-col gap-4 border-b pb-6 lg:flex-row lg:items-end lg:justify-between print:break-after-avoid">
           <div>
             <div className="text-sm font-medium text-muted-foreground">ArgusGrid client report</div>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight">{report.title}</h1>
+            {report.subtitle ? <div className="mt-2 text-base text-muted-foreground">{report.subtitle}</div> : null}
             <p className="mt-2 text-sm text-muted-foreground">
               {report.clientName ? `${report.clientName} / ` : ""}
               {report.organizationName} / {report.projectName}
             </p>
+            {report.preparedBy ? <p className="mt-1 text-sm text-muted-foreground">Prepared by {report.preparedBy}</p> : null}
           </div>
-          <div className="rounded-lg border bg-background px-4 py-3 text-sm text-muted-foreground">
-            Generated {formatDateTime(report.generatedAt)}
+          <div className="grid gap-2">
+            <div className="rounded-lg border bg-background px-4 py-3 text-sm text-muted-foreground">
+              Generated {formatDateTime(report.generatedAt)}
+            </div>
+            <PrintReportButton />
           </div>
         </header>
 
-        <section className="grid gap-4 rounded-xl border bg-background p-5 lg:grid-cols-[1fr_auto] lg:items-center">
+        <section className="grid gap-4 rounded-xl border bg-background p-5 lg:grid-cols-[1fr_auto] lg:items-center print:break-inside-avoid">
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={executiveStatus === "Healthy" ? "secondary" : "destructive"}>{executiveStatus}</Badge>
@@ -81,7 +87,7 @@ export default async function ReportPage({ params }: { params: Promise<{ shareTo
             </div>
             <h2 className="mt-4 text-xl font-semibold">Executive summary</h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              This report summarizes automation reliability, workflow volume, AI usage, cost, and open incidents for the selected project.
+              {report.executiveNote ?? "This report summarizes automation reliability, workflow volume, AI usage, cost, and open incidents for the selected project."}
               It is read-only and does not include credentials, ingestion tokens, team membership details, or private endpoint secrets.
             </p>
           </div>
@@ -98,9 +104,20 @@ export default async function ReportPage({ params }: { params: Promise<{ shareTo
           </div>
         </section>
 
-        <section className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+        {report.mapImageUrl ? (
+          <section className="rounded-xl border bg-background p-5 print:break-inside-avoid">
+            <div className="mb-3">
+              <h2 className="text-xl font-semibold">Automation map</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Visual overview of the monitored workflow components included in this report.</p>
+            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element -- Report maps are user-generated PNG attachments served from a protected report route. */}
+            <img src={report.mapImageUrl} alt="ArgusGrid automation map" className="max-h-[680px] w-full rounded-lg border object-contain" />
+          </section>
+        ) : null}
+
+        <section className="grid gap-3 md:grid-cols-3 xl:grid-cols-6 print:break-inside-avoid">
           {metricCards.map((metric) => (
-            <Card key={metric.label}>
+            <Card key={metric.label} className="print:break-inside-avoid">
               <CardHeader className="pb-2">
                 <CardDescription>{metric.label}</CardDescription>
                 <CardTitle className="text-2xl">{metric.value}</CardTitle>
@@ -111,7 +128,7 @@ export default async function ReportPage({ params }: { params: Promise<{ shareTo
         </section>
 
         <section className="grid gap-6 xl:grid-cols-[1.4fr_0.8fr]">
-          <Card>
+          <Card className="print:break-inside-avoid">
             <CardHeader>
               <CardTitle>Automation nodes</CardTitle>
               <CardDescription>Operational status, usage, cost, and freshness by monitored node</CardDescription>
@@ -153,7 +170,7 @@ export default async function ReportPage({ params }: { params: Promise<{ shareTo
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="print:break-inside-avoid">
             <CardHeader>
               <CardTitle>Recent incidents</CardTitle>
               <CardDescription>{report.summary.activeAlerts} active alerts across this project</CardDescription>
