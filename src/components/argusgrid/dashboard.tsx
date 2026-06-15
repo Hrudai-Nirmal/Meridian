@@ -496,6 +496,7 @@ export function ArgusGridDashboard({
 }) {
   const [activeSection, setActiveSection] = useState<DashboardSection>("control-room")
   const [selectedId, setSelectedId] = useState(initialWorkspace.nodes[0]?.id ?? "")
+  const [selectedEdgeId, setSelectedEdgeId] = useState("")
   const [editMode, setEditMode] = useState(false)
   const [theme, setTheme] = useState<"light" | "dark">(getInitialTheme)
   const [saveState, setSaveState] = useState<SaveState>("saved")
@@ -559,6 +560,33 @@ export function ArgusGridDashboard({
   const selectedNode = useMemo<EndpointNodeData | undefined>(
     () => (nodes.find((node) => node.id === selectedId)?.data as unknown as EndpointNodeData | undefined) ?? initialWorkspace.nodes[0],
     [initialWorkspace.nodes, nodes, selectedId]
+  )
+  const selectedEdge = useMemo(
+    () => edges.find((edge) => edge.id === selectedEdgeId) ?? null,
+    [edges, selectedEdgeId]
+  )
+  const selectedEdgeEndpoints = useMemo(() => {
+    if (!selectedEdge) return null
+    const sourceNode = nodes.find((node) => node.id === selectedEdge.source)?.data as unknown as EndpointNodeData | undefined
+    const targetNode = nodes.find((node) => node.id === selectedEdge.target)?.data as unknown as EndpointNodeData | undefined
+
+    return {
+      sourceLabel: sourceNode?.label ?? "Source node",
+      targetLabel: targetNode?.label ?? "Target node",
+    }
+  }, [nodes, selectedEdge])
+  const renderedEdges = useMemo(
+    () =>
+      edges.map((edge) =>
+        edge.id === selectedEdgeId
+          ? {
+              ...edge,
+              style: { ...edge.style, stroke: "#0ea5e9", strokeWidth: 4 },
+              labelStyle: { ...edge.labelStyle, fill: "#0284c7", fontSize: 12, fontWeight: 700 },
+            }
+          : edge
+      ),
+    [edges, selectedEdgeId]
   )
   const statusCounts = useMemo(() => {
     const values = nodes.map((node) => node.data as unknown as EndpointNodeData)
@@ -814,12 +842,14 @@ export function ArgusGridDashboard({
         return
       }
 
+      const edgeId = crypto.randomUUID()
       setActionMessage("Visual connection added.")
+      setSelectedEdgeId(edgeId)
       setEdges((currentEdges) =>
         addEdge(
           {
             ...connection,
-            id: crypto.randomUUID(),
+            id: edgeId,
             animated: true,
             label: "visual link",
             style: { stroke: "#38bdf8", strokeWidth: 2 },
@@ -830,6 +860,14 @@ export function ArgusGridDashboard({
     },
     [edges, editMode, setEdges]
   )
+
+  const updateSelectedEdgeLabel = (label: string) => {
+    if (!selectedEdge || !canEditProject || !editMode) return
+    const nextLabel = label.slice(0, 120)
+    setEdges((currentEdges) =>
+      currentEdges.map((edge) => (edge.id === selectedEdge.id ? { ...edge, label: nextLabel } : edge))
+    )
+  }
 
   const onNodeDragStop = useCallback<OnNodeDrag>(
     (_, draggedNode) => {
@@ -1883,13 +1921,18 @@ export function ArgusGridDashboard({
             <div className="relative h-[620px] shrink-0 lg:min-h-0 lg:flex-1 lg:h-[calc(100vh-8rem)] xl:h-auto">
               <ReactFlow
                 nodes={nodes}
-                edges={edges}
+                edges={renderedEdges}
                 nodeTypes={nodeTypes}
                 onNodesChange={editMode ? onNodesChange : undefined}
                 onEdgesChange={editMode ? onEdgesChange : undefined}
                 onConnect={onConnect}
                 onNodeDragStop={onNodeDragStop}
-                onNodeClick={(_, node) => setSelectedId(node.id)}
+                onNodeClick={(_, node) => {
+                  setSelectedId(node.id)
+                  setSelectedEdgeId("")
+                }}
+                onEdgeClick={(_, edge) => setSelectedEdgeId(edge.id)}
+                onPaneClick={() => setSelectedEdgeId("")}
                 snapToGrid={editMode}
                 snapGrid={[GRAPH_GRID_SIZE, GRAPH_GRID_SIZE]}
                 nodesDraggable={editMode}
@@ -1918,6 +1961,32 @@ export function ArgusGridDashboard({
                   Map every automation dependency, then prove reliability, cost, quality, and incidents behind each node.
                 </p>
               </div>
+
+              {selectedEdge ? (
+                <div className="absolute right-5 top-5 z-10 w-[min(22rem,calc(100%-2.5rem))] rounded-xl border bg-background/95 p-4 shadow-sm backdrop-blur">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold">Link label</div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {selectedEdgeEndpoints?.sourceLabel} to {selectedEdgeEndpoints?.targetLabel}
+                      </div>
+                    </div>
+                    <Badge variant={editMode ? "secondary" : "outline"}>{editMode ? "Editable" : "View only"}</Badge>
+                  </div>
+                  <Input
+                    className="mt-3"
+                    disabled={!canEditProject || !editMode}
+                    maxLength={120}
+                    onChange={(event) => updateSelectedEdgeLabel(event.target.value)}
+                    placeholder="Describe this workflow handoff"
+                    value={typeof selectedEdge.label === "string" ? selectedEdge.label : ""}
+                  />
+                  <div className="mt-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                    <span>{canEditProject && editMode ? "Autosaves with the map." : "Turn on Edit mode to rename links."}</span>
+                    <span>{typeof selectedEdge.label === "string" ? selectedEdge.label.length : 0}/120</span>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
 
