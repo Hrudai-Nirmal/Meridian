@@ -74,6 +74,8 @@ Owners/admins can create secure client-facing report links from the dashboard. R
 
 The Reports section includes an in-app report preview, minimal client/agency customization fields, manual map PNG attachment, browser print/save-as-PDF support, and owner/admin CSV exports for runs, metric samples, and alerts. Exports and public reports never include API credentials, ingestion tokens, encrypted secrets, or private team/member details.
 
+Automation Map nodes include visible input and output connection handles. In view mode the handles are visible but locked; in `Edit mode`, drag from a node's right output handle to another node's left input handle to create an autosaved visual workflow link. Self-links and duplicate source-to-target links are blocked.
+
 Client report flow:
 
 1. Open `Reports`.
@@ -143,6 +145,7 @@ Manual post-deploy checklist:
 - Existing users land in the dashboard without repeated onboarding.
 - Project switch, create, rename, and archive behave predictably.
 - Graph node edits autosave and survive refresh.
+- Automation Map handles are visible on every node; view mode cannot create links, Edit mode can drag output-to-input links, self-links and duplicate same-direction links are blocked, and saved links survive refresh.
 - Team invitation save shows a visible result.
 - Pending invited users are attached to the organization on first matching GitHub login.
 - Owner/admin users can change roles, remove members, and cancel pending invitations.
@@ -185,4 +188,4 @@ npm run dev
 
 On first GitHub login, ArgusGrid creates a personal organization and owner membership, then shows onboarding to confirm organization/project names and choose demo or blank setup.
 
-The app now includes project management, team invitation acceptance, member management, encrypted API credential storage, guided metric mapping tests, focused basic/advanced integration templates, compact threshold/anomaly alert-rule management with baseline previews, cron/manual polling, SSE-first live update signals with Control Room status and manual fallback, workflow run telemetry ingestion with hashed project tokens, secure client report links, PNG map export, SDK previews, a deterministic demo metric source, real metric cards and trend charts from persisted samples/rollups, poll execution logs, readiness diagnostics, raw sample retention cleanup, in-app alerts, Resend email delivery logging/test flow/preferences, and small custom node icon uploads.
+The app now includes project management, team invitation acceptance, member management, encrypted API credential storage, guided metric mapping tests, visible edit-mode map connection handles, focused basic/advanced integration templates, compact threshold/anomaly alert-rule management with baseline previews, cron/manual polling, SSE-first live update signals with Control Room status and manual fallback, workflow run telemetry ingestion with hashed project tokens, secure client report links, PNG map export, SDK previews, a deterministic demo metric source, real metric cards and trend charts from persisted samples/rollups, poll execution logs, readiness diagnostics, raw sample retention cleanup, in-app alerts, Resend email delivery logging/test flow/preferences, and small custom node icon uploads.

@@ -800,10 +800,26 @@ export function ArgusGridDashboard({
   const onConnect = useCallback(
     (connection: Connection) => {
       if (!editMode) return
+      if (!connection.source || !connection.target) return
+      if (connection.source === connection.target) {
+        setActionMessage("A node cannot connect to itself.")
+        return
+      }
+      const alreadyLinked = edges.some(
+        (edge) => edge.source === connection.source && edge.target === connection.target
+      )
+
+      if (alreadyLinked) {
+        setActionMessage("That visual connection already exists.")
+        return
+      }
+
+      setActionMessage("Visual connection added.")
       setEdges((currentEdges) =>
         addEdge(
           {
             ...connection,
+            id: crypto.randomUUID(),
             animated: true,
             label: "visual link",
             style: { stroke: "#38bdf8", strokeWidth: 2 },
@@ -812,7 +828,7 @@ export function ArgusGridDashboard({
         )
       )
     },
-    [editMode, setEdges]
+    [edges, editMode, setEdges]
   )
 
   const onNodeDragStop = useCallback<OnNodeDrag>(
