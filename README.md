@@ -46,7 +46,23 @@ Run production migrations with:
 npm run prisma:deploy
 ```
 
-Vercel cron is configured in `vercel.json` to call `/api/cron/poll` daily for Hobby-compatible limits. The route requires `CRON_SECRET`.
+Vercel cron is configured in `vercel.json` to call `/api/cron/poll` daily as a backup for Hobby-compatible limits. The primary high-frequency scheduler can be one ArgusGrid-owned cron-job.org job that calls the same route every minute. The route requires `CRON_SECRET` and accepts either:
+
+- `Authorization: Bearer <CRON_SECRET>`
+- HTTP Basic auth with username `argusgrid-cron` and password `<CRON_SECRET>`
+
+cron-job.org setup:
+
+```text
+Title: ArgusGrid production poll
+URL: https://argusgrid.hrudainirmal.in/api/cron/poll
+Schedule: every minute
+Method: GET
+HTTP auth username: argusgrid-cron
+HTTP auth password: production CRON_SECRET
+```
+
+After creating the job, run a manual test execution in cron-job.org and expect HTTP 200 with `ok: true` and `mode: "secured-cron"`. Then confirm Settings shows an updated latest poll.
 
 The deployed app exposes `/api/health` for safe readiness checks. It returns booleans and poll metadata only; it must never return secret values.
 
@@ -55,6 +71,8 @@ Owners/admins can send a harmless test alert email from Deployment diagnostics a
 Owners/admins can also run a project poll manually from Deployment diagnostics for demos. The public `/api/demo/metric` route returns a deterministic sample for private-beta alert QA.
 
 Owners/admins can create secure client-facing report links from the dashboard. Report links render a read-only project summary with uptime, run volume, success rate, cost, token usage, active alerts, quality score, node summaries, and recent incidents. Links can expire and can be revoked.
+
+The Reports section includes an in-app report preview and owner/admin CSV exports for runs, metric samples, and alerts. Exports and public reports never include API credentials, ingestion tokens, encrypted secrets, or private team/member details.
 
 Authenticated dashboards connect to `/api/projects/[projectId]/events` for lightweight live updates. The SSE stream only sends safe project-scoped metadata such as cursors and changed areas, then the client refreshes the existing project payload. If the stream disconnects, the dashboard shows a reconnecting/manual state and the existing refresh controls remain available.
 

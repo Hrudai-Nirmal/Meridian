@@ -28,6 +28,9 @@ export type PublicReportPayload = {
     totalTokens: number
     activeAlerts: number
     qualityScore: number
+    latestSampleAt: string | null
+    degradedNodes: number
+    downNodes: number
   }
   nodes: {
     id: string
@@ -160,10 +163,16 @@ export async function getPublicReport(token: string): Promise<PublicReportPayloa
   const totalTokens = nodes.reduce((sum, node) => sum + node.tokens, 0)
   const successfulRuns = share.project.nodes.flatMap((node) => node.runs).filter((run) => run.status.toLowerCase() === "success").length
   const activeNodes = share.project.nodes.filter((node) => node.status === "ACTIVE").length
+  const degradedNodes = share.project.nodes.filter((node) => node.status === "DEGRADED").length
+  const downNodes = share.project.nodes.filter((node) => node.status === "DOWN").length
   const allAlertEvents = share.project.alertRules.flatMap((rule) => rule.events)
   const activeAlerts = allAlertEvents.filter((event) => !event.resolvedAt).length
   const successRate = pct(successfulRuns, totalRuns)
   const uptimePercent = pct(activeNodes, share.project.nodes.length)
+  const latestSampleAt = nodes
+    .map((node) => node.latestSampleAt ? new Date(node.latestSampleAt).getTime() : 0)
+    .filter(Boolean)
+    .sort((a, b) => b - a)[0]
 
   return {
     title: share.title,
@@ -179,6 +188,9 @@ export async function getPublicReport(token: string): Promise<PublicReportPayloa
       totalTokens,
       activeAlerts,
       qualityScore: Math.round((successRate + uptimePercent) / 2),
+      latestSampleAt: latestSampleAt ? new Date(latestSampleAt).toISOString() : null,
+      degradedNodes,
+      downNodes,
     },
     nodes,
     alerts: allAlertEvents

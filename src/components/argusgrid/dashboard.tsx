@@ -1883,6 +1883,12 @@ export function ArgusGridDashboard({
           />
         ) : activeSection === "reports" ? (
           <ReportsSection
+            projectId={initialWorkspace.project.id}
+            nodes={endpointNodes}
+            activeAlerts={activeAlerts}
+            projectRuns={projectRuns}
+            projectMetrics={projectMetrics}
+            projectSummary={projectSummary}
             reportShares={reportShares}
             reportTitle={reportTitle}
             reportClientName={reportClientName}
@@ -2580,6 +2586,12 @@ function AlertsSection({
 }
 
 function ReportsSection({
+  projectId,
+  nodes,
+  activeAlerts,
+  projectRuns,
+  projectMetrics,
+  projectSummary,
   reportShares,
   reportTitle,
   reportClientName,
@@ -2594,6 +2606,16 @@ function ReportsSection({
   onCopyReportShareUrl,
   onRevokeReportShare,
 }: {
+  projectId: string
+  nodes: EndpointNodeData[]
+  activeAlerts: ProjectAlert[]
+  projectRuns: ProjectRunRecord[]
+  projectMetrics: ProjectMetricRecord[]
+  projectSummary: {
+    successRate: number | null
+    totalCost: number
+    latestSampledAt: string | null
+  }
   reportShares: ReportShareRecord[]
   reportTitle: string
   reportClientName: string
@@ -2608,42 +2630,89 @@ function ReportsSection({
   onCopyReportShareUrl: (url: string) => Promise<void>
   onRevokeReportShare: (shareId: string) => Promise<void>
 }) {
+  const activeNodeCount = nodes.filter((node) => node.status === "active").length
+  const uptimePercent = nodes.length ? Math.round((activeNodeCount / nodes.length) * 100) : 0
+  const totalTokens = projectRuns.reduce((sum, run) => sum + (run.tokens ?? 0), 0)
+  const exportCsv = (kind: "runs" | "metrics" | "alerts") => {
+    window.open(`/api/projects/${projectId}/exports/${kind}.csv`, "_blank", "noopener,noreferrer")
+  }
+
   return (
     <SectionShell>
-      <div className="mx-auto grid max-w-7xl gap-5 lg:grid-cols-[0.8fr_1.2fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Create Client Report</CardTitle>
-            <CardDescription>Share uptime, runs, cost, tokens, quality, incidents, and latest status without exposing secrets.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
-              Report title
-              <Input value={reportTitle} onChange={(event) => onReportTitleChange(event.target.value)} aria-label="Report title" disabled={!canManageOrganization} />
-            </label>
-            <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
-              Client name
-              <Input value={reportClientName} onChange={(event) => onReportClientNameChange(event.target.value)} placeholder="Optional" disabled={!canManageOrganization} />
-            </label>
-            <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
-              Expiry window
-              <Input value={reportExpiryDays} onChange={(event) => onReportExpiryDaysChange(event.target.value)} placeholder="Days, optional" disabled={!canManageOrganization} />
-            </label>
-            <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
-              Report links never expose API secrets, ingestion tokens, or private credentials.
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Button onClick={onCreateReportShare} disabled={!canManageOrganization}>
-                <Share2 data-icon="inline-start" />
-                Create link
-              </Button>
-              <Button variant="outline" onClick={onLoadReportShares} disabled={!canManageOrganization}>
-                Refresh links
-              </Button>
-            </div>
-            {reportMessage ? <div className="text-xs text-muted-foreground">{reportMessage}</div> : null}
-          </CardContent>
-        </Card>
+      <div className="mx-auto grid max-w-7xl gap-5">
+        <div className="grid gap-5 lg:grid-cols-[0.85fr_1.15fr]">
+          <div className="grid content-start gap-5">
+            <Card>
+              <CardHeader>
+                <CardTitle>Create Client Report</CardTitle>
+                <CardDescription>Share uptime, runs, cost, tokens, quality, incidents, and latest status without exposing secrets.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3">
+                <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+                  Report title
+                  <Input value={reportTitle} onChange={(event) => onReportTitleChange(event.target.value)} aria-label="Report title" disabled={!canManageOrganization} />
+                </label>
+                <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+                  Client name
+                  <Input value={reportClientName} onChange={(event) => onReportClientNameChange(event.target.value)} placeholder="Optional" disabled={!canManageOrganization} />
+                </label>
+                <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+                  Expiry window
+                  <Input value={reportExpiryDays} onChange={(event) => onReportExpiryDaysChange(event.target.value)} placeholder="Days, optional" disabled={!canManageOrganization} />
+                </label>
+                <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+                  Report links and exports never expose API secrets, ingestion tokens, encrypted credentials, or private team details.
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Button onClick={onCreateReportShare} disabled={!canManageOrganization}>
+                    <Share2 data-icon="inline-start" />
+                    Create link
+                  </Button>
+                  <Button variant="outline" onClick={onLoadReportShares} disabled={!canManageOrganization}>
+                    Refresh links
+                  </Button>
+                </div>
+                {reportMessage ? <div className="text-xs text-muted-foreground">{reportMessage}</div> : null}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>CSV Exports</CardTitle>
+                <CardDescription>Download operational evidence for client reviews and deeper analysis.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-2 sm:grid-cols-3 lg:grid-cols-1">
+                <Button variant="outline" onClick={() => exportCsv("runs")} disabled={!canManageOrganization}>Runs CSV</Button>
+                <Button variant="outline" onClick={() => exportCsv("metrics")} disabled={!canManageOrganization}>Metrics CSV</Button>
+                <Button variant="outline" onClick={() => exportCsv("alerts")} disabled={!canManageOrganization}>Alerts CSV</Button>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Report Preview</CardTitle>
+              <CardDescription>What a client sees before you create or share a report link.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4">
+              <div className="rounded-xl border bg-muted/20 p-4">
+                <div className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Client proof summary</div>
+                <div className="mt-2 text-xl font-semibold">{reportTitle || "Client automation report"}</div>
+                <div className="mt-1 text-sm text-muted-foreground">{reportClientName.trim() || "Client name optional"}</div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricTile label="Uptime" value={`${uptimePercent}%`} detail={`${activeNodeCount}/${nodes.length} nodes active`} tone={uptimePercent >= 80 ? "good" : "warn"} />
+                <MetricTile label="Run success" value={projectSummary.successRate === null ? "n/a" : `${projectSummary.successRate}%`} detail={`${projectRuns.length} recent runs`} tone={(projectSummary.successRate ?? 100) >= 90 ? "good" : "warn"} />
+                <MetricTile label="Active alerts" value={String(activeAlerts.length)} detail="Open incidents" tone={activeAlerts.length ? "bad" : "good"} />
+                <MetricTile label="Latest sample" value={projectSummary.latestSampledAt ? formatSampledAt(projectSummary.latestSampledAt) : "No samples"} detail={`${projectMetrics.length} metric streams`} tone={projectSummary.latestSampledAt ? "good" : "neutral"} />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <MetricTile label="Tracked cost" value={`$${projectSummary.totalCost.toFixed(projectSummary.totalCost >= 100 ? 0 : 3)}`} detail="Reported workflow spend" tone="neutral" />
+                <MetricTile label="Token usage" value={new Intl.NumberFormat("en").format(totalTokens)} detail="Reported LLM tokens" tone="neutral" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
         <Card>
           <CardHeader>
             <CardTitle>Report Links</CardTitle>

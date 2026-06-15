@@ -46,6 +46,14 @@ export default async function ReportPage({ params }: { params: Promise<{ shareTo
     { label: "Tracked spend", value: formatCurrency(report.summary.totalCostUsd), note: "Reported workflow cost" },
     { label: "Token usage", value: formatInteger(report.summary.totalTokens), note: "Reported LLM tokens" },
   ]
+  const executiveStatus =
+    report.summary.activeAlerts > 0
+      ? "Needs attention"
+      : report.summary.downNodes > 0
+        ? "Service risk"
+        : report.summary.uptimePercent >= 80
+          ? "Healthy"
+          : "Review recommended"
 
   return (
     <main className="min-h-screen bg-zinc-100 text-foreground dark:bg-zinc-950">
@@ -63,6 +71,32 @@ export default async function ReportPage({ params }: { params: Promise<{ shareTo
             Generated {formatDateTime(report.generatedAt)}
           </div>
         </header>
+
+        <section className="grid gap-4 rounded-xl border bg-background p-5 lg:grid-cols-[1fr_auto] lg:items-center">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={executiveStatus === "Healthy" ? "secondary" : "destructive"}>{executiveStatus}</Badge>
+              <Badge variant="outline">{report.nodes.length} monitored nodes</Badge>
+              <Badge variant="outline">Latest sample {formatDateTime(report.summary.latestSampleAt)}</Badge>
+            </div>
+            <h2 className="mt-4 text-xl font-semibold">Executive summary</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+              This report summarizes automation reliability, workflow volume, AI usage, cost, and open incidents for the selected project.
+              It is read-only and does not include credentials, ingestion tokens, team membership details, or private endpoint secrets.
+            </p>
+          </div>
+          <div className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-3 lg:grid-cols-1">
+            <div className="rounded-lg border bg-muted/20 px-3 py-2">
+              <span className="font-medium text-foreground">{report.summary.activeAlerts}</span> active alerts
+            </div>
+            <div className="rounded-lg border bg-muted/20 px-3 py-2">
+              <span className="font-medium text-foreground">{report.summary.degradedNodes}</span> degraded nodes
+            </div>
+            <div className="rounded-lg border bg-muted/20 px-3 py-2">
+              <span className="font-medium text-foreground">{report.summary.downNodes}</span> down nodes
+            </div>
+          </div>
+        </section>
 
         <section className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
           {metricCards.map((metric) => (

@@ -19,6 +19,7 @@ ArgusGrid is a PC-first AI automation control room for agencies and teams. The p
 - Added compact alert-rule management for persisted node parameter mappings, including severity, threshold expression, enabled state, and source labeling for threshold-driven node health.
 - Added DB-backed custom PNG/SVG node icon uploads with size and MIME validation.
 - Added secured Vercel cron configuration for `/api/cron/poll`; Hobby-compatible schedule is daily.
+- Added cron-job.org-compatible HTTP Basic authentication for `/api/cron/poll` using username `argusgrid-cron` and `CRON_SECRET` as the password, while keeping bearer-token auth and the Vercel daily cron as backup.
 - Added safe deployed readiness checks through `/api/health`, dashboard deployment diagnostics, poll execution logging, duplicate-alert prevention, non-JSON polling tolerance, and raw metric sample retention cleanup.
 - Added owner/admin manual project polling for demos, a deterministic demo metric endpoint, and a dashboard shortcut for configuring a known threshold-breach metric.
 - Added real metric dashboards in the node inspector: workspace payloads now include recent `MetricSample` values, hourly `MetricRollup` trend data, freshness labels, threshold context, and seeded visuals only act as fallback when no persisted samples exist.
@@ -28,6 +29,7 @@ ArgusGrid is a PC-first AI automation control room for agencies and teams. The p
 - Upgraded the Integrations section into a guided setup loop for Dify, n8n, GitHub Actions, and OpenAI/custom REST: node/provider selection, readiness checks, provider-named one-time token creation, synthetic telemetry test runs, copyable env/snippet blocks, and metric polling handoff through existing node setup.
 - Replanned the product around the "AI automation control room" positioning: graph-first map, AI value monitoring, reliable alerts, agency client reports, and open-source SDK instrumentation as the growth loop.
 - Added secure client-facing report links with public read-only report pages, expiry/revocation support, agency-friendly summary metrics, and no secret exposure.
+- Added Client Proof reporting improvements: in-app report preview, owner/admin CSV exports for runs/metrics/alerts, and a more agency-facing signed-out report executive summary.
 - Added client-side PNG export for the current project map so agencies can include visual automation maps in stakeholder reports.
 - Added Python and JavaScript SDK previews in `sdk/python` and `sdk/js`, plus `docs/sdk.md`, using the existing `/api/ingest/runs` telemetry contract.
 - Focused integration template breadth around Dify, n8n, GitHub Actions, and OpenAI/custom REST instead of broad generic template sprawl.

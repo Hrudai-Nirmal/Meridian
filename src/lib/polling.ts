@@ -457,5 +457,18 @@ export function isCronAuthorized(request: Request) {
   }
 
   const authHeader = request.headers.get("authorization")
-  return authHeader === `Bearer ${configuredSecret}`
+  if (authHeader === `Bearer ${configuredSecret}`) return true
+  if (!authHeader?.startsWith("Basic ")) return false
+
+  try {
+    const credentials = Buffer.from(authHeader.slice("Basic ".length), "base64").toString("utf8")
+    const separatorIndex = credentials.indexOf(":")
+    if (separatorIndex === -1) return false
+
+    const username = credentials.slice(0, separatorIndex)
+    const password = credentials.slice(separatorIndex + 1)
+    return username === "argusgrid-cron" && password === configuredSecret
+  } catch {
+    return false
+  }
 }
