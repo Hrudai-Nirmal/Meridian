@@ -1,5 +1,10 @@
 "use client"
 
+/*
+ * ArgusGrid's primary authenticated workspace shell: live operations, map editing,
+ * node setup, alert rules, reports, and team/project controls share this client UI.
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import {
   addEdge,
@@ -414,6 +419,72 @@ function parseCurrencyValue(value?: string | null) {
   if (!value) return 0
   const parsed = Number(value.replace(/[^0-9.-]/g, ""))
   return Number.isFinite(parsed) ? parsed : 0
+}
+
+function getLiveConnectionLabel(state: LiveConnectionState) {
+  if (state === "live") return "Live"
+  if (state === "manual") return "Manual"
+  if (state === "connecting") return "Connecting"
+  return "Reconnecting"
+}
+
+function getLiveConnectionBadgeVariant(state: LiveConnectionState): "destructive" | "secondary" | "outline" {
+  if (state === "live") return "secondary"
+  if (state === "manual") return "outline"
+  return "destructive"
+}
+
+function getLiveConnectionDotClass(state: LiveConnectionState) {
+  if (state === "live") return "bg-emerald-500"
+  if (state === "manual") return "bg-zinc-400"
+  if (state === "connecting") return "bg-sky-500"
+  return "bg-amber-500"
+}
+
+function formatLiveCheckedAt(timestamp: string | null) {
+  if (!timestamp) return "Awaiting first live event"
+  return `Last checked ${new Intl.DateTimeFormat("en", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(new Date(timestamp))}`
+}
+
+function formatChangedAreas(changedAreas: string[]) {
+  if (!changedAreas.length) return "Heartbeat only"
+  return changedAreas
+    .map((area) => area.replaceAll("-", " "))
+    .join(", ")
+}
+
+function getLiveConnectionDetail(state: LiveConnectionState, checkedAt: string | null, changedAreas: string[]) {
+  if (state === "manual") return "Browser live stream unavailable; use manual refresh."
+  if (state === "connecting") return "Opening project event stream."
+  if (state === "reconnecting") return checkedAt ? `${formatLiveCheckedAt(checkedAt)}; reconnecting.` : "Reconnecting to project events."
+  return `${formatLiveCheckedAt(checkedAt)} / ${formatChangedAreas(changedAreas)}`
+}
+
+function getAnomalyDirectionLabel(direction: AnomalyDirection) {
+  if (direction === "low") return "Low dips"
+  if (direction === "both") return "High spikes and low dips"
+  return "High spikes"
+}
+
+function getAverage(values: number[]) {
+  if (!values.length) return 0
+  return values.reduce((sum, value) => sum + value, 0) / values.length
+}
+
+function getStandardDeviation(values: number[], mean: number) {
+  if (values.length < 2) return 0
+  const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length
+  return Math.sqrt(variance)
+}
+
+function formatSignalNumber(value: number | null, unit?: string) {
+  if (value === null || !Number.isFinite(value)) return "Not enough data"
+  const formatted = Math.abs(value) >= 100 ? value.toFixed(0) : value.toFixed(2)
+  return unit ? `${formatted} ${unit}` : formatted
 }
 
 export function ArgusGridDashboard({
@@ -1678,27 +1749,23 @@ export function ArgusGridDashboard({
               </p>
             </div>
             <Badge variant="secondary">AI automation control room</Badge>
-            <Badge
-              variant={liveConnectionState === "live" ? "secondary" : liveConnectionState === "manual" ? "outline" : "destructive"}
-              className="gap-1.5"
-              title={
-                liveCheckedAt
-                  ? `Last live check ${new Date(liveCheckedAt).toLocaleTimeString()}${liveChangedAreas.length ? ` / ${liveChangedAreas.join(", ")}` : ""}`
-                  : "Connecting to project live updates"
-              }
-            >
-              <span
-                className={cn(
-                  "size-2 rounded-full",
-                  liveConnectionState === "live"
-                    ? "bg-emerald-500"
-                    : liveConnectionState === "manual"
-                      ? "bg-zinc-400"
-                      : "bg-amber-500"
-                )}
-              />
-              {liveConnectionState === "live" ? "Live" : liveConnectionState === "manual" ? "Manual" : "Reconnecting"}
-            </Badge>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Badge
+                    variant={getLiveConnectionBadgeVariant(liveConnectionState)}
+                    className="gap-1.5"
+                  />
+                }
+              >
+                <span className={cn("size-2 rounded-full", getLiveConnectionDotClass(liveConnectionState))} />
+                {getLiveConnectionLabel(liveConnectionState)}
+              </TooltipTrigger>
+              <TooltipContent>{getLiveConnectionDetail(liveConnectionState, liveCheckedAt, liveChangedAreas)}</TooltipContent>
+            </Tooltip>
+            <span className="hidden max-w-xs truncate text-xs text-muted-foreground 2xl:inline">
+              {getLiveConnectionDetail(liveConnectionState, liveCheckedAt, liveChangedAreas)}
+            </span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative hidden lg:block">
@@ -1888,6 +1955,11 @@ export function ArgusGridDashboard({
             projectRuns={projectRuns}
             projectMetrics={projectMetrics}
             projectSummary={projectSummary}
+            liveConnectionState={liveConnectionState}
+            liveCheckedAt={liveCheckedAt}
+            liveChangedAreas={liveChangedAreas}
+            isRefreshingProject={isRefreshingProject}
+            onRefreshProject={refreshProjectData}
             onOpenSection={setActiveSection}
             onSelectNode={(nodeId) => {
               setSelectedId(nodeId)
@@ -2319,6 +2391,11 @@ function ControlRoomSection({
   projectRuns,
   projectMetrics,
   projectSummary,
+  liveConnectionState,
+  liveCheckedAt,
+  liveChangedAreas,
+  isRefreshingProject,
+  onRefreshProject,
   onOpenSection,
   onSelectNode,
 }: {
@@ -2336,6 +2413,11 @@ function ControlRoomSection({
     latestSampledAt: string | null
     staleNodes: EndpointNodeData[]
   }
+  liveConnectionState: LiveConnectionState
+  liveCheckedAt: string | null
+  liveChangedAreas: string[]
+  isRefreshingProject: boolean
+  onRefreshProject: () => Promise<void>
   onOpenSection: (section: DashboardSection) => void
   onSelectNode: (nodeId: string) => void
 }) {
@@ -2466,30 +2548,59 @@ function ControlRoomSection({
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Fast Paths</CardTitle>
-              <CardDescription>Jump into the setup and demo workflows private-beta users need most.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-2">
-              <Button variant="outline" className="justify-start" onClick={() => onOpenSection("integrations")}>
-                <Wand2 data-icon="inline-start" />
-                Connect Dify, n8n, GitHub Actions, or REST metrics
-              </Button>
-              <Button variant="outline" className="justify-start" onClick={() => onOpenSection("reports")}>
-                <Share2 data-icon="inline-start" />
-                Create a client report link
-              </Button>
-              <Button variant="outline" className="justify-start" onClick={() => onOpenSection("alerts")}>
-                <Bell data-icon="inline-start" />
-                Review alert center
-              </Button>
-              <Button variant="outline" className="justify-start" onClick={() => onOpenSection("team")}>
-                <Users data-icon="inline-start" />
-                Manage team access
-              </Button>
-            </CardContent>
-          </Card>
+          <div className="grid gap-5">
+            <Card>
+              <CardHeader className="flex flex-row items-start justify-between gap-3">
+                <div>
+                  <CardTitle>Live Update Stream</CardTitle>
+                  <CardDescription>Project event stream plus manual refresh fallback.</CardDescription>
+                </div>
+                <Badge variant={getLiveConnectionBadgeVariant(liveConnectionState)} className="gap-1.5">
+                  <span className={cn("size-2 rounded-full", getLiveConnectionDotClass(liveConnectionState))} />
+                  {getLiveConnectionLabel(liveConnectionState)}
+                </Badge>
+              </CardHeader>
+              <CardContent className="grid gap-3 text-sm">
+                <div className="rounded-lg border bg-muted/20 p-3">
+                  <div className="text-xs text-muted-foreground">Latest live check</div>
+                  <div className="mt-1 font-medium">{formatLiveCheckedAt(liveCheckedAt)}</div>
+                </div>
+                <div className="rounded-lg border bg-muted/20 p-3">
+                  <div className="text-xs text-muted-foreground">Latest changed areas</div>
+                  <div className="mt-1 font-medium capitalize">{formatChangedAreas(liveChangedAreas)}</div>
+                </div>
+                <Button variant="outline" onClick={onRefreshProject} disabled={isRefreshingProject}>
+                  <Activity data-icon="inline-start" />
+                  {isRefreshingProject ? "Refreshing telemetry" : "Refresh telemetry now"}
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Fast Paths</CardTitle>
+                <CardDescription>Jump into the setup and demo workflows private-beta users need most.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-2">
+                <Button variant="outline" className="justify-start" onClick={() => onOpenSection("integrations")}>
+                  <Wand2 data-icon="inline-start" />
+                  Connect Dify, n8n, GitHub Actions, or REST metrics
+                </Button>
+                <Button variant="outline" className="justify-start" onClick={() => onOpenSection("reports")}>
+                  <Share2 data-icon="inline-start" />
+                  Create a client report link
+                </Button>
+                <Button variant="outline" className="justify-start" onClick={() => onOpenSection("alerts")}>
+                  <Bell data-icon="inline-start" />
+                  Review alert center
+                </Button>
+                <Button variant="outline" className="justify-start" onClick={() => onOpenSection("team")}>
+                  <Users data-icon="inline-start" />
+                  Manage team access
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
     </SectionShell>
@@ -3603,6 +3714,35 @@ function NodeInspector({
   const visibleTemplates = integrationTemplates
   const selectedTemplate = integrationTemplates.find((template) => template.id === selectedTemplateId) ?? integrationTemplates[0]
   const selectedTemplateSnippet = buildIntegrationSnippet(selectedTemplate, selectedNode.id)
+  const anomalyPreview = useMemo(() => {
+    const selectedParameter = selectedNode.parameters.find((parameter) => parameter.id === ruleMappingId) ?? firstPersistedParameter
+    const matchingSeries =
+      selectedNode.realSampleSeries?.find((series) => series.mappingId === selectedParameter?.id) ??
+      selectedNode.realSampleSeries?.find((series) => series.label === selectedParameter?.label)
+    const samplePoints = [...(matchingSeries?.points ?? [])].sort(
+      (leftPoint, rightPoint) => new Date(leftPoint.timestamp).getTime() - new Date(rightPoint.timestamp).getTime()
+    )
+    const sampleValues = samplePoints.map((point) => point.value).filter(Number.isFinite)
+    const mean = sampleValues.length ? getAverage(sampleValues) : null
+    const standardDeviation = mean === null ? null : getStandardDeviation(sampleValues, mean)
+    const latestPoint = samplePoints.at(-1) ?? null
+    const upperBand = mean === null || standardDeviation === null ? null : mean + standardDeviation * anomalyDefaults.sigma
+    const lowerBand = mean === null || standardDeviation === null ? null : mean - standardDeviation * anomalyDefaults.sigma
+
+    return {
+      parameterLabel: selectedParameter?.label ?? "Selected mapping",
+      unit: selectedParameter?.unit ?? matchingSeries?.unit ?? "",
+      sampleCount: sampleValues.length,
+      hasEnoughSamples: sampleValues.length >= anomalyDefaults.minSamples,
+      samplesNeeded: Math.max(0, anomalyDefaults.minSamples - sampleValues.length),
+      latestValue: latestPoint ? latestPoint.value : null,
+      latestTimestamp: latestPoint?.timestamp ?? null,
+      mean,
+      standardDeviation,
+      upperBand,
+      lowerBand,
+    }
+  }, [firstPersistedParameter, ruleMappingId, selectedNode.parameters, selectedNode.realSampleSeries])
 
   const useDemoMetric = () => {
     const demoUrl = `${window.location.origin}/api/demo/metric`
@@ -4340,7 +4480,7 @@ function NodeInspector({
                               const parameter = selectedNode.parameters.find((candidate) => candidate.id === event.target.value)
                               setRuleMappingId(event.target.value)
                               if (parameter) {
-                                setRuleName(`${parameter.label} threshold crossed`)
+                                setRuleName(`${parameter.label} ${ruleMode === "anomaly" ? "anomaly detected" : "threshold crossed"}`)
                               }
                             }}
                             disabled={!canEditProject}
@@ -4390,8 +4530,40 @@ function NodeInspector({
                             </select>
                           </div>
                           {ruleMode === "anomaly" ? (
-                            <div className="rounded-lg border border-dashed bg-background/80 p-3 text-xs text-muted-foreground">
-                              Learns a {anomalyDefaults.windowDays} day baseline and alerts when the next value is more than {anomalyDefaults.sigma}σ outside the selected direction. Requires {anomalyDefaults.minSamples} prior samples before firing.
+                            <div className="grid gap-2 rounded-lg border border-dashed bg-background/80 p-3 text-xs text-muted-foreground">
+                              <div>
+                                Learns a {anomalyDefaults.windowDays} day baseline and alerts on {getAnomalyDirectionLabel(anomalyDirection).toLowerCase()} more than {anomalyDefaults.sigma}σ outside the norm.
+                              </div>
+                              <div className="grid gap-2 sm:grid-cols-3">
+                                <div className="rounded-md border bg-muted/20 p-2">
+                                  <div>History</div>
+                                  <div className="mt-1 font-medium text-foreground">
+                                    {anomalyPreview.hasEnoughSamples
+                                      ? `${anomalyPreview.sampleCount} samples ready`
+                                      : `${anomalyPreview.samplesNeeded} more samples needed`}
+                                  </div>
+                                </div>
+                                <div className="rounded-md border bg-muted/20 p-2">
+                                  <div>Baseline mean</div>
+                                  <div className="mt-1 font-medium text-foreground">{formatSignalNumber(anomalyPreview.mean, anomalyPreview.unit)}</div>
+                                </div>
+                                <div className="rounded-md border bg-muted/20 p-2">
+                                  <div>Std dev</div>
+                                  <div className="mt-1 font-medium text-foreground">{formatSignalNumber(anomalyPreview.standardDeviation, anomalyPreview.unit)}</div>
+                                </div>
+                              </div>
+                              {anomalyPreview.hasEnoughSamples ? (
+                                <div>
+                                  Watching {anomalyPreview.parameterLabel}: low band {formatSignalNumber(anomalyPreview.lowerBand, anomalyPreview.unit)} / high band {formatSignalNumber(anomalyPreview.upperBand, anomalyPreview.unit)}
+                                  {anomalyPreview.latestTimestamp
+                                    ? ` / latest ${formatSignalNumber(anomalyPreview.latestValue, anomalyPreview.unit)} at ${formatSampledAt(anomalyPreview.latestTimestamp)}`
+                                    : ""}
+                                </div>
+                              ) : (
+                                <div>
+                                  ArgusGrid will save the rule now, then wait for {anomalyDefaults.minSamples} prior samples before opening anomaly incidents.
+                                </div>
+                              )}
                             </div>
                           ) : null}
                           <label className="flex items-center gap-2 text-sm">
@@ -4417,7 +4589,7 @@ function NodeInspector({
                                 </div>
                                 <div className="mt-1 text-muted-foreground">
                                   {rule.mode === "anomaly"
-                                    ? `${rule.mappingLabel ?? "Mapping"} ${rule.anomalyDirection ?? "high"} ${rule.anomalySigma ?? anomalyDefaults.sigma}σ / ${rule.anomalyWindowDays ?? anomalyDefaults.windowDays}d / ${rule.anomalyMinSamples ?? anomalyDefaults.minSamples} samples`
+                                    ? `${rule.mappingLabel ?? "Mapping"} / ${getAnomalyDirectionLabel((rule.anomalyDirection ?? "high") as AnomalyDirection)} / ${rule.anomalySigma ?? anomalyDefaults.sigma}σ / ${rule.anomalyWindowDays ?? anomalyDefaults.windowDays}d / ${rule.anomalyMinSamples ?? anomalyDefaults.minSamples} samples`
                                     : `${rule.mappingLabel ?? "Mapping"} ${rule.expression}`}
                                 </div>
                               </div>

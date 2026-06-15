@@ -87,6 +87,8 @@ Attached maps are served through `/reports/[shareToken]/map.png`; expired or rev
 
 Authenticated dashboards connect to `/api/projects/[projectId]/events` for lightweight live updates. The SSE stream only sends safe project-scoped metadata such as cursors and changed areas, then the client refreshes the existing project payload. If the stream disconnects, the dashboard shows a reconnecting/manual state and the existing refresh controls remain available.
 
+The dashboard header and Control Room show the live stream state, last checked time, latest changed areas, and a manual `Refresh telemetry now` fallback. Use this to verify whether new runs, polling changes, and alert updates are arriving through the live signal path or need manual refresh.
+
 Owners/admins can create project-scoped workflow telemetry tokens from Deployment diagnostics. The raw token is shown once, then only its prefix/hash metadata is retained. External automations can post run telemetry with:
 
 ```bash
@@ -110,7 +112,7 @@ curl -X POST "https://your-vercel-domain.vercel.app/api/ingest/runs" \
 
 The node inspector includes Basic and Advanced integration templates for Dify, n8n, GitHub Actions, and OpenAI/custom REST metrics. Basic templates explain the setup path and Advanced templates provide copyable snippets that use the selected node id and `<ingestion-token>` placeholders. The Integrations section also provides a guided setup hub: select a node and provider, create a one-time provider-named ingestion token, send a harmless synthetic test run for telemetry integrations, and refresh readiness from existing runs, samples, mappings, and alert rules.
 
-Alert rules support static thresholds and anomaly baselines. Anomaly rules learn from the previous 7 days of metric samples, require at least 8 prior samples, and fire when the next value is more than 2 standard deviations outside the selected direction.
+Alert rules support static thresholds and anomaly baselines. Anomaly rules learn from the previous 7 days of metric samples, require at least 8 prior samples, and fire when the next value is more than 2 standard deviations outside the selected direction. The node inspector's alert-rule dialog previews the selected mapping's sample count, baseline mean, standard deviation, watch band, and whether more samples are needed before anomaly alerts can fire.
 
 SDK previews live in `sdk/python` and `sdk/js`. See `docs/sdk.md` for one-minute `@argusgrid.trace` examples.
 
@@ -154,7 +156,7 @@ Manual post-deploy checklist:
 - Owner/admin workflow telemetry token creation shows the raw token once, token refresh lists only prefixes, revoke blocks future ingestion, and `/api/ingest/runs` rejects missing/wrong tokens.
 - Posting valid workflow run telemetry updates the selected node's Runs tab after refresh and records step details without sending alert email.
 - While signed in, the dashboard live indicator reaches `Live`; posting valid workflow run telemetry or running a manual poll updates Runs, node health, alerts, metrics, and latest poll status without a full page reload.
-- If live updates disconnect, the dashboard shows a reconnecting/manual state and manual refresh still works.
+- If live updates disconnect, the dashboard header and Control Room show a reconnecting/manual state, the latest changed areas remain visible, and manual refresh still works.
 - Basic and Advanced integration templates render in the API tab; custom REST metric applies fields without saving, and telemetry snippets include the selected node id but no real token.
 - Client report links can be created, opened in a signed-out browser, copied, and revoked without exposing secrets.
 - Client reports can include subtitle/prepared-by/executive note fields, attached map PNGs, and browser print/save-as-PDF output.
@@ -163,7 +165,7 @@ Manual post-deploy checklist:
 - After saving the demo metric and running poll now, the selected node shows a real `95 score` metric card, persisted sample trend, freshness label, and alert context after refresh.
 - Notification preferences save enabled/disabled email alerts and minimum severity per signed-in user.
 - Alert rules can be created from saved parameter mappings and new alert emails are not repeated while the alert remains unresolved.
-- Anomaly alert rules can be created from saved parameter mappings; they should wait for enough history, explain baseline mean/std dev in the alert message, and avoid duplicate unresolved emails.
+- Anomaly alert rules can be created from saved parameter mappings; the setup preview should show sample history, mean/std dev, watch bands, wait for enough history, explain baseline context in alert messages, and avoid duplicate unresolved emails.
 - Light mode remains readable with stronger text, borders, graph canvas dots, dialogs, report cards, and empty states; dark mode remains neutral black/grey.
 - `/api/health` does not include raw env var values, database URLs, OAuth secrets, or encrypted credential payloads.
 
@@ -183,4 +185,4 @@ npm run dev
 
 On first GitHub login, ArgusGrid creates a personal organization and owner membership, then shows onboarding to confirm organization/project names and choose demo or blank setup.
 
-The app now includes project management, team invitation acceptance, member management, encrypted API credential storage, guided metric mapping tests, focused basic/advanced integration templates, compact threshold/anomaly alert-rule management, cron/manual polling, SSE-first live update signals, workflow run telemetry ingestion with hashed project tokens, secure client report links, PNG map export, SDK previews, a deterministic demo metric source, real metric cards and trend charts from persisted samples/rollups, poll execution logs, readiness diagnostics, raw sample retention cleanup, in-app alerts, Resend email delivery logging/test flow/preferences, and small custom node icon uploads.
+The app now includes project management, team invitation acceptance, member management, encrypted API credential storage, guided metric mapping tests, focused basic/advanced integration templates, compact threshold/anomaly alert-rule management with baseline previews, cron/manual polling, SSE-first live update signals with Control Room status and manual fallback, workflow run telemetry ingestion with hashed project tokens, secure client report links, PNG map export, SDK previews, a deterministic demo metric source, real metric cards and trend charts from persisted samples/rollups, poll execution logs, readiness diagnostics, raw sample retention cleanup, in-app alerts, Resend email delivery logging/test flow/preferences, and small custom node icon uploads.
