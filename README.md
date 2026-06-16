@@ -146,6 +146,14 @@ Slack setup flow:
 
 SDK previews live in `sdk/python` and `sdk/js`. See `docs/sdk.md` for one-minute `@argusgrid.trace` examples.
 
+## Release And CI
+
+ArgusGrid uses GitHub Actions as the first enterprise-readiness gate. CI runs on pull requests and pushes to `main` with dependency install, Prisma client generation, typecheck, lint, and production build. A separate `Production smoke` workflow is manual so it can be dispatched after Vercel finishes deploying `main`.
+
+`/api/health` includes safe build metadata: app version, commit SHA, optional build time, and environment. Testing -> Deployment readiness renders the same metadata for operators. These fields must never include database URLs, OAuth secrets, encryption keys, cron secrets, email provider keys, Slack webhook URLs, webhook signing secrets, raw ingestion tokens, or encrypted payloads.
+
+Release notes start in `CHANGELOG.md`. Keep `package.json` semver and the changelog aligned for production-facing changes.
+
 ## Deployed QA
 
 Run public smoke checks against a deployment:
@@ -166,6 +174,12 @@ Optional mutation checks create private-beta test data:
 SMOKE_BASE_URL="https://your-vercel-domain.vercel.app" SMOKE_AUTH_STATE="./playwright-auth.json" SMOKE_MUTATION=1 npm run test:smoke
 ```
 
+Manual production smoke workflow:
+
+1. Wait for Vercel to finish deploying `main`.
+2. In GitHub Actions, run `Production smoke`.
+3. Confirm the workflow passes without creating production data.
+
 Use `docs/private-beta-qa.md` for the full side-by-side private-beta manual QA flow. It covers sign-in, projects, Automation Map, runs, telemetry, polling, alerts, reports, integrations, Testing, Logs, Settings, and secret-safety checks.
 
 Manual post-deploy checklist:
@@ -184,6 +198,7 @@ Manual post-deploy checklist:
 - Custom PNG/SVG node icon upload validates file type and size.
 - `/api/cron/poll` rejects a wrong bearer token.
 - Testing shows database, auth, encryption, cron, email provider readiness, latest poll status, and latest email delivery status.
+- Testing shows safe app version, commit, build time, and environment metadata.
 - Owner/admin test email from Testing returns clear success or failure feedback and does not expose `RESEND_API_KEY`.
 - Owner/admin manual poll run from Testing updates latest poll diagnostics without exposing `CRON_SECRET`.
 - Owner/admin workflow telemetry token creation shows the raw token once, token refresh lists only prefixes, revoke blocks future ingestion, and `/api/ingest/runs` rejects missing/wrong tokens.

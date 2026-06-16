@@ -37,8 +37,15 @@ try {
   const healthResponse = await publicPage.request.get(`${baseUrl}/api/health`)
   const health = await json(healthResponse)
   assert(health && typeof health.ok === "boolean", "Health route did not return safe readiness JSON.")
+  assert(typeof health?.build?.version === "string" && health.build.version.length > 0, "Health route did not return app version metadata.")
+  assert(typeof health?.build?.commitSha === "string" && health.build.commitSha.length > 0, "Health route did not return commit metadata.")
+  assert(typeof health?.build?.environment === "string" && health.build.environment.length > 0, "Health route did not return environment metadata.")
   assert(!JSON.stringify(health).includes("npg_"), "Health route leaked a database secret-looking value.")
   assert(!JSON.stringify(health).includes("GITHUB_SECRET"), "Health route leaked secret field names.")
+  assert(!JSON.stringify(health).includes("ENCRYPTION_KEY"), "Health route leaked secret field names.")
+  assert(!JSON.stringify(health).includes("CRON_SECRET"), "Health route leaked secret field names.")
+  assert(!JSON.stringify(health).includes("RESEND_API_KEY"), "Health route leaked secret field names.")
+  assert(!JSON.stringify(health).includes("hooks.slack.com/services/"), "Health route leaked a Slack webhook URL.")
 
   const cronResponse = await publicPage.request.get(`${baseUrl}/api/cron/poll`, {
     headers: { Authorization: "Bearer definitely-wrong" },

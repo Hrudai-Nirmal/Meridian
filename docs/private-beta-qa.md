@@ -17,6 +17,7 @@ Use this checklist for production validation on `https://argusgrid.hrudainirmal.
 - New-user onboarding can create the demo project.
 - Returning users land in the dashboard without repeated onboarding.
 - `/api/health` returns safe readiness JSON without raw secret values.
+- `/api/health` includes safe version, commit, build time, and environment metadata.
 
 ## Projects
 
@@ -80,6 +81,7 @@ Use this checklist for production validation on `https://argusgrid.hrudainirmal.
 ## Testing
 
 - Confirm readiness cards show database, auth, encryption, cron, email, and poll status.
+- Confirm Deployment readiness shows safe version, commit, build time, and environment metadata.
 - Run manual poll and confirm latest poll metadata updates.
 - Send test email and confirm success/failure feedback does not expose provider secrets.
 - Send generic webhook and Slack tests from Testing.
@@ -106,4 +108,5 @@ Use this checklist for production validation on `https://argusgrid.hrudainirmal.
 - Test desktop at 1440px wide and a smaller laptop/tablet width.
 - Toggle light/dark mode and confirm readable text, borders, controls, graph dots, and report surfaces.
 - Run `SMOKE_BASE_URL="https://argusgrid.hrudainirmal.in" npm run test:smoke`.
+- After Vercel deploys `main`, manually dispatch the GitHub Actions `Production smoke` workflow.
 - Record failures as separate fix tasks with reproduction steps and screenshots when useful.

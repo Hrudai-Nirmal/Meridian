@@ -1,5 +1,6 @@
 import "server-only"
 
+import { getAppBuildMetadata, type AppBuildMetadata } from "@/lib/app-version"
 import { hasGithubAuthConfig } from "@/lib/auth"
 import { isEmailConfigured } from "@/lib/notifications"
 import { getPrisma, hasDatabaseConfig } from "@/lib/prisma"
@@ -7,6 +8,7 @@ import { getPrisma, hasDatabaseConfig } from "@/lib/prisma"
 export type ReadinessStatus = {
   ok: boolean
   checkedAt: string
+  build: AppBuildMetadata
   checks: {
     database: boolean
     auth: boolean
@@ -94,6 +96,7 @@ export async function getReadinessStatus(): Promise<ReadinessStatus> {
   return {
     ok: Object.values(checks).every(Boolean),
     checkedAt: new Date().toISOString(),
+    build: getAppBuildMetadata(),
     checks,
     latestPoll,
     latestEmail,

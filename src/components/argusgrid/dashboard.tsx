@@ -2039,6 +2039,7 @@ export function ArgusGridDashboard({
                   <ReadinessItem label="Cron secret configured" ready={initialWorkspace.diagnostics.checks.cron} />
                   <ReadinessItem label="Email provider configured" ready={initialWorkspace.diagnostics.checks.email} />
                 </div>
+                <BuildMetadataCard build={initialWorkspace.diagnostics.build} />
                 <div className="grid gap-2 rounded-lg border bg-muted/20 p-3 text-sm">
                   <Button onClick={runPollNow} disabled={!canManageOrganization}>
                     <Activity data-icon="inline-start" />
@@ -2823,6 +2824,29 @@ function ReadinessItem({ label, ready }: { label: string; ready: boolean }) {
     <div className="flex items-center justify-between gap-3 rounded-lg border p-3 text-sm">
       <span className="font-medium">{label}</span>
       <Badge variant={ready ? "secondary" : "destructive"}>{ready ? "Ready" : "Missing"}</Badge>
+    </div>
+  )
+}
+
+function BuildMetadataCard({ build }: { build: WorkspacePayload["diagnostics"]["build"] }) {
+  return (
+    <div className="grid gap-2 rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground sm:grid-cols-2">
+      <div>
+        <div className="font-medium text-foreground">Version</div>
+        <div>{build.version}</div>
+      </div>
+      <div>
+        <div className="font-medium text-foreground">Environment</div>
+        <div>{build.environment}</div>
+      </div>
+      <div>
+        <div className="font-medium text-foreground">Commit</div>
+        <div className="break-all">{build.commitSha}</div>
+      </div>
+      <div>
+        <div className="font-medium text-foreground">Build time</div>
+        <div>{build.buildTime ?? "Not provided"}</div>
+      </div>
     </div>
   )
 }
@@ -4194,12 +4218,15 @@ function TestingSection({
       <div className="mx-auto grid max-w-7xl gap-5">
         <details id="testing-readiness" open className="rounded-lg border bg-background">
           <summary className="cursor-pointer px-5 py-4 font-semibold">Deployment readiness</summary>
-          <div className="grid gap-2 px-5 pb-5 sm:grid-cols-2 lg:grid-cols-3">
-            <ReadinessItem label="Database connected" ready={diagnostics.checks.database} />
-            <ReadinessItem label="GitHub OAuth ready" ready={diagnostics.checks.auth} />
-            <ReadinessItem label="Encryption enabled" ready={diagnostics.checks.encryption} />
-            <ReadinessItem label="Cron secret configured" ready={diagnostics.checks.cron} />
-            <ReadinessItem label="Email provider configured" ready={diagnostics.checks.email} />
+          <div className="grid gap-4 px-5 pb-5">
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              <ReadinessItem label="Database connected" ready={diagnostics.checks.database} />
+              <ReadinessItem label="GitHub OAuth ready" ready={diagnostics.checks.auth} />
+              <ReadinessItem label="Encryption enabled" ready={diagnostics.checks.encryption} />
+              <ReadinessItem label="Cron secret configured" ready={diagnostics.checks.cron} />
+              <ReadinessItem label="Email provider configured" ready={diagnostics.checks.email} />
+            </div>
+            <BuildMetadataCard build={diagnostics.build} />
           </div>
         </details>
 
