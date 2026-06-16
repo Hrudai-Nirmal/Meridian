@@ -37,6 +37,7 @@ import {
   LayoutGrid,
   LayoutDashboard,
   MailCheck,
+  MessageSquare,
   Moon,
   Network,
   NotebookText,
@@ -291,12 +292,23 @@ type IngestionTokenRecord = {
   revokedAt: string | null
 }
 type WebhookEventFilter = "alert.opened" | "alert.resolved" | "webhook.test"
+type SlackEventFilter = "alert.opened" | "alert.resolved" | "slack.test"
+type SlackSeverity = "INFO" | "WARNING" | "CRITICAL"
 type ProjectWebhookRecord = {
   id: string
   name: string
   url: string
   enabled: boolean
   eventFilters: WebhookEventFilter[]
+  createdAt: string
+  updatedAt: string
+}
+type ProjectSlackRecord = {
+  id: string
+  name: string
+  enabled: boolean
+  minimumSeverity: SlackSeverity
+  eventFilters: SlackEventFilter[]
   createdAt: string
   updatedAt: string
 }
@@ -463,6 +475,7 @@ const sectionSubsections: Record<DashboardSection, { id: string; label: string; 
   integrations: [
     { id: "integrations-templates", label: "Templates" },
     { id: "integrations-telemetry", label: "Telemetry" },
+    { id: "integrations-slack", label: "Slack alerts" },
   ],
   testing: [
     { id: "testing-readiness", label: "Readiness" },
@@ -644,6 +657,12 @@ export function ArgusGridDashboard({
   const [webhookEventFilters, setWebhookEventFilters] = useState<WebhookEventFilter[]>(["alert.opened", "alert.resolved", "webhook.test"])
   const [webhookMessage, setWebhookMessage] = useState("")
   const [generatedWebhookSecret, setGeneratedWebhookSecret] = useState("")
+  const [slackDestinations, setSlackDestinations] = useState<ProjectSlackRecord[]>([])
+  const [slackName, setSlackName] = useState("Slack alert channel")
+  const [slackWebhookUrl, setSlackWebhookUrl] = useState("")
+  const [slackMinimumSeverity, setSlackMinimumSeverity] = useState<SlackSeverity>("WARNING")
+  const [slackEventFilters, setSlackEventFilters] = useState<SlackEventFilter[]>(["alert.opened", "alert.resolved", "slack.test"])
+  const [slackMessage, setSlackMessage] = useState("")
   const [logs, setLogs] = useState<ProjectLogRecord[]>([])
   const [logTypeFilter, setLogTypeFilter] = useState<ProjectLogType | "">("")
   const [logWindowFilter, setLogWindowFilter] = useState<ProjectLogWindow>("7d")
@@ -1368,6 +1387,94 @@ export function ArgusGridDashboard({
     setWebhookMessage("Webhook destination deleted.")
   }
 
+  const toggleSlackEventFilter = (event: SlackEventFilter, enabled: boolean) => {
+    setSlackEventFilters((current) => {
+      const next = enabled ? Array.from(new Set(current.concat(event))) : current.filter((candidate) => candidate !== event)
+      return next.length ? next : current
+    })
+  }
+
+  const loadSlackDestinations = async () => {
+    if (!canEditProject) {
+      setSlackMessage("Viewers cannot manage Slack destinations.")
+      return
+    }
+
+    setSlackMessage("Loading Slack destinations...")
+    const response = await fetch(`/api/projects/${initialWorkspace.project.id}/slack`)
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      setSlackMessage(payload?.error ?? "Slack destinations failed to load.")
+      return
+    }
+    setSlackDestinations(payload.slackDestinations ?? [])
+    setSlackMessage("Slack destinations loaded.")
+  }
+
+  const createSlackDestination = async () => {
+    if (!canEditProject) {
+      setSlackMessage("Viewers cannot create Slack destinations.")
+      return
+    }
+
+    setSlackMessage("Creating Slack destination...")
+    const response = await fetch(`/api/projects/${initialWorkspace.project.id}/slack`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: slackName,
+        webhookUrl: slackWebhookUrl,
+        enabled: true,
+        minimumSeverity: slackMinimumSeverity,
+        eventFilters: slackEventFilters,
+      }),
+    })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      setSlackMessage(payload?.error ?? "Slack destination creation failed.")
+      return
+    }
+
+    setSlackDestinations((current) => [payload.slackDestination, ...current])
+    setSlackWebhookUrl("")
+    setSlackMessage(payload.testResult?.sent > 0 ? "Slack destination created and test delivered." : "Slack destination created. Test delivery did not succeed.")
+  }
+
+  const testSlackDestination = async (slackId: string) => {
+    setSlackMessage("Sending Slack test...")
+    const response = await fetch(`/api/projects/${initialWorkspace.project.id}/slack/${slackId}/test`, { method: "POST" })
+    const payload = await response.json().catch(() => null)
+    setSlackMessage(payload?.message ?? (response.ok ? "Slack test delivered." : "Slack test failed."))
+  }
+
+  const toggleSlackDestination = async (destination: ProjectSlackRecord) => {
+    setSlackMessage(destination.enabled ? "Disabling Slack destination..." : "Enabling Slack destination...")
+    const response = await fetch(`/api/projects/${initialWorkspace.project.id}/slack/${destination.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: !destination.enabled }),
+    })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      setSlackMessage(payload?.error ?? "Slack destination update failed.")
+      return
+    }
+    setSlackDestinations((current) => current.map((candidate) => (candidate.id === destination.id ? payload.slackDestination : candidate)))
+    setSlackMessage(payload.slackDestination.enabled ? "Slack destination enabled." : "Slack destination disabled.")
+  }
+
+  const deleteSlackDestination = async (slackId: string) => {
+    setSlackMessage("Deleting Slack destination...")
+    const response = await fetch(`/api/projects/${initialWorkspace.project.id}/slack/${slackId}`, { method: "DELETE" })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      setSlackMessage(payload?.error ?? "Slack destination deletion failed.")
+      return
+    }
+    setSlackDestinations((current) => current.filter((destination) => destination.id !== slackId))
+    setSlackMessage("Slack destination deleted.")
+  }
+
   const loadReportShares = async () => {
     if (!canManageOrganization) {
       setReportMessage("Only owners and admins can manage client reports.")
@@ -1657,6 +1764,9 @@ export function ArgusGridDashboard({
     }
     if (section === "logs") {
       void loadProjectLogs()
+    }
+    if ((section === "integrations" || section === "testing") && canEditProject && !slackDestinations.length) {
+      void loadSlackDestinations()
     }
     if (section === "testing" && canEditProject && !webhooks.length) {
       void loadWebhooks()
@@ -2400,6 +2510,12 @@ export function ArgusGridDashboard({
             alertRules={alertRules}
             canEditProject={canEditProject}
             canManageOrganization={canManageOrganization}
+            slackDestinations={slackDestinations}
+            slackName={slackName}
+            slackWebhookUrl={slackWebhookUrl}
+            slackMinimumSeverity={slackMinimumSeverity}
+            slackEventFilters={slackEventFilters}
+            slackMessage={slackMessage}
             onSelectNode={setSelectedId}
             onOpenMap={() => openDashboardSection("map")}
             onOpenSettings={() => openDashboardSection("settings")}
@@ -2407,6 +2523,15 @@ export function ArgusGridDashboard({
             onCreateWorkflowToken={createWorkflowTokenForName}
             onLoadIngestionTokens={loadIngestionTokens}
             onRefreshProject={() => refreshProjectData({ silent: true })}
+            onSlackNameChange={setSlackName}
+            onSlackWebhookUrlChange={setSlackWebhookUrl}
+            onSlackMinimumSeverityChange={setSlackMinimumSeverity}
+            onToggleSlackEventFilter={toggleSlackEventFilter}
+            onLoadSlackDestinations={loadSlackDestinations}
+            onCreateSlackDestination={createSlackDestination}
+            onTestSlackDestination={testSlackDestination}
+            onToggleSlackDestination={toggleSlackDestination}
+            onDeleteSlackDestination={deleteSlackDestination}
           />
         ) : activeSection === "testing" ? (
           <TestingSection
@@ -2416,7 +2541,9 @@ export function ArgusGridDashboard({
             pollMessage={pollMessage}
             emailMessage={emailMessage}
             webhookMessage={webhookMessage}
+            slackMessage={slackMessage}
             webhooks={webhooks}
+            slackDestinations={slackDestinations}
             selectedNode={selectedNode}
             canManageOrganization={canManageOrganization}
             canEditProject={canEditProject}
@@ -2424,6 +2551,8 @@ export function ArgusGridDashboard({
             onSendTestEmail={sendTestEmail}
             onTestWebhook={testWebhook}
             onLoadWebhooks={loadWebhooks}
+            onTestSlackDestination={testSlackDestination}
+            onLoadSlackDestinations={loadSlackDestinations}
             onOpenMap={() => openDashboardSection("map")}
             onOpenSettings={() => openDashboardSection("settings")}
             onOpenIntegrations={() => openDashboardSection("integrations")}
@@ -2600,6 +2729,25 @@ export function ArgusGridDashboard({
                 {selectedAlertDetail.webhookDeliveryFailureReason ? (
                   <div className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
                     {selectedAlertDetail.webhookDeliveryFailureReason}
+                  </div>
+                ) : null}
+              </div>
+              <div className="rounded-lg border p-3">
+                <div className="text-xs text-muted-foreground">Latest Slack delivery</div>
+                <div className="font-medium">
+                  {selectedAlertDetail.slackDeliveryStatus
+                    ? `${selectedAlertDetail.slackDeliveryStatus}${selectedAlertDetail.slackDeliveryProvider ? ` via ${selectedAlertDetail.slackDeliveryProvider}` : ""}`
+                    : "No Slack delivery attempted"}
+                </div>
+                {selectedAlertDetail.slackDeliveryAttemptedAt ? (
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Attempted {new Date(selectedAlertDetail.slackDeliveryAttemptedAt).toLocaleString()}
+                    {selectedAlertDetail.slackDeliverySentAt ? `, sent ${new Date(selectedAlertDetail.slackDeliverySentAt).toLocaleString()}` : ""}
+                  </div>
+                ) : null}
+                {selectedAlertDetail.slackDeliveryFailureReason ? (
+                  <div className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
+                    {selectedAlertDetail.slackDeliveryFailureReason}
                   </div>
                 ) : null}
               </div>
@@ -3436,6 +3584,12 @@ function IntegrationsSection({
   alertRules,
   canEditProject,
   canManageOrganization,
+  slackDestinations,
+  slackName,
+  slackWebhookUrl,
+  slackMinimumSeverity,
+  slackEventFilters,
+  slackMessage,
   onSelectNode,
   onOpenMap,
   onOpenSettings,
@@ -3443,12 +3597,27 @@ function IntegrationsSection({
   onCreateWorkflowToken,
   onLoadIngestionTokens,
   onRefreshProject,
+  onSlackNameChange,
+  onSlackWebhookUrlChange,
+  onSlackMinimumSeverityChange,
+  onToggleSlackEventFilter,
+  onLoadSlackDestinations,
+  onCreateSlackDestination,
+  onTestSlackDestination,
+  onToggleSlackDestination,
+  onDeleteSlackDestination,
 }: {
   nodes: EndpointNodeData[]
   selectedNodeId: string
   alertRules: WorkspacePayload["alertRules"]
   canEditProject: boolean
   canManageOrganization: boolean
+  slackDestinations: ProjectSlackRecord[]
+  slackName: string
+  slackWebhookUrl: string
+  slackMinimumSeverity: SlackSeverity
+  slackEventFilters: SlackEventFilter[]
+  slackMessage: string
   onSelectNode: (nodeId: string) => void
   onOpenMap: () => void
   onOpenSettings: () => void
@@ -3456,6 +3625,15 @@ function IntegrationsSection({
   onCreateWorkflowToken: (name: string) => Promise<string | null>
   onLoadIngestionTokens: () => Promise<void>
   onRefreshProject: () => Promise<void>
+  onSlackNameChange: (value: string) => void
+  onSlackWebhookUrlChange: (value: string) => void
+  onSlackMinimumSeverityChange: (value: SlackSeverity) => void
+  onToggleSlackEventFilter: (event: SlackEventFilter, enabled: boolean) => void
+  onLoadSlackDestinations: () => Promise<void>
+  onCreateSlackDestination: () => Promise<void>
+  onTestSlackDestination: (slackId: string) => Promise<void>
+  onToggleSlackDestination: (destination: ProjectSlackRecord) => Promise<void>
+  onDeleteSlackDestination: (slackId: string) => Promise<void>
 }) {
   const [selectedTemplateId, setSelectedTemplateId] = useState<IntegrationTemplate["id"]>("dify")
   const [message, setMessage] = useState("")
@@ -3621,6 +3799,97 @@ function IntegrationsSection({
             <div className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Metric polling</div>
             {metricTemplates.map((template) => <TemplateButton key={template.id} template={template} />)}
           </div>
+          <Card id="integrations-slack">
+            <CardHeader>
+              <CardTitle>Slack Alerts</CardTitle>
+              <CardDescription>Send native Slack alert messages through an incoming webhook URL. The URL is encrypted and never shown after save.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3">
+              <div className="grid gap-2">
+                <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+                  Destination name
+                  <Input value={slackName} onChange={(event) => onSlackNameChange(event.target.value)} disabled={!canEditProject} />
+                </label>
+                <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+                  Slack incoming webhook URL
+                  <Input
+                    value={slackWebhookUrl}
+                    onChange={(event) => onSlackWebhookUrlChange(event.target.value)}
+                    placeholder="https://hooks.slack.com/services/..."
+                    disabled={!canEditProject}
+                  />
+                </label>
+                <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+                  Minimum severity
+                  <select
+                    className="h-10 rounded-lg border bg-background px-2 text-sm"
+                    value={slackMinimumSeverity}
+                    onChange={(event) => onSlackMinimumSeverityChange(event.target.value as SlackSeverity)}
+                    disabled={!canEditProject}
+                  >
+                    <option value="INFO">Info and above</option>
+                    <option value="WARNING">Warning and above</option>
+                    <option value="CRITICAL">Critical only</option>
+                  </select>
+                </label>
+              </div>
+              <div className="grid gap-2 rounded-lg border bg-muted/20 p-3 text-xs">
+                <div className="font-medium">Events</div>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {([
+                    ["alert.opened", "Alert opened"],
+                    ["alert.resolved", "Alert resolved"],
+                    ["slack.test", "Test event"],
+                  ] as [SlackEventFilter, string][]).map(([event, label]) => (
+                    <label key={event} className="flex items-center gap-2 text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={slackEventFilters.includes(event)}
+                        onChange={(changeEvent) => onToggleSlackEventFilter(event, changeEvent.target.checked)}
+                        disabled={!canEditProject}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={onCreateSlackDestination} disabled={!canEditProject || !slackName.trim() || !slackWebhookUrl.trim()}>
+                  <MessageSquare data-icon="inline-start" />
+                  Create Slack destination
+                </Button>
+                <Button variant="outline" onClick={onLoadSlackDestinations} disabled={!canEditProject}>Refresh Slack</Button>
+              </div>
+              {slackMessage ? <div className="text-xs text-muted-foreground">{slackMessage}</div> : null}
+              {slackDestinations.length ? (
+                <div className="grid gap-2">
+                  {slackDestinations.map((destination) => (
+                    <div key={destination.id} className="grid gap-2 rounded-md border bg-background p-2 text-xs">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">{destination.name}</div>
+                          <div className="mt-1 text-muted-foreground">
+                            {destination.minimumSeverity}+ / {destination.eventFilters.join(", ")}
+                          </div>
+                          <div className="mt-1 text-muted-foreground">Created {new Date(destination.createdAt).toLocaleString()}</div>
+                        </div>
+                        <Badge variant={destination.enabled ? "secondary" : "outline"}>{destination.enabled ? "Enabled" : "Disabled"}</Badge>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button variant="outline" size="sm" onClick={() => onTestSlackDestination(destination.id)} disabled={!canEditProject || !destination.enabled}>Test</Button>
+                        <Button variant="ghost" size="sm" onClick={() => onToggleSlackDestination(destination)} disabled={!canEditProject}>
+                          {destination.enabled ? "Disable" : "Enable"}
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => onDeleteSlackDestination(destination.id)} disabled={!canEditProject}>Delete</Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">No Slack destinations loaded yet.</div>
+              )}
+            </CardContent>
+          </Card>
         </div>
         <Card>
           <CardHeader>
@@ -3879,7 +4148,9 @@ function TestingSection({
   pollMessage,
   emailMessage,
   webhookMessage,
+  slackMessage,
   webhooks,
+  slackDestinations,
   selectedNode,
   canManageOrganization,
   canEditProject,
@@ -3887,6 +4158,8 @@ function TestingSection({
   onSendTestEmail,
   onTestWebhook,
   onLoadWebhooks,
+  onTestSlackDestination,
+  onLoadSlackDestinations,
   onOpenMap,
   onOpenSettings,
   onOpenIntegrations,
@@ -3898,7 +4171,9 @@ function TestingSection({
   pollMessage: string
   emailMessage: string
   webhookMessage: string
+  slackMessage: string
   webhooks: ProjectWebhookRecord[]
+  slackDestinations: ProjectSlackRecord[]
   selectedNode?: EndpointNodeData
   canManageOrganization: boolean
   canEditProject: boolean
@@ -3906,6 +4181,8 @@ function TestingSection({
   onSendTestEmail: () => Promise<void>
   onTestWebhook: (webhookId: string) => Promise<void>
   onLoadWebhooks: () => Promise<void>
+  onTestSlackDestination: (slackId: string) => Promise<void>
+  onLoadSlackDestinations: () => Promise<void>
   onOpenMap: () => void
   onOpenSettings: () => void
   onOpenIntegrations: () => void
@@ -3959,7 +4236,7 @@ function TestingSection({
 
         <details id="testing-notifications" open className="rounded-lg border bg-background">
           <summary className="cursor-pointer px-5 py-4 font-semibold">Notification tests</summary>
-          <div className="grid gap-4 px-5 pb-5 lg:grid-cols-2">
+          <div className="grid gap-4 px-5 pb-5 lg:grid-cols-3">
             <Card>
               <CardHeader>
                 <CardTitle>Email test</CardTitle>
@@ -4004,6 +4281,37 @@ function TestingSection({
                   </div>
                 ) : (
                   <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">No webhook destinations loaded.</div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Slack tests</CardTitle>
+                <CardDescription>Send `slack.test` to configured Slack incoming webhook destinations.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3">
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" onClick={onLoadSlackDestinations} disabled={!canEditProject}>Refresh Slack</Button>
+                  <Button variant="ghost" onClick={onOpenIntegrations}>Configure Slack</Button>
+                </div>
+                {slackMessage ? <div className="text-xs text-muted-foreground">{slackMessage}</div> : null}
+                {slackDestinations.length ? (
+                  <div className="grid gap-2">
+                    {slackDestinations.map((destination) => (
+                      <div key={destination.id} className="flex items-center justify-between gap-3 rounded-md border p-2 text-xs">
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">{destination.name}</div>
+                          <div className="truncate text-muted-foreground">{destination.minimumSeverity}+ / {destination.eventFilters.join(", ")}</div>
+                        </div>
+                        <Button size="sm" variant="outline" disabled={!canEditProject || !destination.enabled} onClick={() => onTestSlackDestination(destination.id)}>
+                          Test
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">No Slack destinations loaded.</div>
                 )}
               </CardContent>
             </Card>

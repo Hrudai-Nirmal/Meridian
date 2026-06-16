@@ -53,20 +53,20 @@ enum AlertSeverity {
 }
 
 model User {
-  id            String                   @id @default(cuid())
-  name          String?
-  email         String?                  @unique
-  emailVerified DateTime?
-  image         String?
-  accounts      Account[]
-  sessions      Session[]
-  memberships   Membership[]
-  invitations   TeamInvitation[]
-  notifications NotificationPreference[]
+  id              String                   @id @default(cuid())
+  name            String?
+  email           String?                  @unique
+  emailVerified   DateTime?
+  image           String?
+  accounts        Account[]
+  sessions        Session[]
+  memberships     Membership[]
+  invitations     TeamInvitation[]
+  notifications   NotificationPreference[]
   ingestionTokens IngestionToken[]
-  reportShares  ReportShare[]
-  createdAt     DateTime                 @default(now())
-  updatedAt     DateTime                 @updatedAt
+  reportShares    ReportShare[]
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
 }
 
 model Account {
@@ -149,23 +149,24 @@ model TeamInvitation {
 }
 
 model Project {
-  id             String            @id @default(cuid())
-  name           String
-  slug           String
-  organizationId String
-  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  categories     ProjectCategory[]
-  nodes          EndpointNode[]
-  edges          GraphEdge[]
-  secrets        ProjectSecret[]
-  ingestionTokens IngestionToken[]
+  id                  String                      @id @default(cuid())
+  name                String
+  slug                String
+  organizationId      String
+  organization        Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  categories          ProjectCategory[]
+  nodes               EndpointNode[]
+  edges               GraphEdge[]
+  secrets             ProjectSecret[]
+  ingestionTokens     IngestionToken[]
   webhookDestinations ProjectWebhookDestination[]
-  reportShares   ReportShare[]
-  alertRules     AlertRule[]
-  auditLogs      AuditLog[]
-  archivedAt     DateTime?
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
+  slackDestinations   ProjectSlackDestination[]
+  reportShares        ReportShare[]
+  alertRules          AlertRule[]
+  auditLogs           AuditLog[]
+  archivedAt          DateTime?
+  createdAt           DateTime                    @default(now())
+  updatedAt           DateTime                    @updatedAt
 
   @@unique([organizationId, slug])
   @@index([organizationId])
@@ -275,17 +276,17 @@ model ProjectSecret {
 }
 
 model IngestionToken {
-  id         String    @id @default(cuid())
-  name       String
-  prefix     String
-  tokenHash  String    @unique
-  projectId  String
+  id          String    @id @default(cuid())
+  name        String
+  prefix      String
+  tokenHash   String    @unique
+  projectId   String
   createdById String
-  project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  createdBy  User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  lastUsedAt DateTime?
-  revokedAt  DateTime?
-  createdAt  DateTime  @default(now())
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy   User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
 
   @@index([projectId, revokedAt])
   @@index([createdById])
@@ -293,38 +294,54 @@ model IngestionToken {
 }
 
 model ProjectWebhookDestination {
-  id              String   @id @default(cuid())
-  name            String
-  url             String
-  enabled         Boolean  @default(true)
-  eventFilters    Json?
+  id                     String   @id @default(cuid())
+  name                   String
+  url                    String
+  enabled                Boolean  @default(true)
+  eventFilters           Json?
   signingSecretEncrypted String
-  projectId       String
-  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  projectId              String
+  project                Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   @@index([projectId, enabled])
 }
 
+model ProjectSlackDestination {
+  id                  String        @id @default(cuid())
+  name                String
+  webhookUrlEncrypted String
+  enabled             Boolean       @default(true)
+  minimumSeverity     AlertSeverity @default(WARNING)
+  eventFilters        Json?
+  projectId           String
+  project             Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  @@index([projectId, enabled])
+  @@index([minimumSeverity])
+}
+
 model ReportShare {
-  id          String    @id @default(cuid())
-  token       String    @unique
-  title       String
-  clientName  String?
-  subtitle    String?
-  preparedBy  String?
-  executiveNote String?
+  id               String    @id @default(cuid())
+  token            String    @unique
+  title            String
+  clientName       String?
+  subtitle         String?
+  preparedBy       String?
+  executiveNote    String?
   mapImageMimeType String?
-  mapImageData Bytes?
-  projectId   String
-  createdById String
-  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  createdBy   User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  expiresAt   DateTime?
-  revokedAt   DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  mapImageData     Bytes?
+  projectId        String
+  createdById      String
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy        User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  expiresAt        DateTime?
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   @@index([projectId, revokedAt])
   @@index([createdById])

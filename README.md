@@ -70,7 +70,7 @@ Owners/admins can send a harmless test alert email from Testing after `RESEND_AP
 
 Owners/admins can also run a project poll manually from Testing for demos. The public `/api/demo/metric` route returns a deterministic sample for private-beta alert QA.
 
-The dashboard information architecture keeps Settings configuration-only: notification preferences, webhook destinations, telemetry tokens, and project environment context. Testing owns deployment readiness, manual poll, test email, webhook tests, integration readiness, endpoint setup shortcuts, and demo metric QA. Logs provides a unified safe project timeline with 24h/7d/30d/All windows, type filters, search, and entries from audit activity, alerts, polling, deliveries, runs, reports, webhooks, team actions, and map changes.
+The dashboard information architecture keeps Settings configuration-only: notification preferences, telemetry tokens, and project environment context. Integrations owns setup for telemetry providers, generic alert webhooks, and native Slack destinations. Testing owns deployment readiness, manual poll, test email, webhook/Slack tests, integration readiness, endpoint setup shortcuts, and demo metric QA. Logs provides a unified safe project timeline with 24h/7d/30d/All windows, type filters, search, and entries from audit activity, alerts, polling, deliveries, runs, reports, webhooks, Slack, team actions, and map changes.
 
 When a main dashboard section is selected, the sidebar switches to contextual mode: the active section heading acts as a back button and one-level subsection anchors appear below it. Back returns to the main section list without changing the active page.
 
@@ -120,7 +120,7 @@ The node inspector includes Basic and Advanced integration templates for Dify, n
 
 Alert rules support static thresholds and anomaly baselines. Anomaly rules learn from the previous 7 days of metric samples, require at least 8 prior samples, and fire when the next value is more than 2 standard deviations outside the selected direction. The node inspector's alert-rule dialog previews the selected mapping's sample count, baseline mean, standard deviation, watch band, and whether more samples are needed before anomaly alerts can fire.
 
-Project editors can create outbound webhook destinations from `Settings` and test them from `Testing`. ArgusGrid sends `alert.opened`, `alert.resolved`, and `webhook.test` JSON payloads to enabled destinations, retries once on failure, and records webhook delivery status in alert details and Logs. Signing secrets are shown once at creation and are not exposed again.
+Project editors can create outbound webhook destinations from `Integrations` and test them from `Integrations` or `Testing`. ArgusGrid sends `alert.opened`, `alert.resolved`, and `webhook.test` JSON payloads to enabled destinations, retries once on failure, and records webhook delivery status in alert details and Logs. Signing secrets are shown once at creation and are not exposed again.
 
 Webhook receivers can verify these headers:
 
@@ -132,6 +132,17 @@ X-ArgusGrid-Signature: sha256=<hmac>
 ```
 
 The signature is HMAC SHA-256 over `timestamp.rawJsonBody` using the destination signing secret.
+
+Native Slack alert destinations also live in `Integrations`, using Slack incoming webhook URLs. Create a Slack destination with a friendly name, a `https://hooks.slack.com/...` incoming webhook URL, minimum severity, and event filters for `alert.opened`, `alert.resolved`, and `slack.test`. The webhook URL is encrypted, write-only, and never returned to the browser after creation. ArgusGrid sends Slack Block Kit messages for matching enabled destinations, retries once on failure, and records delivery evidence in alert details and Logs.
+
+Slack setup flow:
+
+1. In Slack, create an incoming webhook for the target channel.
+2. In ArgusGrid, open `Integrations` -> `Slack alerts`.
+3. Enter a destination name and paste the Slack incoming webhook URL.
+4. Choose the minimum severity and event filters, then click `Add Slack destination`.
+5. Use `Send test` in `Integrations` or `Testing` and confirm Slack receives the message.
+6. Trigger and resolve a demo alert, then confirm alert details and Logs show Slack delivery status without exposing the URL.
 
 SDK previews live in `sdk/python` and `sdk/js`. See `docs/sdk.md` for one-minute `@argusgrid.trace` examples.
 
@@ -185,10 +196,11 @@ Manual post-deploy checklist:
 - After saving the demo metric and running poll now, the selected node shows a real `95 score` metric card, persisted sample trend, freshness label, and alert context after refresh.
 - Notification preferences save enabled/disabled email alerts and minimum severity per signed-in user.
 - Webhook destinations can be created, tested, enabled/disabled, deleted, and copied with a one-time signing secret; disabled destinations do not receive alert events.
-- Logs loads a combined timeline, filters by type/window/text, and never exposes raw secrets, raw tokens, encrypted payloads, webhook signing secrets, env values, or private credential bodies.
+- Slack destinations can be created, tested, enabled/disabled, and deleted from Integrations; list responses never expose the incoming webhook URL.
+- Logs loads a combined timeline, filters by type/window/text, and never exposes raw secrets, raw tokens, encrypted payloads, webhook signing secrets, Slack incoming webhook URLs, env values, or private credential bodies.
 - Contextual sidebar mode shows the selected section heading/back button plus subsection anchors, and Back returns to the main section list without changing the active page content.
 - Alert rules can be created from saved parameter mappings and new alert emails are not repeated while the alert remains unresolved.
-- New alert incidents send `alert.opened` webhooks, resolved/ignored incidents send `alert.resolved` webhooks, and alert details show latest webhook delivery status.
+- New alert incidents send `alert.opened` webhooks and Slack messages, resolved/ignored incidents send `alert.resolved` webhooks and Slack messages, and alert details show latest webhook and Slack delivery status.
 - Anomaly alert rules can be created from saved parameter mappings; the setup preview should show sample history, mean/std dev, watch bands, wait for enough history, explain baseline context in alert messages, and avoid duplicate unresolved emails.
 - Light mode remains readable with stronger text, borders, graph canvas dots, dialogs, report cards, and empty states; dark mode remains neutral black/grey.
 - `/api/health` does not include raw env var values, database URLs, OAuth secrets, or encrypted credential payloads.
@@ -209,4 +221,4 @@ npm run dev
 
 On first GitHub login, ArgusGrid creates a personal organization and owner membership, then shows onboarding to confirm organization/project names and choose demo or blank setup.
 
-The app now includes project management, team invitation acceptance, member management, encrypted API credential storage, guided metric mapping tests, visible edit-mode map connection handles with editable link labels, focused basic/advanced integration templates, compact threshold/anomaly alert-rule management with baseline previews, signed outbound alert webhooks, cron/manual polling, SSE-first live update signals with Control Room status and manual fallback, workflow run telemetry ingestion with hashed project tokens, secure client report links, PNG map export, SDK previews, a deterministic demo metric source, real metric cards and trend charts from persisted samples/rollups, first-class Testing and Logs sections, contextual sidebar subsections, audit-backed safe operational logs, raw sample retention cleanup, in-app alerts, Resend email delivery logging/test flow/preferences, and small custom node icon uploads.
+The app now includes project management, team invitation acceptance, member management, encrypted API credential storage, guided metric mapping tests, visible edit-mode map connection handles with editable link labels, focused basic/advanced integration templates, compact threshold/anomaly alert-rule management with baseline previews, signed outbound alert webhooks, native Slack incoming-webhook alerts, cron/manual polling, SSE-first live update signals with Control Room status and manual fallback, workflow run telemetry ingestion with hashed project tokens, secure client report links, PNG map export, SDK previews, a deterministic demo metric source, real metric cards and trend charts from persisted samples/rollups, first-class Testing and Logs sections, contextual sidebar subsections, audit-backed safe operational logs, raw sample retention cleanup, in-app alerts, Resend email delivery logging/test flow/preferences, and small custom node icon uploads.

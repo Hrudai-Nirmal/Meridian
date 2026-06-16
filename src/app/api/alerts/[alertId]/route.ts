@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { getApiUserId } from "@/lib/api-session"
 import { createAuditLog } from "@/lib/audit-log"
 import { getPrisma } from "@/lib/prisma"
+import { deliverProjectSlack } from "@/lib/slack"
 import { deliverProjectWebhooks } from "@/lib/webhooks"
 
 export async function PATCH(_: Request, context: { params: Promise<{ alertId: string }> }) {
@@ -79,6 +80,10 @@ export async function PATCH(_: Request, context: { params: Promise<{ alertId: st
     data: { resolvedAt: new Date() },
   })
   await deliverProjectWebhooks(prisma, {
+    eventType: "alert.resolved",
+    alertEventId: alertId,
+  })
+  await deliverProjectSlack(prisma, {
     eventType: "alert.resolved",
     alertEventId: alertId,
   })

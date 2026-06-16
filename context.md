@@ -17,6 +17,7 @@ ArgusGrid is a PC-first AI automation control room for agencies and teams. The p
 - Added guided API setup testing with endpoint response status, JSON/non-JSON preview, JSONPath mapping results, transform output, and threshold preview.
 - Added project-level alert center filters, alert detail drawer, optional Resend email notifications for newly created alerts, persisted email delivery logs, owner/admin test-email action, and per-user email notification preferences.
 - Added per-project outbound alert webhooks: editable project webhook destinations, one-time signing secrets, HMAC-signed `alert.opened`/`alert.resolved`/`webhook.test` payloads, one retry, and webhook delivery evidence in alert detail.
+- Added native per-project Slack alert destinations using encrypted Slack incoming webhook URLs, minimum-severity filters, `alert.opened`/`alert.resolved`/`slack.test` event filters, one retry, and Slack delivery evidence in alert detail and Logs.
 - Added compact alert-rule management for persisted node parameter mappings, including severity, threshold expression, enabled state, and source labeling for threshold-driven node health.
 - Added DB-backed custom PNG/SVG node icon uploads with size and MIME validation.
 - Added secured Vercel cron configuration for `/api/cron/poll`; Hobby-compatible schedule is daily.
@@ -68,7 +69,7 @@ ArgusGrid is a PC-first AI automation control room for agencies and teams. The p
 - Node status is computed from health rules but supports admin overrides.
 - Reports start as secure share links and PNG exports, not full client portals.
 - Project rename/archive remains an organization-shared owner/admin action for now; account-local project aliases, visibility, and per-user project lifecycle behavior are deferred to the future team hierarchy and permissions phase.
-- SSE live updates are implemented as a lightweight signal channel; anomaly alerting, generic outbound alert webhooks, and audit-backed operational logs are implemented for metric incidents and operator actions; durable queues, native Slack notifications, and SDK publishing remain next-stage priorities.
+- SSE live updates are implemented as a lightweight signal channel; anomaly alerting, generic outbound alert webhooks, native Slack incoming-webhook notifications, and audit-backed operational logs are implemented for metric incidents and operator actions; durable queues and SDK publishing remain next-stage priorities.
 - WebSockets and true multi-user graph collaboration remain deferred until the product needs lower-latency editing or explicit shared-presence behavior.
 - Sankey and forecast/correlation views are deferred until usage data proves demand.
 
@@ -76,6 +77,7 @@ ArgusGrid is a PC-first AI automation control room for agencies and teams. The p
 - Run the smoke script against the deployed Vercel site after each push.
 - Browser-test notification preferences, owner/admin test email, alert-rule creation, one-alert/one-email behavior, and alert resolution allowing a later email.
 - Browser-test webhook destinations: create with HTTPS URL, copy one-time signing secret, verify `webhook.test`, verify `alert.opened` on new incidents, verify `alert.resolved` on ignored/resolved incidents, verify disabled destinations do not receive events, and verify webhook delivery evidence in alert detail.
+- Browser-test Slack destinations: create with a Slack incoming webhook URL, verify list responses hide the URL, verify `slack.test`, verify `alert.opened` and `alert.resolved` delivery, verify disabled/minimum-severity filtering, and verify Slack delivery evidence in alert detail and Logs.
 - Browser-test manual "Run poll now" against a demo metric node and confirm the inspector shows the real `95 score` metric card, persisted trend chart, alert update, and no duplicate unresolved email.
 - Browser-test workflow telemetry token creation/revocation and a valid `/api/ingest/runs` POST updating the selected node's Runs tab without sending alert email.
 - Browser-test Basic/Advanced integration templates: custom REST metric field prefill, telemetry snippets containing the selected node id, and no real token values in copied snippets.
@@ -87,7 +89,7 @@ ArgusGrid is a PC-first AI automation control room for agencies and teams. The p
 - Browser-test the SSE live indicator and live refresh path for new runs, manual polling, alert resolution, node health changes, and latest poll status, with manual refresh as fallback.
 - Browser-test Control Room live stream copy, header live tooltip, manual refresh fallback, and anomaly alert rules with controlled sample history: not enough history should show the preview/wait state and not alert, high/low/both direction breaches should alert, duplicate unresolved alerts should not resend email, and resolved anomalies should allow future notifications.
 - Browser-test light mode at desktop and smaller widths for readable text, clearer borders, visible graph dots, report contrast, and no regressions to dark mode.
-- Browser-test the Ops IA split: Settings should stay configuration-only, Testing should run readiness/manual poll/test email/webhook/integration/endpoint checks, Logs should filter by type/window/search, and contextual sidebar back/subsection behavior should work across sections.
+- Browser-test the Ops IA split: Settings should stay configuration-only, Integrations should manage webhooks/Slack/telemetry setup, Testing should run readiness/manual poll/test email/webhook/Slack/integration/endpoint checks, Logs should filter by type/window/search, and contextual sidebar back/subsection behavior should work across sections.
 - Browser-test log creation for report revoke/create, webhook create/test/delete, manual poll, alert resolve, team invite/role/remove/cancel, token create/revoke, notification preference save, and graph save without exposing secrets.
 - Validate the Prisma report-share migration with `prisma migrate deploy` before production use.
 - Test SDK preview snippets against a disposable ingestion token and confirm runs appear in the selected node.

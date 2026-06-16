@@ -159,6 +159,11 @@ export type WorkspacePayload = {
     webhookDeliveryAttemptedAt: string | null
     webhookDeliverySentAt: string | null
     webhookDeliveryFailureReason: string | null
+    slackDeliveryStatus: string | null
+    slackDeliveryProvider: string | null
+    slackDeliveryAttemptedAt: string | null
+    slackDeliverySentAt: string | null
+    slackDeliveryFailureReason: string | null
   }[]
   alertRules: {
     id: string
@@ -477,6 +482,7 @@ function projectToWorkspace(
     .map((event) => {
       const latestEmailDelivery = event.deliveries.find((delivery) => delivery.channel === "email")
       const latestWebhookDelivery = event.deliveries.find((delivery) => delivery.channel === "webhook")
+      const latestSlackDelivery = event.deliveries.find((delivery) => delivery.channel === "slack")
       const rule = event.ruleId ? project.alertRules.find((candidate) => candidate.id === event.ruleId) : null
       const ruleMode = rule ? normalizeAlertRuleMetadata(rule.metadata).mode : null
 
@@ -502,6 +508,11 @@ function projectToWorkspace(
         webhookDeliveryAttemptedAt: latestWebhookDelivery?.attemptedAt.toISOString() ?? null,
         webhookDeliverySentAt: latestWebhookDelivery?.sentAt?.toISOString() ?? null,
         webhookDeliveryFailureReason: latestWebhookDelivery?.failureReason ?? null,
+        slackDeliveryStatus: latestSlackDelivery?.status ?? null,
+        slackDeliveryProvider: latestSlackDelivery?.provider ?? null,
+        slackDeliveryAttemptedAt: latestSlackDelivery?.attemptedAt.toISOString() ?? null,
+        slackDeliverySentAt: latestSlackDelivery?.sentAt?.toISOString() ?? null,
+        slackDeliveryFailureReason: latestSlackDelivery?.failureReason ?? null,
       }
     })
   const alertRules = project.alertRules

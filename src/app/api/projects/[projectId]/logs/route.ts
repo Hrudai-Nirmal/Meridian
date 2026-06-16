@@ -42,7 +42,7 @@ function getWindowStart(window: (typeof WINDOW_OPTIONS)[number]) {
 
 function getAuditType(entity: string, action: string): LogType {
   if (entity === "alert") return "alerts"
-  if (entity === "webhook") return "webhooks"
+  if (entity === "webhook" || entity === "slack") return "webhooks"
   if (entity === "report") return "reports"
   if (entity === "token") return "activity"
   if (entity === "team") return "team"
@@ -111,7 +111,7 @@ export async function GET(request: Request, context: { params: Promise<{ project
 
   const createdAtFilter = getWindowStart(parsed.data.window)
   const createdAtWhere = createdAtFilter ? { gte: createdAtFilter } : undefined
-  const [auditLogs, alertEvents, deliveries, pollExecutions, workflowRuns, reportShares, webhooks, tokens, graphEdges] =
+  const [auditLogs, alertEvents, deliveries, pollExecutions, workflowRuns, reportShares, webhooks, slackDestinations, tokens, graphEdges] =
     await Promise.all([
       prisma.auditLog.findMany({
         where: {
@@ -162,6 +162,11 @@ export async function GET(request: Request, context: { params: Promise<{ project
         take: 50,
       }),
       prisma.projectWebhookDestination.findMany({
+        where: { projectId, ...(createdAtWhere ? { createdAt: createdAtWhere } : {}) },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      }),
+      prisma.projectSlackDestination.findMany({
         where: { projectId, ...(createdAtWhere ? { createdAt: createdAtWhere } : {}) },
         orderBy: { createdAt: "desc" },
         take: 50,
@@ -268,6 +273,17 @@ export async function GET(request: Request, context: { params: Promise<{ project
       entityId: webhook.id,
       metadata: { host: getHost(webhook.url), eventFilters: webhook.eventFilters },
       createdAt: webhook.createdAt.toISOString(),
+    })),
+    ...slackDestinations.map((destination) => ({
+      id: `slack-${destination.id}`,
+      type: "webhooks" as const,
+      title: destination.enabled ? "Slack destination enabled" : "Slack destination disabled",
+      message: destination.name,
+      status: destination.enabled ? "enabled" : "disabled",
+      entity: "slack",
+      entityId: destination.id,
+      metadata: { minimumSeverity: destination.minimumSeverity, eventFilters: destination.eventFilters },
+      createdAt: destination.createdAt.toISOString(),
     })),
     ...tokens.map((token) => ({
       id: `token-${token.id}`,
