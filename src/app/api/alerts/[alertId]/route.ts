@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { getApiUserId } from "@/lib/api-session"
 import { getPrisma } from "@/lib/prisma"
+import { deliverProjectWebhooks } from "@/lib/webhooks"
 
 export async function PATCH(_: Request, context: { params: Promise<{ alertId: string }> }) {
   const { error, userId } = await getApiUserId()
@@ -73,6 +74,10 @@ export async function PATCH(_: Request, context: { params: Promise<{ alertId: st
   await prisma.alertEvent.update({
     where: { id: alertId },
     data: { resolvedAt: new Date() },
+  })
+  await deliverProjectWebhooks(prisma, {
+    eventType: "alert.resolved",
+    alertEventId: alertId,
   })
 
   return NextResponse.json({ ok: true })

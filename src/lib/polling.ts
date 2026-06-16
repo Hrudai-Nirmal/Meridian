@@ -6,6 +6,7 @@ import { normalizeAlertRuleMetadata, type AnomalyDirection } from "@/lib/alert-r
 import { decryptSecret } from "@/lib/crypto"
 import { notifyNewAlert } from "@/lib/notifications"
 import { getPrisma } from "@/lib/prisma"
+import { deliverProjectWebhooks } from "@/lib/webhooks"
 
 type JsonDocument = string | number | boolean | object | unknown[] | null
 
@@ -153,6 +154,10 @@ async function createAlertIfNeeded(
     title: input.title,
     message: input.message,
     severity: input.severity,
+  })
+  await deliverProjectWebhooks(prisma, {
+    eventType: "alert.opened",
+    alertEventId: alertEvent.id,
   })
   return true
 }

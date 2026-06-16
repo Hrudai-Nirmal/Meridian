@@ -49,6 +49,7 @@ type DbNode = EndpointNode & {
     resolvedAt: Date | null
     node: { label: string } | null
     deliveries: {
+      channel: string
       status: string
       provider: string
       attemptedAt: Date
@@ -91,6 +92,7 @@ type DbProject = Project & {
       resolvedAt: Date | null
       node: { label: string } | null
       deliveries: {
+        channel: string
         status: string
         provider: string
         attemptedAt: Date
@@ -152,6 +154,11 @@ export type WorkspacePayload = {
     deliveryAttemptedAt: string | null
     deliverySentAt: string | null
     deliveryFailureReason: string | null
+    webhookDeliveryStatus: string | null
+    webhookDeliveryProvider: string | null
+    webhookDeliveryAttemptedAt: string | null
+    webhookDeliverySentAt: string | null
+    webhookDeliveryFailureReason: string | null
   }[]
   alertRules: {
     id: string
@@ -468,7 +475,8 @@ function projectToWorkspace(
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .slice(0, 100)
     .map((event) => {
-      const latestDelivery = event.deliveries[0]
+      const latestEmailDelivery = event.deliveries.find((delivery) => delivery.channel === "email")
+      const latestWebhookDelivery = event.deliveries.find((delivery) => delivery.channel === "webhook")
       const rule = event.ruleId ? project.alertRules.find((candidate) => candidate.id === event.ruleId) : null
       const ruleMode = rule ? normalizeAlertRuleMetadata(rule.metadata).mode : null
 
@@ -484,11 +492,16 @@ function projectToWorkspace(
         source: ruleMode === "anomaly" ? "Anomaly baseline" : event.ruleId ? "Threshold rule" : event.nodeId ? "Endpoint polling" : "Project",
         firstSeen: event.createdAt.toISOString(),
         lastSeen: event.createdAt.toISOString(),
-        deliveryStatus: latestDelivery?.status ?? null,
-        deliveryProvider: latestDelivery?.provider ?? null,
-        deliveryAttemptedAt: latestDelivery?.attemptedAt.toISOString() ?? null,
-        deliverySentAt: latestDelivery?.sentAt?.toISOString() ?? null,
-        deliveryFailureReason: latestDelivery?.failureReason ?? null,
+        deliveryStatus: latestEmailDelivery?.status ?? null,
+        deliveryProvider: latestEmailDelivery?.provider ?? null,
+        deliveryAttemptedAt: latestEmailDelivery?.attemptedAt.toISOString() ?? null,
+        deliverySentAt: latestEmailDelivery?.sentAt?.toISOString() ?? null,
+        deliveryFailureReason: latestEmailDelivery?.failureReason ?? null,
+        webhookDeliveryStatus: latestWebhookDelivery?.status ?? null,
+        webhookDeliveryProvider: latestWebhookDelivery?.provider ?? null,
+        webhookDeliveryAttemptedAt: latestWebhookDelivery?.attemptedAt.toISOString() ?? null,
+        webhookDeliverySentAt: latestWebhookDelivery?.sentAt?.toISOString() ?? null,
+        webhookDeliveryFailureReason: latestWebhookDelivery?.failureReason ?? null,
       }
     })
   const alertRules = project.alertRules
@@ -914,8 +927,9 @@ export async function getWorkspaceForUser(userId: string, projectId?: string) {
               },
               deliveries: {
                 orderBy: { attemptedAt: "desc" },
-                take: 1,
+                take: 10,
                 select: {
+                  channel: true,
                   status: true,
                   provider: true,
                   attemptedAt: true,
@@ -940,8 +954,9 @@ export async function getWorkspaceForUser(userId: string, projectId?: string) {
               node: true,
               deliveries: {
                 orderBy: { attemptedAt: "desc" },
-                take: 1,
+                take: 10,
                 select: {
+                  channel: true,
                   status: true,
                   provider: true,
                   attemptedAt: true,

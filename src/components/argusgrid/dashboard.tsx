@@ -286,6 +286,16 @@ type IngestionTokenRecord = {
   lastUsedAt: string | null
   revokedAt: string | null
 }
+type WebhookEventFilter = "alert.opened" | "alert.resolved" | "webhook.test"
+type ProjectWebhookRecord = {
+  id: string
+  name: string
+  url: string
+  enabled: boolean
+  eventFilters: WebhookEventFilter[]
+  createdAt: string
+  updatedAt: string
+}
 type ReportShareRecord = {
   id: string
   title: string
@@ -532,6 +542,12 @@ export function ArgusGridDashboard({
   const [ingestionTokenName, setIngestionTokenName] = useState("Workflow telemetry token")
   const [ingestionTokenMessage, setIngestionTokenMessage] = useState("")
   const [generatedIngestionToken, setGeneratedIngestionToken] = useState("")
+  const [webhooks, setWebhooks] = useState<ProjectWebhookRecord[]>([])
+  const [webhookName, setWebhookName] = useState("Alert operations webhook")
+  const [webhookUrl, setWebhookUrl] = useState("")
+  const [webhookEventFilters, setWebhookEventFilters] = useState<WebhookEventFilter[]>(["alert.opened", "alert.resolved", "webhook.test"])
+  const [webhookMessage, setWebhookMessage] = useState("")
+  const [generatedWebhookSecret, setGeneratedWebhookSecret] = useState("")
   const [reportShares, setReportShares] = useState<ReportShareRecord[]>([])
   const [reportTitle, setReportTitle] = useState("Client automation report")
   const [reportClientName, setReportClientName] = useState("")
@@ -1121,6 +1137,94 @@ export function ArgusGridDashboard({
     setIngestionTokenMessage("Token revoked.")
   }
 
+  const toggleWebhookEventFilter = (event: WebhookEventFilter, enabled: boolean) => {
+    setWebhookEventFilters((current) => {
+      const next = enabled ? Array.from(new Set(current.concat(event))) : current.filter((candidate) => candidate !== event)
+      return next.length ? next : current
+    })
+  }
+
+  const loadWebhooks = async () => {
+    if (!canEditProject) {
+      setWebhookMessage("Viewers cannot manage webhook destinations.")
+      return
+    }
+
+    setWebhookMessage("Loading webhook destinations...")
+    const response = await fetch(`/api/projects/${initialWorkspace.project.id}/webhooks`)
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      setWebhookMessage(payload?.error ?? "Webhook destinations failed to load.")
+      return
+    }
+    setWebhooks(payload.webhooks ?? [])
+    setWebhookMessage("Webhook destinations loaded.")
+  }
+
+  const createWebhook = async () => {
+    if (!canEditProject) {
+      setWebhookMessage("Viewers cannot create webhook destinations.")
+      return
+    }
+
+    setWebhookMessage("Creating webhook destination...")
+    setGeneratedWebhookSecret("")
+    const response = await fetch(`/api/projects/${initialWorkspace.project.id}/webhooks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: webhookName,
+        url: webhookUrl,
+        enabled: true,
+        eventFilters: webhookEventFilters,
+      }),
+    })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      setWebhookMessage(payload?.error ?? "Webhook destination creation failed.")
+      return
+    }
+
+    setWebhooks((current) => [payload.webhook, ...current])
+    setGeneratedWebhookSecret(payload.signingSecret ?? "")
+    setWebhookMessage(payload.testResult?.sent > 0 ? "Webhook created and test delivered." : "Webhook created. Test delivery did not succeed.")
+  }
+
+  const testWebhook = async (webhookId: string) => {
+    setWebhookMessage("Sending test webhook...")
+    const response = await fetch(`/api/projects/${initialWorkspace.project.id}/webhooks/${webhookId}/test`, { method: "POST" })
+    const payload = await response.json().catch(() => null)
+    setWebhookMessage(payload?.message ?? (response.ok ? "Test webhook delivered." : "Test webhook failed."))
+  }
+
+  const toggleWebhook = async (webhook: ProjectWebhookRecord) => {
+    setWebhookMessage(webhook.enabled ? "Disabling webhook..." : "Enabling webhook...")
+    const response = await fetch(`/api/projects/${initialWorkspace.project.id}/webhooks/${webhook.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: !webhook.enabled }),
+    })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      setWebhookMessage(payload?.error ?? "Webhook update failed.")
+      return
+    }
+    setWebhooks((current) => current.map((candidate) => (candidate.id === webhook.id ? payload.webhook : candidate)))
+    setWebhookMessage(payload.webhook.enabled ? "Webhook enabled." : "Webhook disabled.")
+  }
+
+  const deleteWebhook = async (webhookId: string) => {
+    setWebhookMessage("Deleting webhook destination...")
+    const response = await fetch(`/api/projects/${initialWorkspace.project.id}/webhooks/${webhookId}`, { method: "DELETE" })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      setWebhookMessage(payload?.error ?? "Webhook deletion failed.")
+      return
+    }
+    setWebhooks((current) => current.filter((webhook) => webhook.id !== webhookId))
+    setWebhookMessage("Webhook destination deleted.")
+  }
+
   const loadReportShares = async () => {
     if (!canManageOrganization) {
       setReportMessage("Only owners and admins can manage client reports.")
@@ -1343,6 +1447,7 @@ export function ArgusGridDashboard({
     const resolvedAt = new Date().toISOString()
     setAlerts((currentAlerts) => currentAlerts.map((alert) => (alert.id === alertId ? { ...alert, resolvedAt } : alert)))
     setSelectedAlertDetail((alert) => (alert?.id === alertId ? { ...alert, resolvedAt } : alert))
+    await refreshProjectData({ silent: true })
   }
 
   const openAlertSource = (alert: ProjectAlert) => {
@@ -2152,7 +2257,14 @@ export function ArgusGridDashboard({
             ingestionTokenName={ingestionTokenName}
             ingestionTokenMessage={ingestionTokenMessage}
             generatedIngestionToken={generatedIngestionToken}
+            webhooks={webhooks}
+            webhookName={webhookName}
+            webhookUrl={webhookUrl}
+            webhookEventFilters={webhookEventFilters}
+            webhookMessage={webhookMessage}
+            generatedWebhookSecret={generatedWebhookSecret}
             canManageOrganization={canManageOrganization}
+            canEditProject={canEditProject}
             onRunPollNow={runPollNow}
             onEmailEnabledChange={setEmailEnabled}
             onEmailSeverityChange={setEmailSeverity}
@@ -2163,6 +2275,18 @@ export function ArgusGridDashboard({
             onLoadIngestionTokens={loadIngestionTokens}
             onRevokeWorkflowToken={revokeWorkflowToken}
             onCopyGeneratedToken={() => copyText(generatedIngestionToken, "Token copied.")}
+            onWebhookNameChange={setWebhookName}
+            onWebhookUrlChange={setWebhookUrl}
+            onToggleWebhookEventFilter={toggleWebhookEventFilter}
+            onLoadWebhooks={loadWebhooks}
+            onCreateWebhook={createWebhook}
+            onTestWebhook={testWebhook}
+            onToggleWebhook={toggleWebhook}
+            onDeleteWebhook={deleteWebhook}
+            onCopyGeneratedWebhookSecret={async () => {
+              await navigator.clipboard.writeText(generatedWebhookSecret)
+              setWebhookMessage("Webhook signing secret copied.")
+            }}
           />
         )}
       </main>
@@ -2241,6 +2365,25 @@ export function ArgusGridDashboard({
                 {selectedAlertDetail.deliveryFailureReason ? (
                   <div className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
                     {selectedAlertDetail.deliveryFailureReason}
+                  </div>
+                ) : null}
+              </div>
+              <div className="rounded-lg border p-3">
+                <div className="text-xs text-muted-foreground">Latest webhook delivery</div>
+                <div className="font-medium">
+                  {selectedAlertDetail.webhookDeliveryStatus
+                    ? `${selectedAlertDetail.webhookDeliveryStatus}${selectedAlertDetail.webhookDeliveryProvider ? ` via ${selectedAlertDetail.webhookDeliveryProvider}` : ""}`
+                    : "No webhook delivery attempted"}
+                </div>
+                {selectedAlertDetail.webhookDeliveryAttemptedAt ? (
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Attempted {new Date(selectedAlertDetail.webhookDeliveryAttemptedAt).toLocaleString()}
+                    {selectedAlertDetail.webhookDeliverySentAt ? `, sent ${new Date(selectedAlertDetail.webhookDeliverySentAt).toLocaleString()}` : ""}
+                  </div>
+                ) : null}
+                {selectedAlertDetail.webhookDeliveryFailureReason ? (
+                  <div className="mt-2 rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
+                    {selectedAlertDetail.webhookDeliveryFailureReason}
                   </div>
                 ) : null}
               </div>
@@ -3525,7 +3668,14 @@ function SettingsSection({
   ingestionTokenName,
   ingestionTokenMessage,
   generatedIngestionToken,
+  webhooks,
+  webhookName,
+  webhookUrl,
+  webhookEventFilters,
+  webhookMessage,
+  generatedWebhookSecret,
   canManageOrganization,
+  canEditProject,
   onRunPollNow,
   onEmailEnabledChange,
   onEmailSeverityChange,
@@ -3536,6 +3686,15 @@ function SettingsSection({
   onLoadIngestionTokens,
   onRevokeWorkflowToken,
   onCopyGeneratedToken,
+  onWebhookNameChange,
+  onWebhookUrlChange,
+  onToggleWebhookEventFilter,
+  onLoadWebhooks,
+  onCreateWebhook,
+  onTestWebhook,
+  onToggleWebhook,
+  onDeleteWebhook,
+  onCopyGeneratedWebhookSecret,
 }: {
   diagnostics: WorkspacePayload["diagnostics"]
   latestPoll: WorkspacePayload["diagnostics"]["latestPoll"]
@@ -3548,7 +3707,14 @@ function SettingsSection({
   ingestionTokenName: string
   ingestionTokenMessage: string
   generatedIngestionToken: string
+  webhooks: ProjectWebhookRecord[]
+  webhookName: string
+  webhookUrl: string
+  webhookEventFilters: WebhookEventFilter[]
+  webhookMessage: string
+  generatedWebhookSecret: string
   canManageOrganization: boolean
+  canEditProject: boolean
   onRunPollNow: () => Promise<void>
   onEmailEnabledChange: (value: boolean) => void
   onEmailSeverityChange: (value: string) => void
@@ -3559,6 +3725,15 @@ function SettingsSection({
   onLoadIngestionTokens: () => Promise<void>
   onRevokeWorkflowToken: (tokenId: string) => Promise<void>
   onCopyGeneratedToken: () => void
+  onWebhookNameChange: (value: string) => void
+  onWebhookUrlChange: (value: string) => void
+  onToggleWebhookEventFilter: (event: WebhookEventFilter, enabled: boolean) => void
+  onLoadWebhooks: () => Promise<void>
+  onCreateWebhook: () => Promise<void>
+  onTestWebhook: (webhookId: string) => Promise<void>
+  onToggleWebhook: (webhook: ProjectWebhookRecord) => Promise<void>
+  onDeleteWebhook: (webhookId: string) => Promise<void>
+  onCopyGeneratedWebhookSecret: () => Promise<void>
 }) {
   return (
     <SectionShell>
@@ -3631,6 +3806,85 @@ function SettingsSection({
               <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
                 {latestEmail ? `Latest email: ${latestEmail.status} via ${latestEmail.provider} at ${new Date(latestEmail.attemptedAt).toLocaleString()}` : "No email delivery has been attempted yet."}
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Webhook Destinations</CardTitle>
+              <CardDescription>Send signed alert events to Slack incoming webhooks, n8n, Zapier, Make, or custom tools.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3">
+              <div className="grid gap-2 sm:grid-cols-[1fr_1.4fr]">
+                <Input value={webhookName} onChange={(event) => onWebhookNameChange(event.target.value)} aria-label="Webhook name" disabled={!canEditProject} />
+                <Input value={webhookUrl} onChange={(event) => onWebhookUrlChange(event.target.value)} placeholder="https://hooks.example.com/argusgrid" disabled={!canEditProject} />
+              </div>
+              <div className="grid gap-2 rounded-lg border bg-muted/20 p-3 text-xs">
+                <div className="font-medium">Events</div>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {([
+                    ["alert.opened", "Alert opened"],
+                    ["alert.resolved", "Alert resolved"],
+                    ["webhook.test", "Test event"],
+                  ] as [WebhookEventFilter, string][]).map(([event, label]) => (
+                    <label key={event} className="flex items-center gap-2 text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={webhookEventFilters.includes(event)}
+                        onChange={(changeEvent) => onToggleWebhookEventFilter(event, changeEvent.target.checked)}
+                        disabled={!canEditProject}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Button onClick={onCreateWebhook} disabled={!canEditProject || !webhookName.trim() || !webhookUrl.trim()}>Create webhook</Button>
+                <Button variant="outline" onClick={onLoadWebhooks} disabled={!canEditProject}>Refresh webhooks</Button>
+              </div>
+              {generatedWebhookSecret ? (
+                <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+                  <div className="font-medium">Copy this signing secret now. It will not be shown again.</div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <code className="min-w-0 flex-1 overflow-x-auto rounded bg-background px-2 py-1 text-[11px] text-foreground">{generatedWebhookSecret}</code>
+                    <Button variant="outline" size="sm" onClick={onCopyGeneratedWebhookSecret}>
+                      <Copy data-icon="inline-start" />
+                      Copy
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+              {webhookMessage ? <div className="text-xs text-muted-foreground">{webhookMessage}</div> : null}
+              {webhooks.length ? (
+                <div className="grid gap-2">
+                  {webhooks.map((webhook) => (
+                    <div key={webhook.id} className="grid gap-2 rounded-md border bg-background p-2 text-xs">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">{webhook.name}</div>
+                          <div className="mt-1 truncate text-muted-foreground">{webhook.url}</div>
+                          <div className="mt-1 text-muted-foreground">{webhook.eventFilters.join(", ")}</div>
+                        </div>
+                        <Badge variant={webhook.enabled ? "secondary" : "outline"}>{webhook.enabled ? "Enabled" : "Disabled"}</Badge>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={() => onTestWebhook(webhook.id)} disabled={!canEditProject}>Test</Button>
+                        <Button variant="ghost" size="sm" onClick={() => onToggleWebhook(webhook)} disabled={!canEditProject}>
+                          {webhook.enabled ? "Disable" : "Enable"}
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => onDeleteWebhook(webhook.id)} disabled={!canEditProject}>
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+                  No webhook destinations loaded yet. Create one or refresh the project list.
+                </div>
+              )}
             </CardContent>
           </Card>
 

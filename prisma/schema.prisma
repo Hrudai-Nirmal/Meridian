@@ -159,6 +159,7 @@ model Project {
   edges          GraphEdge[]
   secrets        ProjectSecret[]
   ingestionTokens IngestionToken[]
+  webhookDestinations ProjectWebhookDestination[]
   reportShares   ReportShare[]
   alertRules     AlertRule[]
   auditLogs      AuditLog[]
@@ -289,6 +290,21 @@ model IngestionToken {
   @@index([projectId, revokedAt])
   @@index([createdById])
   @@index([prefix])
+}
+
+model ProjectWebhookDestination {
+  id              String   @id @default(cuid())
+  name            String
+  url             String
+  enabled         Boolean  @default(true)
+  eventFilters    Json?
+  signingSecretEncrypted String
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([projectId, enabled])
 }
 
 model ReportShare {
