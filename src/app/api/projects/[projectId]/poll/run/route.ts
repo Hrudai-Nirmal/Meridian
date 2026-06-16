@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 
 import { getApiUserId, requireProjectRole } from "@/lib/api-session"
+import { createAuditLog } from "@/lib/audit-log"
+import { getPrisma } from "@/lib/prisma"
 import { getReadinessStatus } from "@/lib/health"
 import { runProjectPolling } from "@/lib/polling"
 import { serializeGraphForProject } from "@/lib/workspace"
@@ -17,6 +19,14 @@ export async function POST(_: Request, context: { params: Promise<{ projectId: s
 
   const result = await runProjectPolling({ projectId })
   const [diagnostics, workspace] = await Promise.all([getReadinessStatus(), serializeGraphForProject(userId, projectId)])
+  await createAuditLog(getPrisma(), {
+    action: "poll.manual",
+    entity: "poll",
+    entityId: projectId,
+    projectId,
+    userId,
+    metadata: { checkedAt: result.checkedAt, status: result.status, sampledNodes: result.sampledNodes, createdSamples: result.createdSamples },
+  })
 
   return NextResponse.json({
     ok: true,

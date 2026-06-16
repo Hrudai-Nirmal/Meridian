@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { getApiUserId, requireProjectRole } from "@/lib/api-session"
+import { createAuditLog } from "@/lib/audit-log"
 import { getPrisma } from "@/lib/prisma"
 import {
   createWebhookSigningSecret,
@@ -25,6 +26,14 @@ function validateWebhookUrl(url: string) {
     return parsed.protocol === "https:" || parsed.protocol === "http:"
   } catch {
     return false
+  }
+}
+
+function getWebhookHost(url: string) {
+  try {
+    return new URL(url).host
+  } catch {
+    return "configured endpoint"
   }
 }
 
@@ -77,6 +86,14 @@ export async function POST(request: Request, context: { params: Promise<{ projec
       signingSecretEncrypted: encryptWebhookSigningSecret(signingSecret),
       projectId,
     },
+  })
+  await createAuditLog(prisma, {
+    action: "webhook.created",
+    entity: "webhook",
+    entityId: webhook.id,
+    projectId,
+    userId,
+    metadata: { name: webhook.name, host: getWebhookHost(webhook.url), enabled: webhook.enabled, eventFilters: webhook.eventFilters },
   })
 
   return NextResponse.json(

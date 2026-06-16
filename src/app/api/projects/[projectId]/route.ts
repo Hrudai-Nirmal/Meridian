@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { getApiUserId, requireProjectRole } from "@/lib/api-session"
+import { createAuditLog } from "@/lib/audit-log"
 import { getPrisma } from "@/lib/prisma"
 import { serializeGraphForProject, slugify } from "@/lib/workspace"
 
@@ -37,12 +38,22 @@ export async function PATCH(request: Request, context: { params: Promise<{ proje
   }
 
   const prisma = getPrisma()
-  await prisma.project.update({
+  const project = await prisma.project.update({
     where: { id: projectId },
     data: {
       name: parsed.data.name,
       slug: `${slugify(parsed.data.name)}-${projectId.slice(-5)}`,
     },
+    select: { id: true, name: true, organizationId: true },
+  })
+  await createAuditLog(prisma, {
+    action: "project.renamed",
+    entity: "project",
+    entityId: project.id,
+    organizationId: project.organizationId,
+    projectId: project.id,
+    userId,
+    metadata: { name: project.name },
   })
 
   const workspace = await serializeGraphForProject(userId, projectId)
@@ -58,9 +69,19 @@ export async function DELETE(_: Request, context: { params: Promise<{ projectId:
   if (accessError) return accessError
 
   const prisma = getPrisma()
-  await prisma.project.update({
+  const project = await prisma.project.update({
     where: { id: projectId },
     data: { archivedAt: new Date() },
+    select: { id: true, name: true, organizationId: true, archivedAt: true },
+  })
+  await createAuditLog(prisma, {
+    action: "project.archived",
+    entity: "project",
+    entityId: project.id,
+    organizationId: project.organizationId,
+    projectId: project.id,
+    userId,
+    metadata: { name: project.name, archivedAt: project.archivedAt },
   })
 
   return NextResponse.json({ ok: true })

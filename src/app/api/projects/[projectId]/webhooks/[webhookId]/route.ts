@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { getApiUserId, requireProjectRole } from "@/lib/api-session"
+import { createAuditLog } from "@/lib/audit-log"
 import { getPrisma } from "@/lib/prisma"
 import { serializeProjectWebhook } from "@/lib/webhooks"
 
@@ -20,6 +21,14 @@ function validateWebhookUrl(url: string) {
     return parsed.protocol === "https:" || parsed.protocol === "http:"
   } catch {
     return false
+  }
+}
+
+function getWebhookHost(url: string) {
+  try {
+    return new URL(url).host
+  } catch {
+    return "configured endpoint"
   }
 }
 
@@ -54,6 +63,14 @@ export async function PATCH(request: Request, context: { params: Promise<{ proje
       ...(parsed.data.eventFilters !== undefined ? { eventFilters: parsed.data.eventFilters } : {}),
     },
   })
+  await createAuditLog(prisma, {
+    action: "webhook.updated",
+    entity: "webhook",
+    entityId: webhook.id,
+    projectId,
+    userId,
+    metadata: { name: webhook.name, host: getWebhookHost(webhook.url), enabled: webhook.enabled, eventFilters: webhook.eventFilters },
+  })
 
   return NextResponse.json({ webhook: serializeProjectWebhook(webhook) })
 }
@@ -67,7 +84,23 @@ export async function DELETE(_: Request, context: { params: Promise<{ projectId:
   if (accessError) return accessError
 
   const prisma = getPrisma()
-  await prisma.projectWebhookDestination.deleteMany({ where: { id: webhookId, projectId } })
+  const webhook = await prisma.projectWebhookDestination.findFirst({
+    where: { id: webhookId, projectId },
+    select: { id: true, name: true, url: true },
+  })
+  if (!webhook) {
+    return NextResponse.json({ error: "Webhook destination not found." }, { status: 404 })
+  }
+
+  await prisma.projectWebhookDestination.delete({ where: { id: webhook.id } })
+  await createAuditLog(prisma, {
+    action: "webhook.deleted",
+    entity: "webhook",
+    entityId: webhook.id,
+    projectId,
+    userId,
+    metadata: { name: webhook.name, host: getWebhookHost(webhook.url) },
+  })
 
   return NextResponse.json({ ok: true })
 }

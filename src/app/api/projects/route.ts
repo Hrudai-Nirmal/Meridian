@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { getApiUserId, requireOrganizationRole } from "@/lib/api-session"
+import { createAuditLog } from "@/lib/audit-log"
+import { getPrisma } from "@/lib/prisma"
 import { createBlankProject, createSeedProject, getWorkspaceForUser } from "@/lib/workspace"
 
 const createProjectSchema = z.object({
@@ -42,6 +44,16 @@ export async function POST(request: Request) {
     parsed.data.mode === "demo"
       ? await createSeedProject(workspace.organization.id, parsed.data.name)
       : await createBlankProject(workspace.organization.id, parsed.data.name)
+
+  await createAuditLog(getPrisma(), {
+    action: "project.created",
+    entity: "project",
+    entityId: project.id,
+    organizationId: workspace.organization.id,
+    projectId: project.id,
+    userId,
+    metadata: { name: project.name, mode: parsed.data.mode },
+  })
 
   return NextResponse.json({ project }, { status: 201 })
 }

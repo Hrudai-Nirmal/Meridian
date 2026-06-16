@@ -62,13 +62,17 @@ HTTP auth username: argusgrid-cron
 HTTP auth password: production CRON_SECRET
 ```
 
-After creating the job, run a manual test execution in cron-job.org and expect HTTP 200 with `ok: true` and `mode: "secured-cron"`. Then confirm Settings shows an updated latest poll.
+After creating the job, run a manual test execution in cron-job.org and expect HTTP 200 with `ok: true` and `mode: "secured-cron"`. Then confirm Testing and `/api/health` show updated latest poll metadata.
 
 The deployed app exposes `/api/health` for safe readiness checks. It returns booleans and poll metadata only; it must never return secret values.
 
-Owners/admins can send a harmless test alert email from Deployment diagnostics after `RESEND_API_KEY` and `ALERT_FROM_EMAIL` are configured. Delivery attempts are logged per recipient with status, provider, timestamps, and safe failure summaries.
+Owners/admins can send a harmless test alert email from Testing after `RESEND_API_KEY` and `ALERT_FROM_EMAIL` are configured. Delivery attempts are logged per recipient with status, provider, timestamps, and safe failure summaries.
 
-Owners/admins can also run a project poll manually from Deployment diagnostics for demos. The public `/api/demo/metric` route returns a deterministic sample for private-beta alert QA.
+Owners/admins can also run a project poll manually from Testing for demos. The public `/api/demo/metric` route returns a deterministic sample for private-beta alert QA.
+
+The dashboard information architecture keeps Settings configuration-only: notification preferences, webhook destinations, telemetry tokens, and project environment context. Testing owns deployment readiness, manual poll, test email, webhook tests, integration readiness, endpoint setup shortcuts, and demo metric QA. Logs provides a unified safe project timeline with 24h/7d/30d/All windows, type filters, search, and entries from audit activity, alerts, polling, deliveries, runs, reports, webhooks, team actions, and map changes.
+
+When a main dashboard section is selected, the sidebar switches to contextual mode: the active section heading acts as a back button and one-level subsection anchors appear below it. Back returns to the main section list without changing the active page.
 
 Owners/admins can create secure client-facing report links from the dashboard. Report links render a read-only project summary with uptime, run volume, success rate, cost, token usage, active alerts, quality score, node summaries, map imagery, and recent incidents. Links can expire and can be revoked.
 
@@ -116,7 +120,7 @@ The node inspector includes Basic and Advanced integration templates for Dify, n
 
 Alert rules support static thresholds and anomaly baselines. Anomaly rules learn from the previous 7 days of metric samples, require at least 8 prior samples, and fire when the next value is more than 2 standard deviations outside the selected direction. The node inspector's alert-rule dialog previews the selected mapping's sample count, baseline mean, standard deviation, watch band, and whether more samples are needed before anomaly alerts can fire.
 
-Project editors can create outbound webhook destinations from `Settings`. ArgusGrid sends `alert.opened`, `alert.resolved`, and `webhook.test` JSON payloads to enabled destinations, retries once on failure, and records webhook delivery status in alert details. Signing secrets are shown once at creation and are not exposed again.
+Project editors can create outbound webhook destinations from `Settings` and test them from `Testing`. ArgusGrid sends `alert.opened`, `alert.resolved`, and `webhook.test` JSON payloads to enabled destinations, retries once on failure, and records webhook delivery status in alert details and Logs. Signing secrets are shown once at creation and are not exposed again.
 
 Webhook receivers can verify these headers:
 
@@ -166,9 +170,9 @@ Manual post-deploy checklist:
 - API setup test shows response status, JSON preview, JSONPath mapping, and threshold preview.
 - Custom PNG/SVG node icon upload validates file type and size.
 - `/api/cron/poll` rejects a wrong bearer token.
-- Deployment diagnostics show database, auth, encryption, cron, email provider readiness, latest poll status, and latest email delivery status.
-- Owner/admin test email returns clear success or failure feedback and does not expose `RESEND_API_KEY`.
-- Owner/admin manual poll run updates latest poll diagnostics without exposing `CRON_SECRET`.
+- Testing shows database, auth, encryption, cron, email provider readiness, latest poll status, and latest email delivery status.
+- Owner/admin test email from Testing returns clear success or failure feedback and does not expose `RESEND_API_KEY`.
+- Owner/admin manual poll run from Testing updates latest poll diagnostics without exposing `CRON_SECRET`.
 - Owner/admin workflow telemetry token creation shows the raw token once, token refresh lists only prefixes, revoke blocks future ingestion, and `/api/ingest/runs` rejects missing/wrong tokens.
 - Posting valid workflow run telemetry updates the selected node's Runs tab after refresh and records step details without sending alert email.
 - While signed in, the dashboard live indicator reaches `Live`; posting valid workflow run telemetry or running a manual poll updates Runs, node health, alerts, metrics, and latest poll status without a full page reload.
@@ -181,6 +185,8 @@ Manual post-deploy checklist:
 - After saving the demo metric and running poll now, the selected node shows a real `95 score` metric card, persisted sample trend, freshness label, and alert context after refresh.
 - Notification preferences save enabled/disabled email alerts and minimum severity per signed-in user.
 - Webhook destinations can be created, tested, enabled/disabled, deleted, and copied with a one-time signing secret; disabled destinations do not receive alert events.
+- Logs loads a combined timeline, filters by type/window/text, and never exposes raw secrets, raw tokens, encrypted payloads, webhook signing secrets, env values, or private credential bodies.
+- Contextual sidebar mode shows the selected section heading/back button plus subsection anchors, and Back returns to the main section list without changing the active page content.
 - Alert rules can be created from saved parameter mappings and new alert emails are not repeated while the alert remains unresolved.
 - New alert incidents send `alert.opened` webhooks, resolved/ignored incidents send `alert.resolved` webhooks, and alert details show latest webhook delivery status.
 - Anomaly alert rules can be created from saved parameter mappings; the setup preview should show sample history, mean/std dev, watch bands, wait for enough history, explain baseline context in alert messages, and avoid duplicate unresolved emails.
@@ -203,4 +209,4 @@ npm run dev
 
 On first GitHub login, ArgusGrid creates a personal organization and owner membership, then shows onboarding to confirm organization/project names and choose demo or blank setup.
 
-The app now includes project management, team invitation acceptance, member management, encrypted API credential storage, guided metric mapping tests, visible edit-mode map connection handles with editable link labels, focused basic/advanced integration templates, compact threshold/anomaly alert-rule management with baseline previews, signed outbound alert webhooks, cron/manual polling, SSE-first live update signals with Control Room status and manual fallback, workflow run telemetry ingestion with hashed project tokens, secure client report links, PNG map export, SDK previews, a deterministic demo metric source, real metric cards and trend charts from persisted samples/rollups, poll execution logs, readiness diagnostics, raw sample retention cleanup, in-app alerts, Resend email delivery logging/test flow/preferences, and small custom node icon uploads.
+The app now includes project management, team invitation acceptance, member management, encrypted API credential storage, guided metric mapping tests, visible edit-mode map connection handles with editable link labels, focused basic/advanced integration templates, compact threshold/anomaly alert-rule management with baseline previews, signed outbound alert webhooks, cron/manual polling, SSE-first live update signals with Control Room status and manual fallback, workflow run telemetry ingestion with hashed project tokens, secure client report links, PNG map export, SDK previews, a deterministic demo metric source, real metric cards and trend charts from persisted samples/rollups, first-class Testing and Logs sections, contextual sidebar subsections, audit-backed safe operational logs, raw sample retention cleanup, in-app alerts, Resend email delivery logging/test flow/preferences, and small custom node icon uploads.

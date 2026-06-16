@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { getApiUserId } from "@/lib/api-session"
+import { createAuditLog } from "@/lib/audit-log"
 import { getPrisma } from "@/lib/prisma"
 import { assertOrganizationRole, getWorkspaceForUser } from "@/lib/workspace"
 
@@ -38,7 +39,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ membe
     return NextResponse.json({ error: "Invalid member payload.", details: parsed.error.flatten() }, { status: 400 })
   }
 
-  const { requester, member } = await getManagedMembership(userId, memberId)
+  const { workspace, requester, member } = await getManagedMembership(userId, memberId)
   if (!requester) {
     return NextResponse.json({ error: "Organization access denied." }, { status: 403 })
   }
@@ -65,6 +66,15 @@ export async function PATCH(request: Request, context: { params: Promise<{ membe
     data: { role: parsed.data.role },
     include: { user: true },
   })
+  await createAuditLog(prisma, {
+    action: "team.role_updated",
+    entity: "team",
+    entityId: updated.id,
+    organizationId: updated.organizationId,
+    projectId: workspace?.project.id ?? null,
+    userId,
+    metadata: { memberEmail: updated.user.email, previousRole: member.role, role: updated.role },
+  })
 
   return NextResponse.json({
     member: {
@@ -81,7 +91,7 @@ export async function DELETE(_: Request, context: { params: Promise<{ memberId: 
   if (error) return error
 
   const { memberId } = await context.params
-  const { requester, member } = await getManagedMembership(userId, memberId)
+  const { workspace, requester, member } = await getManagedMembership(userId, memberId)
   if (!requester) {
     return NextResponse.json({ error: "Organization access denied." }, { status: 403 })
   }
@@ -104,5 +114,14 @@ export async function DELETE(_: Request, context: { params: Promise<{ memberId: 
   }
 
   await prisma.membership.delete({ where: { id: member.id } })
+  await createAuditLog(prisma, {
+    action: "team.removed",
+    entity: "team",
+    entityId: member.id,
+    organizationId: member.organizationId,
+    projectId: workspace?.project.id ?? null,
+    userId,
+    metadata: { memberEmail: member.user.email, role: member.role },
+  })
   return NextResponse.json({ ok: true })
 }

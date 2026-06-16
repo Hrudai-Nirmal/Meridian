@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { getApiUserId, requireProjectRole } from "@/lib/api-session"
+import { createAuditLog } from "@/lib/audit-log"
 import { getPrisma } from "@/lib/prisma"
 import { createReportToken, serializeReportShare } from "@/lib/reports"
 
@@ -114,6 +115,14 @@ export async function POST(request: Request, context: { params: Promise<{ projec
       projectId,
       createdById: userId,
     },
+  })
+  await createAuditLog(prisma, {
+    action: "report.created",
+    entity: "report",
+    entityId: share.id,
+    projectId,
+    userId,
+    metadata: { title: share.title, clientName: share.clientName, expiresAt: share.expiresAt, hasMapImage: Boolean(share.mapImageMimeType) },
   })
 
   return NextResponse.json({ share: serializeReportShare(share, requestOrigin(request)) }, { status: 201 })

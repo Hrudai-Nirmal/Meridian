@@ -48,6 +48,9 @@ ArgusGrid is a PC-first AI automation control room for agencies and teams. The p
 - Added baseline/anomaly alert rules using existing `AlertRule.metadata`: users can choose high spike, low dip, or both directions; polling compares against the previous 7 days of samples with 2 sigma and 8 minimum prior samples; alert messages include baseline context.
 - Improved live ops UX and alert intelligence: the dashboard header and Control Room now expose live stream state, last checked time, changed areas, and manual refresh fallback; anomaly rule setup now previews available sample history, baseline mean, standard deviation, watch bands, and enough-history status before saving.
 - Improved light-mode contrast across global tokens, dashboard section surfaces, graph canvas dots, report pages, borders, muted text, and focus/input colors while preserving the neutral black/grey dark theme.
+- Added Ops IA split: Settings is now configuration-only, Testing owns deployment readiness/manual poll/test email/webhook tests/integration QA/endpoint shortcuts, and Logs is a unified safe operational timeline with 24h/7d/30d/All windows, type filters, search, and normalized entries from audit logs, alerts, polling, deliveries, runs, reports, webhooks, team, and map activity.
+- Added contextual sidebar navigation: selecting any main dashboard section replaces the sidebar with that section's heading/back button and one-level subsection anchors; Back returns to the main section list without changing the active page.
+- Added audit evidence for key user actions including project create/rename/archive, graph saves, telemetry token create/revoke, webhook create/update/delete/test, report create/revoke, team invite/role/remove/cancel, notification preference changes, manual poll, and alert resolution.
 - Added Playwright smoke script for public deployed checks, optional authenticated checks, and optional private-beta mutation checks.
 - Added API stubs for project state and REST endpoint test/mapping behavior.
 - If database or GitHub OAuth env vars are missing, the app shows a setup-required screen instead of trying to start Auth.js against incomplete config.
@@ -65,7 +68,7 @@ ArgusGrid is a PC-first AI automation control room for agencies and teams. The p
 - Node status is computed from health rules but supports admin overrides.
 - Reports start as secure share links and PNG exports, not full client portals.
 - Project rename/archive remains an organization-shared owner/admin action for now; account-local project aliases, visibility, and per-user project lifecycle behavior are deferred to the future team hierarchy and permissions phase.
-- SSE live updates are implemented as a lightweight signal channel; anomaly alerting and generic outbound alert webhooks are implemented for metric incidents; durable event logs, native Slack notifications, and SDK publishing remain next-stage priorities.
+- SSE live updates are implemented as a lightweight signal channel; anomaly alerting, generic outbound alert webhooks, and audit-backed operational logs are implemented for metric incidents and operator actions; durable queues, native Slack notifications, and SDK publishing remain next-stage priorities.
 - WebSockets and true multi-user graph collaboration remain deferred until the product needs lower-latency editing or explicit shared-presence behavior.
 - Sankey and forecast/correlation views are deferred until usage data proves demand.
 
@@ -84,6 +87,8 @@ ArgusGrid is a PC-first AI automation control room for agencies and teams. The p
 - Browser-test the SSE live indicator and live refresh path for new runs, manual polling, alert resolution, node health changes, and latest poll status, with manual refresh as fallback.
 - Browser-test Control Room live stream copy, header live tooltip, manual refresh fallback, and anomaly alert rules with controlled sample history: not enough history should show the preview/wait state and not alert, high/low/both direction breaches should alert, duplicate unresolved alerts should not resend email, and resolved anomalies should allow future notifications.
 - Browser-test light mode at desktop and smaller widths for readable text, clearer borders, visible graph dots, report contrast, and no regressions to dark mode.
+- Browser-test the Ops IA split: Settings should stay configuration-only, Testing should run readiness/manual poll/test email/webhook/integration/endpoint checks, Logs should filter by type/window/search, and contextual sidebar back/subsection behavior should work across sections.
+- Browser-test log creation for report revoke/create, webhook create/test/delete, manual poll, alert resolve, team invite/role/remove/cancel, token create/revoke, notification preference save, and graph save without exposing secrets.
 - Validate the Prisma report-share migration with `prisma migrate deploy` before production use.
 - Test SDK preview snippets against a disposable ingestion token and confirm runs appear in the selected node.
 - Browser-test invited-user acceptance, role management, guided API setup, icon upload, alert center filtering, cron polling, deployment diagnostics, and alert resolution on the deployed site.

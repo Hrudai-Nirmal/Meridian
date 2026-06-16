@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { getApiUserId } from "@/lib/api-session"
+import { createAuditLog } from "@/lib/audit-log"
 import { getPrisma } from "@/lib/prisma"
 import { getWorkspaceForUser } from "@/lib/workspace"
 
@@ -32,6 +33,11 @@ export async function PUT(request: Request) {
   }
 
   const prisma = getPrisma()
+  const workspace = await getWorkspaceForUser(userId)
+  if (!workspace) {
+    return NextResponse.json({ error: "Workspace not found." }, { status: 404 })
+  }
+
   const preference = await prisma.notificationPreference.upsert({
     where: {
       userId_channel: {
@@ -49,6 +55,15 @@ export async function PUT(request: Request) {
       enabled: parsed.data.enabled,
       severity: parsed.data.severity,
     },
+  })
+  await createAuditLog(prisma, {
+    action: "notification.updated",
+    entity: "notification",
+    entityId: preference.id,
+    organizationId: workspace.organization.id,
+    projectId: workspace.project.id,
+    userId,
+    metadata: { channel: preference.channel, enabled: preference.enabled, severity: preference.severity },
   })
 
   return NextResponse.json({

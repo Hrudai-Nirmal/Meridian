@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { getApiUserId, requireProjectRole } from "@/lib/api-session"
+import { createAuditLog } from "@/lib/audit-log"
 import { getPrisma } from "@/lib/prisma"
 import { serializeGraphForProject, workspaceConverters } from "@/lib/workspace"
 
@@ -181,6 +182,19 @@ export async function PATCH(request: Request, context: { params: Promise<{ proje
         },
       })
     }
+  })
+
+  await createAuditLog(prisma, {
+    action: "graph.saved",
+    entity: "graph",
+    entityId: projectId,
+    projectId,
+    userId,
+    metadata: {
+      nodeCount: parsed.data.nodes.length,
+      edgeCount: parsed.data.edges.length,
+      edgeLabels: parsed.data.edges.map((edge) => edge.label ?? "visual link").slice(0, 12),
+    },
   })
 
   const workspace = await serializeGraphForProject(userId, projectId)

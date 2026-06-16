@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { getApiUserId, requireProjectRole } from "@/lib/api-session"
+import { createAuditLog } from "@/lib/audit-log"
 import { getPrisma } from "@/lib/prisma"
 import { deliverProjectWebhooks } from "@/lib/webhooks"
 
@@ -15,7 +16,7 @@ export async function POST(_: Request, context: { params: Promise<{ projectId: s
   const prisma = getPrisma()
   const webhook = await prisma.projectWebhookDestination.findFirst({
     where: { id: webhookId, projectId },
-    select: { id: true },
+    select: { id: true, name: true },
   })
   if (!webhook) {
     return NextResponse.json({ error: "Webhook destination not found." }, { status: 404 })
@@ -25,6 +26,14 @@ export async function POST(_: Request, context: { params: Promise<{ projectId: s
     eventType: "webhook.test",
     projectId,
     destinationId: webhookId,
+  })
+  await createAuditLog(prisma, {
+    action: "webhook.tested",
+    entity: "webhook",
+    entityId: webhook.id,
+    projectId,
+    userId,
+    metadata: { name: webhook.name, sent: result.sent, failed: result.failed },
   })
 
   return NextResponse.json({

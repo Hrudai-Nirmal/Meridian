@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { getApiUserId, requireOrganizationRole } from "@/lib/api-session"
+import { createAuditLog } from "@/lib/audit-log"
 import { getPrisma } from "@/lib/prisma"
 import { getWorkspaceForUser } from "@/lib/workspace"
 
@@ -50,6 +51,15 @@ export async function POST(request: Request) {
       organizationId: workspace.organization.id,
       invitedById: userId,
     },
+  })
+  await createAuditLog(prisma, {
+    action: "team.invited",
+    entity: "team",
+    entityId: invitation.id,
+    organizationId: workspace.organization.id,
+    projectId: workspace.project.id,
+    userId,
+    metadata: { email: invitation.email, role: invitation.role },
   })
 
   return NextResponse.json({ invitation }, { status: 201 })

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { getApiUserId } from "@/lib/api-session"
+import { createAuditLog } from "@/lib/audit-log"
 import { getPrisma } from "@/lib/prisma"
 import { deliverProjectWebhooks } from "@/lib/webhooks"
 
@@ -40,6 +41,8 @@ export async function PATCH(_: Request, context: { params: Promise<{ alertId: st
     },
     select: {
       id: true,
+      title: true,
+      severity: true,
       node: { select: { projectId: true } },
       rule: { select: { projectId: true } },
     },
@@ -78,6 +81,14 @@ export async function PATCH(_: Request, context: { params: Promise<{ alertId: st
   await deliverProjectWebhooks(prisma, {
     eventType: "alert.resolved",
     alertEventId: alertId,
+  })
+  await createAuditLog(prisma, {
+    action: "alert.resolved",
+    entity: "alert",
+    entityId: alertId,
+    projectId,
+    userId,
+    metadata: { title: alert.title, severity: alert.severity },
   })
 
   return NextResponse.json({ ok: true })

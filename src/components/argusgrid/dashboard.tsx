@@ -26,6 +26,7 @@ import {
   Bot,
   ChevronDown,
   CheckCircle2,
+  ClipboardCheck,
   Copy,
   Edit3,
   ExternalLink,
@@ -41,6 +42,7 @@ import {
   NotebookText,
   Plus,
   Save,
+  ScrollText,
   Search,
   Send,
   Settings,
@@ -277,7 +279,9 @@ type ProjectAlert = WorkspacePayload["alerts"][number]
 type ProjectAlertRule = WorkspacePayload["alertRules"][number]
 type AlertTimelineFilter = "24h" | "7d" | "30d" | "all"
 type LiveConnectionState = "connecting" | "live" | "reconnecting" | "manual"
-type DashboardSection = "control-room" | "projects" | "map" | "runs" | "alerts" | "reports" | "integrations" | "team" | "settings"
+type DashboardSection = "control-room" | "projects" | "map" | "runs" | "alerts" | "reports" | "integrations" | "testing" | "logs" | "team" | "settings"
+type ProjectLogType = "activity" | "alerts" | "polling" | "deliveries" | "runs" | "reports" | "webhooks" | "team" | "map"
+type ProjectLogWindow = "24h" | "7d" | "30d" | "all"
 type IngestionTokenRecord = {
   id: string
   name: string
@@ -326,6 +330,20 @@ type ProjectLiveEvent = {
   cursor: string
   changed: string[]
   checkedAt: string
+}
+
+type ProjectLogRecord = {
+  id: string
+  type: ProjectLogType
+  title: string
+  message: string
+  status: string
+  entity: string
+  entityId: string | null
+  nodeLabel?: string | null
+  actor?: string | null
+  metadata?: Record<string, unknown> | null
+  createdAt: string
 }
 
 const dashboardSections: {
@@ -385,6 +403,20 @@ const dashboardSections: {
     icon: Wand2,
   },
   {
+    id: "testing",
+    label: "Testing",
+    title: "Testing",
+    description: "Diagnostic actions, readiness checks, and integration QA.",
+    icon: ClipboardCheck,
+  },
+  {
+    id: "logs",
+    label: "Logs",
+    title: "Logs",
+    description: "Unified project timeline for activity and system events.",
+    icon: ScrollText,
+  },
+  {
     id: "team",
     label: "Team",
     title: "Team",
@@ -395,10 +427,73 @@ const dashboardSections: {
     id: "settings",
     label: "Settings",
     title: "Settings",
-    description: "Deployment readiness, polling, email, and telemetry tokens.",
+    description: "Configuration for notifications, webhooks, telemetry, and project environment.",
     icon: Settings,
   },
 ]
+
+const sectionSubsections: Record<DashboardSection, { id: string; label: string; logType?: ProjectLogType }[]> = {
+  "control-room": [
+    { id: "ops-overview", label: "Overview" },
+    { id: "ops-incidents", label: "Incidents" },
+    { id: "ops-proof", label: "Client proof" },
+  ],
+  projects: [
+    { id: "projects-list", label: "Projects" },
+    { id: "projects-create", label: "Create" },
+  ],
+  map: [
+    { id: "map-canvas", label: "Canvas" },
+    { id: "map-inspector", label: "Inspector" },
+    { id: "map-edges", label: "Links" },
+  ],
+  runs: [
+    { id: "runs-summary", label: "Summary" },
+    { id: "runs-table", label: "Runs" },
+  ],
+  alerts: [
+    { id: "alerts-summary", label: "Summary" },
+    { id: "alerts-table", label: "Incidents" },
+  ],
+  reports: [
+    { id: "reports-preview", label: "Preview" },
+    { id: "reports-links", label: "Links" },
+    { id: "reports-exports", label: "Exports" },
+  ],
+  integrations: [
+    { id: "integrations-templates", label: "Templates" },
+    { id: "integrations-telemetry", label: "Telemetry" },
+  ],
+  testing: [
+    { id: "testing-readiness", label: "Readiness" },
+    { id: "testing-polling", label: "Polling" },
+    { id: "testing-notifications", label: "Notifications" },
+    { id: "testing-integrations", label: "Integrations" },
+    { id: "testing-endpoints", label: "API setup" },
+  ],
+  logs: [
+    { id: "logs-timeline", label: "All logs" },
+    { id: "logs-activity", label: "Activity", logType: "activity" },
+    { id: "logs-alerts", label: "Alerts", logType: "alerts" },
+    { id: "logs-polling", label: "Polling", logType: "polling" },
+    { id: "logs-deliveries", label: "Deliveries", logType: "deliveries" },
+    { id: "logs-runs", label: "Runs", logType: "runs" },
+    { id: "logs-reports", label: "Reports", logType: "reports" },
+    { id: "logs-webhooks", label: "Webhooks", logType: "webhooks" },
+    { id: "logs-team", label: "Team", logType: "team" },
+    { id: "logs-map", label: "Map", logType: "map" },
+  ],
+  team: [
+    { id: "team-members", label: "Members" },
+    { id: "team-invites", label: "Invitations" },
+  ],
+  settings: [
+    { id: "settings-notifications", label: "Notifications" },
+    { id: "settings-webhooks", label: "Webhooks" },
+    { id: "settings-tokens", label: "Telemetry tokens" },
+    { id: "settings-environment", label: "Environment" },
+  ],
+}
 
 const alertTimelineWindows: Record<Exclude<AlertTimelineFilter, "all">, number> = {
   "24h": 24 * 60 * 60 * 1000,
@@ -505,6 +600,7 @@ export function ArgusGridDashboard({
   currentUser: NonNullable<Session["user"]>
 }) {
   const [activeSection, setActiveSection] = useState<DashboardSection>("control-room")
+  const [isSectionSidebarOpen, setIsSectionSidebarOpen] = useState(false)
   const [selectedId, setSelectedId] = useState(initialWorkspace.nodes[0]?.id ?? "")
   const [selectedEdgeId, setSelectedEdgeId] = useState("")
   const [editMode, setEditMode] = useState(false)
@@ -548,6 +644,12 @@ export function ArgusGridDashboard({
   const [webhookEventFilters, setWebhookEventFilters] = useState<WebhookEventFilter[]>(["alert.opened", "alert.resolved", "webhook.test"])
   const [webhookMessage, setWebhookMessage] = useState("")
   const [generatedWebhookSecret, setGeneratedWebhookSecret] = useState("")
+  const [logs, setLogs] = useState<ProjectLogRecord[]>([])
+  const [logTypeFilter, setLogTypeFilter] = useState<ProjectLogType | "">("")
+  const [logWindowFilter, setLogWindowFilter] = useState<ProjectLogWindow>("7d")
+  const [logQuery, setLogQuery] = useState("")
+  const [logMessage, setLogMessage] = useState("")
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false)
   const [reportShares, setReportShares] = useState<ReportShareRecord[]>([])
   const [reportTitle, setReportTitle] = useState("Client automation report")
   const [reportClientName, setReportClientName] = useState("")
@@ -568,6 +670,7 @@ export function ArgusGridDashboard({
   const canManageOrganization = initialWorkspace.currentUserRole === "OWNER" || initialWorkspace.currentUserRole === "ADMIN"
   const canEditProject = canManageOrganization || initialWorkspace.currentUserRole === "MEMBER"
   const activeSectionMeta = dashboardSections.find((section) => section.id === activeSection) ?? dashboardSections[0]
+  const activeSubsections = sectionSubsections[activeSection] ?? []
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark")
@@ -721,6 +824,46 @@ export function ArgusGridDashboard({
       if (!options.silent) setIsRefreshingProject(false)
     }
   }, [initialWorkspace.project.id, setNodes])
+
+  const loadProjectLogs = useCallback(
+    async (overrides: { type?: ProjectLogType | ""; window?: ProjectLogWindow; q?: string } = {}) => {
+      setIsLoadingLogs(true)
+      setLogMessage("Loading logs...")
+      const nextType = overrides.type ?? logTypeFilter
+      const nextWindow = overrides.window ?? logWindowFilter
+      const nextQuery = overrides.q ?? logQuery
+      const searchParams = new URLSearchParams({ window: nextWindow })
+      if (nextType) searchParams.set("type", nextType)
+      if (nextQuery.trim()) searchParams.set("q", nextQuery.trim())
+
+      try {
+        const response = await fetch(`/api/projects/${initialWorkspace.project.id}/logs?${searchParams.toString()}`)
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) {
+          setLogMessage(payload?.error ?? "Logs failed to load.")
+          return
+        }
+        setLogs(payload.logs ?? [])
+        setLogMessage(`${payload.logs?.length ?? 0} log entries loaded.`)
+      } catch {
+        setLogMessage("Logs failed to load.")
+      } finally {
+        setIsLoadingLogs(false)
+      }
+    },
+    [initialWorkspace.project.id, logQuery, logTypeFilter, logWindowFilter]
+  )
+
+  const openSubsection = (subsection: { id: string; logType?: ProjectLogType }) => {
+    if (activeSection === "logs") {
+      const nextType = subsection.logType ?? ""
+      setLogTypeFilter(nextType)
+      void loadProjectLogs({ type: nextType })
+      return
+    }
+
+    document.getElementById(subsection.id)?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.EventSource === "undefined") {
@@ -1457,7 +1600,7 @@ export function ArgusGridDashboard({
     }
     setSelectedId(alert.nodeId)
     setSelectedAlertDetail(null)
-    setActiveSection("map")
+    openDashboardSection("map")
   }
 
   const uploadSelectedIcon = async (file: File | undefined) => {
@@ -1502,6 +1645,24 @@ export function ArgusGridDashboard({
     window.localStorage.setItem("argusgrid-theme", next)
   }
 
+  const openDashboardSection = (section: DashboardSection) => {
+    setActiveSection(section)
+    setActionMessage("")
+    setIsSectionSidebarOpen(true)
+    if (section === "reports" && canManageOrganization && !reportShares.length) {
+      void loadReportShares()
+    }
+    if (section === "settings" && canManageOrganization && !ingestionTokens.length) {
+      void loadIngestionTokens()
+    }
+    if (section === "logs") {
+      void loadProjectLogs()
+    }
+    if (section === "testing" && canEditProject && !webhooks.length) {
+      void loadWebhooks()
+    }
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground lg:h-screen lg:min-h-[760px] lg:flex-row">
       <aside className="flex w-full shrink-0 flex-col border-b bg-sidebar px-4 py-4 text-sidebar-foreground lg:w-72 lg:border-b-0 lg:border-r">
@@ -1530,30 +1691,48 @@ export function ArgusGridDashboard({
         </div>
 
         <nav className="mt-5 grid grid-cols-2 gap-1 sm:grid-cols-4 lg:flex lg:flex-1 lg:flex-col">
-          {dashboardSections.map((section) => (
-            <SidebarItem
-              key={section.id}
-              icon={section.icon}
-              active={activeSection === section.id}
-              label={section.label}
-              count={
-                section.id === "alerts" && activeAlerts.length
-                  ? String(activeAlerts.length)
-                  : section.id === "runs" && projectSummary.failedRuns.length
-                    ? String(projectSummary.failedRuns.length)
-                    : undefined
-              }
-              onClick={() => {
-                setActiveSection(section.id)
-                if (section.id === "reports" && canManageOrganization && !reportShares.length) {
-                  void loadReportShares()
+          {isSectionSidebarOpen ? (
+            <>
+              <button
+                type="button"
+                className="col-span-2 mb-2 flex items-center justify-between rounded-xl border bg-background/80 px-3 py-2 text-left text-sm font-semibold sm:col-span-4 lg:col-span-1"
+                onClick={() => setIsSectionSidebarOpen(false)}
+              >
+                <span>{activeSectionMeta.label}</span>
+                <span className="text-xs font-normal text-muted-foreground">Back</span>
+              </button>
+              {activeSubsections.map((subsection) => (
+                <button
+                  key={subsection.id}
+                  type="button"
+                  className={cn(
+                    "rounded-lg px-3 py-2 text-left text-sm text-muted-foreground transition hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                    activeSection === "logs" && (logTypeFilter || "") === (subsection.logType ?? "") && "bg-sidebar-accent text-sidebar-accent-foreground"
+                  )}
+                  onClick={() => openSubsection(subsection)}
+                >
+                  {subsection.label}
+                </button>
+              ))}
+            </>
+          ) : (
+            dashboardSections.map((section) => (
+              <SidebarItem
+                key={section.id}
+                icon={section.icon}
+                active={activeSection === section.id}
+                label={section.label}
+                count={
+                  section.id === "alerts" && activeAlerts.length
+                    ? String(activeAlerts.length)
+                    : section.id === "runs" && projectSummary.failedRuns.length
+                      ? String(projectSummary.failedRuns.length)
+                      : undefined
                 }
-                if (section.id === "settings" && canManageOrganization && !ingestionTokens.length) {
-                  void loadIngestionTokens()
-                }
-              }}
-            />
-          ))}
+                onClick={() => openDashboardSection(section.id)}
+              />
+            ))
+          )}
         </nav>
 
         <div className="hidden">
@@ -1949,7 +2128,7 @@ export function ArgusGridDashboard({
                 </Button>
               </>
             ) : (
-              <Button variant="outline" onClick={() => setActiveSection("map")}>
+              <Button variant="outline" onClick={() => openDashboardSection("map")}>
                 <Network data-icon="inline-start" />
                 Open map
               </Button>
@@ -2150,10 +2329,10 @@ export function ArgusGridDashboard({
             liveChangedAreas={liveChangedAreas}
             isRefreshingProject={isRefreshingProject}
             onRefreshProject={refreshProjectData}
-            onOpenSection={setActiveSection}
+            onOpenSection={openDashboardSection}
             onSelectNode={(nodeId) => {
               setSelectedId(nodeId)
-              setActiveSection("map")
+              openDashboardSection("map")
             }}
           />
         ) : activeSection === "runs" ? (
@@ -2163,7 +2342,7 @@ export function ArgusGridDashboard({
             onRefreshProject={refreshProjectData}
             onSelectNode={(nodeId) => {
               setSelectedId(nodeId)
-              setActiveSection("map")
+              openDashboardSection("map")
             }}
           />
         ) : activeSection === "alerts" ? (
@@ -2222,12 +2401,53 @@ export function ArgusGridDashboard({
             canEditProject={canEditProject}
             canManageOrganization={canManageOrganization}
             onSelectNode={setSelectedId}
-            onOpenMap={() => setActiveSection("map")}
-            onOpenSettings={() => setActiveSection("settings")}
-            onOpenRuns={() => setActiveSection("runs")}
+            onOpenMap={() => openDashboardSection("map")}
+            onOpenSettings={() => openDashboardSection("settings")}
+            onOpenRuns={() => openDashboardSection("runs")}
             onCreateWorkflowToken={createWorkflowTokenForName}
             onLoadIngestionTokens={loadIngestionTokens}
             onRefreshProject={() => refreshProjectData({ silent: true })}
+          />
+        ) : activeSection === "testing" ? (
+          <TestingSection
+            diagnostics={initialWorkspace.diagnostics}
+            latestPoll={latestPoll}
+            latestEmail={latestEmail}
+            pollMessage={pollMessage}
+            emailMessage={emailMessage}
+            webhookMessage={webhookMessage}
+            webhooks={webhooks}
+            selectedNode={selectedNode}
+            canManageOrganization={canManageOrganization}
+            canEditProject={canEditProject}
+            onRunPollNow={runPollNow}
+            onSendTestEmail={sendTestEmail}
+            onTestWebhook={testWebhook}
+            onLoadWebhooks={loadWebhooks}
+            onOpenMap={() => openDashboardSection("map")}
+            onOpenSettings={() => openDashboardSection("settings")}
+            onOpenIntegrations={() => openDashboardSection("integrations")}
+            onRefreshProject={() => refreshProjectData({ silent: true })}
+          />
+        ) : activeSection === "logs" ? (
+          <LogsSection
+            logs={logs}
+            typeFilter={logTypeFilter}
+            windowFilter={logWindowFilter}
+            query={logQuery}
+            message={logMessage}
+            isLoading={isLoadingLogs}
+            onTypeFilterChange={(value) => {
+              setLogTypeFilter(value)
+              void loadProjectLogs({ type: value })
+            }}
+            onWindowFilterChange={(value) => {
+              setLogWindowFilter(value)
+              void loadProjectLogs({ window: value })
+            }}
+            onQueryChange={setLogQuery}
+            onSearch={() => loadProjectLogs()}
+            onRefresh={() => loadProjectLogs()}
           />
         ) : activeSection === "team" ? (
           <TeamSection
@@ -2246,10 +2466,9 @@ export function ArgusGridDashboard({
           />
         ) : (
           <SettingsSection
-            diagnostics={initialWorkspace.diagnostics}
-            latestPoll={latestPoll}
+            organization={initialWorkspace.organization}
+            project={initialWorkspace.project}
             latestEmail={latestEmail}
-            pollMessage={pollMessage}
             emailEnabled={emailEnabled}
             emailSeverity={emailSeverity}
             emailMessage={emailMessage}
@@ -2265,11 +2484,9 @@ export function ArgusGridDashboard({
             generatedWebhookSecret={generatedWebhookSecret}
             canManageOrganization={canManageOrganization}
             canEditProject={canEditProject}
-            onRunPollNow={runPollNow}
             onEmailEnabledChange={setEmailEnabled}
             onEmailSeverityChange={setEmailSeverity}
             onSaveNotificationPreference={saveNotificationPreference}
-            onSendTestEmail={sendTestEmail}
             onIngestionTokenNameChange={setIngestionTokenName}
             onCreateWorkflowToken={createWorkflowToken}
             onLoadIngestionTokens={loadIngestionTokens}
@@ -2280,7 +2497,6 @@ export function ArgusGridDashboard({
             onToggleWebhookEventFilter={toggleWebhookEventFilter}
             onLoadWebhooks={loadWebhooks}
             onCreateWebhook={createWebhook}
-            onTestWebhook={testWebhook}
             onToggleWebhook={toggleWebhook}
             onDeleteWebhook={deleteWebhook}
             onCopyGeneratedWebhookSecret={async () => {
@@ -3656,11 +3872,291 @@ function TeamSection({
   )
 }
 
-function SettingsSection({
+function TestingSection({
   diagnostics,
   latestPoll,
   latestEmail,
   pollMessage,
+  emailMessage,
+  webhookMessage,
+  webhooks,
+  selectedNode,
+  canManageOrganization,
+  canEditProject,
+  onRunPollNow,
+  onSendTestEmail,
+  onTestWebhook,
+  onLoadWebhooks,
+  onOpenMap,
+  onOpenSettings,
+  onOpenIntegrations,
+  onRefreshProject,
+}: {
+  diagnostics: WorkspacePayload["diagnostics"]
+  latestPoll: WorkspacePayload["diagnostics"]["latestPoll"]
+  latestEmail: WorkspacePayload["diagnostics"]["latestEmail"]
+  pollMessage: string
+  emailMessage: string
+  webhookMessage: string
+  webhooks: ProjectWebhookRecord[]
+  selectedNode?: EndpointNodeData
+  canManageOrganization: boolean
+  canEditProject: boolean
+  onRunPollNow: () => Promise<void>
+  onSendTestEmail: () => Promise<void>
+  onTestWebhook: (webhookId: string) => Promise<void>
+  onLoadWebhooks: () => Promise<void>
+  onOpenMap: () => void
+  onOpenSettings: () => void
+  onOpenIntegrations: () => void
+  onRefreshProject: () => Promise<void>
+}) {
+  return (
+    <SectionShell>
+      <div className="mx-auto grid max-w-7xl gap-5">
+        <details id="testing-readiness" open className="rounded-lg border bg-background">
+          <summary className="cursor-pointer px-5 py-4 font-semibold">Deployment readiness</summary>
+          <div className="grid gap-2 px-5 pb-5 sm:grid-cols-2 lg:grid-cols-3">
+            <ReadinessItem label="Database connected" ready={diagnostics.checks.database} />
+            <ReadinessItem label="GitHub OAuth ready" ready={diagnostics.checks.auth} />
+            <ReadinessItem label="Encryption enabled" ready={diagnostics.checks.encryption} />
+            <ReadinessItem label="Cron secret configured" ready={diagnostics.checks.cron} />
+            <ReadinessItem label="Email provider configured" ready={diagnostics.checks.email} />
+          </div>
+        </details>
+
+        <details id="testing-polling" open className="rounded-lg border bg-background">
+          <summary className="cursor-pointer px-5 py-4 font-semibold">Polling and demo metric QA</summary>
+          <div className="grid gap-4 px-5 pb-5 md:grid-cols-[0.8fr_1.2fr]">
+            <div className="grid content-start gap-3">
+              <Button onClick={onRunPollNow} disabled={!canManageOrganization}>
+                <Activity data-icon="inline-start" />
+                Run poll now
+              </Button>
+              <Button variant="outline" onClick={onRefreshProject}>
+                <Gauge data-icon="inline-start" />
+                Refresh project data
+              </Button>
+              {pollMessage ? <div className="text-xs text-muted-foreground">{pollMessage}</div> : null}
+            </div>
+            <div className="rounded-lg border bg-muted/20 p-3 text-sm">
+              {latestPoll ? (
+                <>
+                  <div className="font-medium">Latest poll: {latestPoll.status}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {latestPoll.sampledNodes} nodes, {latestPoll.createdSamples} samples, {latestPoll.evaluatedAlerts} alerts, {latestPoll.deletedSamples} old samples cleaned.
+                  </div>
+                </>
+              ) : (
+                <div className="text-muted-foreground">No cron poll has run yet.</div>
+              )}
+              <div className="mt-3 text-xs text-muted-foreground">
+                Demo metric QA: open the Automation Map, select a metric node, and verify a fresh sample appears after polling.
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <details id="testing-notifications" open className="rounded-lg border bg-background">
+          <summary className="cursor-pointer px-5 py-4 font-semibold">Notification tests</summary>
+          <div className="grid gap-4 px-5 pb-5 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Email test</CardTitle>
+                <CardDescription>Send a provider-backed test email using the saved notification settings.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3">
+                <Button onClick={onSendTestEmail} disabled={!canManageOrganization}>
+                  <Send data-icon="inline-start" />
+                  Send test email
+                </Button>
+                {emailMessage ? <div className="text-xs text-muted-foreground">{emailMessage}</div> : null}
+                <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
+                  {latestEmail ? `Latest email: ${latestEmail.status} via ${latestEmail.provider} at ${new Date(latestEmail.attemptedAt).toLocaleString()}` : "No email delivery has been attempted yet."}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Webhook tests</CardTitle>
+                <CardDescription>Send `webhook.test` to any enabled project destination.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3">
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" onClick={onLoadWebhooks} disabled={!canEditProject}>Refresh webhooks</Button>
+                  <Button variant="ghost" onClick={onOpenSettings}>Configure webhooks</Button>
+                </div>
+                {webhookMessage ? <div className="text-xs text-muted-foreground">{webhookMessage}</div> : null}
+                {webhooks.length ? (
+                  <div className="grid gap-2">
+                    {webhooks.map((webhook) => (
+                      <div key={webhook.id} className="flex items-center justify-between gap-3 rounded-md border p-2 text-xs">
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">{webhook.name}</div>
+                          <div className="truncate text-muted-foreground">{webhook.eventFilters.join(", ")}</div>
+                        </div>
+                        <Button size="sm" variant="outline" disabled={!canEditProject || !webhook.enabled} onClick={() => onTestWebhook(webhook.id)}>
+                          Test
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">No webhook destinations loaded.</div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </details>
+
+        <details id="testing-integrations" className="rounded-lg border bg-background">
+          <summary className="cursor-pointer px-5 py-4 font-semibold">Integration readiness and test runs</summary>
+          <div className="grid gap-3 px-5 pb-5 text-sm">
+            <p className="text-muted-foreground">
+              Use Integrations to create a telemetry token, copy the sample payload, send a synthetic run, then confirm it appears in Runs.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={onOpenIntegrations}>
+                <Wand2 data-icon="inline-start" />
+                Open integrations
+              </Button>
+              <Button variant="outline" onClick={onOpenMap}>
+                <Network data-icon="inline-start" />
+                Select endpoint
+              </Button>
+            </div>
+          </div>
+        </details>
+
+        <details id="testing-endpoints" className="rounded-lg border bg-background">
+          <summary className="cursor-pointer px-5 py-4 font-semibold">Endpoint and API setup shortcuts</summary>
+          <div className="grid gap-3 px-5 pb-5 text-sm">
+            <div className="rounded-lg border bg-muted/20 p-3">
+              <div className="font-medium">{selectedNode ? selectedNode.label : "No node selected"}</div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                {selectedNode ? `${selectedNode.apiUrl} / ${selectedNode.cadence}` : "Select a node in the Automation Map to test its API setup."}
+              </div>
+            </div>
+            <Button variant="outline" onClick={onOpenMap}>
+              <Network data-icon="inline-start" />
+              Open selected node setup
+            </Button>
+          </div>
+        </details>
+      </div>
+    </SectionShell>
+  )
+}
+
+function formatLogMetadata(metadata: Record<string, unknown> | null | undefined) {
+  if (!metadata) return ""
+  return Object.entries(metadata)
+    .filter(([, value]) => value !== null && value !== undefined && value !== "")
+    .slice(0, 4)
+    .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : String(value)}`)
+    .join(" | ")
+}
+
+function LogsSection({
+  logs,
+  typeFilter,
+  windowFilter,
+  query,
+  message,
+  isLoading,
+  onTypeFilterChange,
+  onWindowFilterChange,
+  onQueryChange,
+  onSearch,
+  onRefresh,
+}: {
+  logs: ProjectLogRecord[]
+  typeFilter: ProjectLogType | ""
+  windowFilter: ProjectLogWindow
+  query: string
+  message: string
+  isLoading: boolean
+  onTypeFilterChange: (value: ProjectLogType | "") => void
+  onWindowFilterChange: (value: ProjectLogWindow) => void
+  onQueryChange: (value: string) => void
+  onSearch: () => Promise<void>
+  onRefresh: () => Promise<void>
+}) {
+  return (
+    <SectionShell>
+      <div id="logs-timeline" className="mx-auto grid max-w-7xl gap-5">
+        <Card>
+          <CardHeader>
+            <CardTitle>Unified logs</CardTitle>
+            <CardDescription>Safe operational timeline across project activity, alerts, polling, deliveries, runs, reports, webhooks, team, and map changes.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            <div className="grid gap-2 lg:grid-cols-[180px_180px_1fr_auto_auto]">
+              <select className="h-10 rounded-lg border bg-background px-2 text-sm" value={typeFilter} onChange={(event) => onTypeFilterChange(event.target.value as ProjectLogType | "")}>
+                <option value="">All types</option>
+                <option value="activity">Activity</option>
+                <option value="alerts">Alerts</option>
+                <option value="polling">Polling</option>
+                <option value="deliveries">Deliveries</option>
+                <option value="runs">Runs</option>
+                <option value="reports">Reports</option>
+                <option value="webhooks">Webhooks</option>
+                <option value="team">Team</option>
+                <option value="map">Map</option>
+              </select>
+              <select className="h-10 rounded-lg border bg-background px-2 text-sm" value={windowFilter} onChange={(event) => onWindowFilterChange(event.target.value as ProjectLogWindow)}>
+                <option value="24h">24h</option>
+                <option value="7d">7d</option>
+                <option value="30d">30d</option>
+                <option value="all">All</option>
+              </select>
+              <Input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="Search logs, nodes, status, metadata" />
+              <Button variant="outline" onClick={onSearch} disabled={isLoading}>
+                <Search data-icon="inline-start" />
+                Search
+              </Button>
+              <Button onClick={onRefresh} disabled={isLoading}>Refresh</Button>
+            </div>
+            {message ? <div className="text-xs text-muted-foreground">{message}</div> : null}
+          </CardContent>
+        </Card>
+
+        <div className="grid gap-2">
+          {logs.length ? (
+            logs.map((log) => (
+              <div key={log.id} className="grid gap-2 rounded-lg border bg-background p-3 text-sm lg:grid-cols-[150px_110px_1fr_120px] lg:items-start">
+                <div className="text-xs text-muted-foreground">{new Date(log.createdAt).toLocaleString()}</div>
+                <Badge variant="outline" className="w-fit capitalize">{log.type}</Badge>
+                <div className="min-w-0">
+                  <div className="font-medium">{log.title}</div>
+                  <div className="mt-1 text-muted-foreground">{log.message}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {log.nodeLabel ? `${log.nodeLabel} / ` : ""}{log.entity}{log.entityId ? ` ${log.entityId.slice(0, 8)}` : ""}
+                    {log.actor ? ` / ${log.actor}` : ""}
+                  </div>
+                  {formatLogMetadata(log.metadata) ? <div className="mt-1 text-xs text-muted-foreground">{formatLogMetadata(log.metadata)}</div> : null}
+                </div>
+                <Badge variant={log.status === "failed" || log.status === "error" ? "destructive" : "secondary"} className="w-fit capitalize">
+                  {log.status}
+                </Badge>
+              </div>
+            ))
+          ) : (
+            <Card>
+              <CardContent className="p-6 text-sm text-muted-foreground">No logs match the current filters.</CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+    </SectionShell>
+  )
+}
+
+function SettingsSection({
+  organization,
+  project,
+  latestEmail,
   emailEnabled,
   emailSeverity,
   emailMessage,
@@ -3676,11 +4172,9 @@ function SettingsSection({
   generatedWebhookSecret,
   canManageOrganization,
   canEditProject,
-  onRunPollNow,
   onEmailEnabledChange,
   onEmailSeverityChange,
   onSaveNotificationPreference,
-  onSendTestEmail,
   onIngestionTokenNameChange,
   onCreateWorkflowToken,
   onLoadIngestionTokens,
@@ -3691,15 +4185,13 @@ function SettingsSection({
   onToggleWebhookEventFilter,
   onLoadWebhooks,
   onCreateWebhook,
-  onTestWebhook,
   onToggleWebhook,
   onDeleteWebhook,
   onCopyGeneratedWebhookSecret,
 }: {
-  diagnostics: WorkspacePayload["diagnostics"]
-  latestPoll: WorkspacePayload["diagnostics"]["latestPoll"]
+  organization: WorkspacePayload["organization"]
+  project: WorkspacePayload["project"]
   latestEmail: WorkspacePayload["diagnostics"]["latestEmail"]
-  pollMessage: string
   emailEnabled: boolean
   emailSeverity: string
   emailMessage: string
@@ -3715,11 +4207,9 @@ function SettingsSection({
   generatedWebhookSecret: string
   canManageOrganization: boolean
   canEditProject: boolean
-  onRunPollNow: () => Promise<void>
   onEmailEnabledChange: (value: boolean) => void
   onEmailSeverityChange: (value: string) => void
   onSaveNotificationPreference: () => Promise<void>
-  onSendTestEmail: () => Promise<void>
   onIngestionTokenNameChange: (value: string) => void
   onCreateWorkflowToken: () => Promise<void>
   onLoadIngestionTokens: () => Promise<void>
@@ -3730,58 +4220,18 @@ function SettingsSection({
   onToggleWebhookEventFilter: (event: WebhookEventFilter, enabled: boolean) => void
   onLoadWebhooks: () => Promise<void>
   onCreateWebhook: () => Promise<void>
-  onTestWebhook: (webhookId: string) => Promise<void>
   onToggleWebhook: (webhook: ProjectWebhookRecord) => Promise<void>
   onDeleteWebhook: (webhookId: string) => Promise<void>
   onCopyGeneratedWebhookSecret: () => Promise<void>
 }) {
   return (
     <SectionShell>
-      <div className="mx-auto grid max-w-7xl gap-5 xl:grid-cols-[0.85fr_1.15fr]">
+      <div className="mx-auto grid max-w-7xl gap-5">
         <div className="grid content-start gap-5">
-          <Card>
-            <CardHeader>
-              <CardTitle>Deployment Readiness</CardTitle>
-              <CardDescription>Safe production checks for the deployed demo. Secret values are never shown.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-2">
-              <ReadinessItem label="Database connected" ready={diagnostics.checks.database} />
-              <ReadinessItem label="GitHub OAuth ready" ready={diagnostics.checks.auth} />
-              <ReadinessItem label="Encryption enabled" ready={diagnostics.checks.encryption} />
-              <ReadinessItem label="Cron secret configured" ready={diagnostics.checks.cron} />
-              <ReadinessItem label="Email provider configured" ready={diagnostics.checks.email} />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>Polling Control</CardTitle>
-              <CardDescription>Run the project poll manually for demos and QA.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-3">
-              <Button onClick={onRunPollNow} disabled={!canManageOrganization}>
-                <Activity data-icon="inline-start" />
-                Run poll now
-              </Button>
-              {pollMessage ? <div className="text-xs text-muted-foreground">{pollMessage}</div> : null}
-              {latestPoll ? (
-                <div className="rounded-lg border bg-muted/20 p-3 text-sm">
-                  <div className="font-medium">Latest poll: {latestPoll.status}</div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    {latestPoll.sampledNodes} nodes, {latestPoll.createdSamples} samples, {latestPoll.evaluatedAlerts} alerts, {latestPoll.deletedSamples} old samples cleaned.
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">No cron poll has run yet.</div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="grid content-start gap-5">
-          <Card>
+          <Card id="settings-notifications">
             <CardHeader>
               <CardTitle>Email Notifications</CardTitle>
-              <CardDescription>Preferences and provider delivery status for alert emails.</CardDescription>
+              <CardDescription>Configuration for alert emails. Diagnostic send actions live in Testing.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3">
               <div className="grid gap-2 sm:grid-cols-[1fr_180px]">
@@ -3795,13 +4245,7 @@ function SettingsSection({
                   <option value="CRITICAL">Critical only</option>
                 </select>
               </div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <Button variant="outline" onClick={onSaveNotificationPreference}>Save preference</Button>
-                <Button onClick={onSendTestEmail} disabled={!canManageOrganization}>
-                  <Send data-icon="inline-start" />
-                  Send test email
-                </Button>
-              </div>
+              <Button className="w-fit" variant="outline" onClick={onSaveNotificationPreference}>Save preference</Button>
               {emailMessage ? <div className="text-xs text-muted-foreground">{emailMessage}</div> : null}
               <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
                 {latestEmail ? `Latest email: ${latestEmail.status} via ${latestEmail.provider} at ${new Date(latestEmail.attemptedAt).toLocaleString()}` : "No email delivery has been attempted yet."}
@@ -3809,7 +4253,7 @@ function SettingsSection({
             </CardContent>
           </Card>
 
-          <Card>
+          <Card id="settings-webhooks">
             <CardHeader>
               <CardTitle>Webhook Destinations</CardTitle>
               <CardDescription>Send signed alert events to Slack incoming webhooks, n8n, Zapier, Make, or custom tools.</CardDescription>
@@ -3869,7 +4313,6 @@ function SettingsSection({
                         <Badge variant={webhook.enabled ? "secondary" : "outline"}>{webhook.enabled ? "Enabled" : "Disabled"}</Badge>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <Button variant="outline" size="sm" onClick={() => onTestWebhook(webhook.id)} disabled={!canEditProject}>Test</Button>
                         <Button variant="ghost" size="sm" onClick={() => onToggleWebhook(webhook)} disabled={!canEditProject}>
                           {webhook.enabled ? "Disable" : "Enable"}
                         </Button>
@@ -3888,7 +4331,7 @@ function SettingsSection({
             </CardContent>
           </Card>
 
-          <Card>
+          <Card id="settings-tokens">
             <CardHeader>
               <CardTitle>Workflow Telemetry Tokens</CardTitle>
               <CardDescription>Project-scoped tokens for external automations posting run telemetry.</CardDescription>
@@ -3929,6 +4372,31 @@ function SettingsSection({
               ) : (
                 <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">No tokens loaded yet. Create one or refresh the project token list.</div>
               )}
+            </CardContent>
+          </Card>
+
+          <Card id="settings-environment">
+            <CardHeader>
+              <CardTitle>Project Environment</CardTitle>
+              <CardDescription>Read-only configuration context for this workspace. Rename/archive controls live in Projects.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3 text-sm sm:grid-cols-2">
+              <div className="rounded-lg border bg-muted/20 p-3">
+                <div className="text-xs text-muted-foreground">Organization</div>
+                <div className="mt-1 font-medium">{organization.name}</div>
+              </div>
+              <div className="rounded-lg border bg-muted/20 p-3">
+                <div className="text-xs text-muted-foreground">Project</div>
+                <div className="mt-1 font-medium">{project.name}</div>
+              </div>
+              <div className="rounded-lg border bg-muted/20 p-3">
+                <div className="text-xs text-muted-foreground">Project slug</div>
+                <div className="mt-1 font-mono text-xs">{project.slug}</div>
+              </div>
+              <div className="rounded-lg border bg-muted/20 p-3">
+                <div className="text-xs text-muted-foreground">Secret-safe policy</div>
+                <div className="mt-1 text-muted-foreground">Settings and Logs never show raw tokens, signing secrets, encrypted payloads, or environment values.</div>
+              </div>
             </CardContent>
           </Card>
         </div>

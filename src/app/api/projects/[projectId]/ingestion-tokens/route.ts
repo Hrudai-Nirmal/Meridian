@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { getApiUserId, requireProjectRole } from "@/lib/api-session"
+import { createAuditLog } from "@/lib/audit-log"
 import { createIngestionToken } from "@/lib/ingestion-tokens"
 import { getPrisma } from "@/lib/prisma"
 
@@ -69,6 +70,14 @@ export async function POST(request: Request, context: { params: Promise<{ projec
     projectId,
     userId,
     name: parsed.data.name,
+  })
+  await createAuditLog(getPrisma(), {
+    action: "token.created",
+    entity: "token",
+    entityId: created.tokenRecord.id,
+    projectId,
+    userId,
+    metadata: { name: created.tokenRecord.name, prefix: created.tokenRecord.prefix },
   })
 
   return NextResponse.json({ token: created.token, tokenRecord: created.tokenRecord })
