@@ -52,6 +52,7 @@ ArgusGrid is a PC-first AI automation control room for agencies and teams. The p
 - Added Ops IA split: Settings is now configuration-only, Testing owns deployment readiness/manual poll/test email/webhook tests/integration QA/endpoint shortcuts, and Logs is a unified safe operational timeline with 24h/7d/30d/All windows, type filters, search, and normalized entries from audit logs, alerts, polling, deliveries, runs, reports, webhooks, team, and map activity.
 - Added contextual sidebar navigation: selecting any main dashboard section replaces the sidebar with that section's heading/back button and one-level subsection anchors; Back returns to the main section list without changing the active page.
 - Added audit evidence for key user actions including project create/rename/archive, graph saves, telemetry token create/revoke, webhook create/update/delete/test, report create/revoke, team invite/role/remove/cancel, notification preference changes, manual poll, and alert resolution.
+- Added a private-beta manual QA checklist in `docs/private-beta-qa.md` and hid the React Flow attribution watermark from the Automation Map while keeping map controls and minimap visible.
 - Added Playwright smoke script for public deployed checks, optional authenticated checks, and optional private-beta mutation checks.
 - Added API stubs for project state and REST endpoint test/mapping behavior.
 - If database or GitHub OAuth env vars are missing, the app shows a setup-required screen instead of trying to start Auth.js against incomplete config.
@@ -75,6 +76,7 @@ ArgusGrid is a PC-first AI automation control room for agencies and teams. The p
 
 ## Next Priorities
 - Run the smoke script against the deployed Vercel site after each push.
+- Use `docs/private-beta-qa.md` for side-by-side production manual QA before inviting more private-beta users.
 - Browser-test notification preferences, owner/admin test email, alert-rule creation, one-alert/one-email behavior, and alert resolution allowing a later email.
 - Browser-test webhook destinations: create with HTTPS URL, copy one-time signing secret, verify `webhook.test`, verify `alert.opened` on new incidents, verify `alert.resolved` on ignored/resolved incidents, verify disabled destinations do not receive events, and verify webhook delivery evidence in alert detail.
 - Browser-test Slack destinations: create with a Slack incoming webhook URL, verify list responses hide the URL, verify `slack.test`, verify `alert.opened` and `alert.resolved` delivery, verify disabled/minimum-severity filtering, and verify Slack delivery evidence in alert detail and Logs.

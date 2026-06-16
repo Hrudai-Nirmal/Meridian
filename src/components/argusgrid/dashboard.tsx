@@ -2334,6 +2334,7 @@ export function ArgusGridDashboard({
                 elementsSelectable
                 fitView
                 fitViewOptions={{ padding: 0.2 }}
+                proOptions={{ hideAttribution: true }}
               >
                 <Background
                   variant={BackgroundVariant.Dots}

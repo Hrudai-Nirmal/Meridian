@@ -166,6 +166,8 @@ Optional mutation checks create private-beta test data:
 SMOKE_BASE_URL="https://your-vercel-domain.vercel.app" SMOKE_AUTH_STATE="./playwright-auth.json" SMOKE_MUTATION=1 npm run test:smoke
 ```
 
+Use `docs/private-beta-qa.md` for the full side-by-side private-beta manual QA flow. It covers sign-in, projects, Automation Map, runs, telemetry, polling, alerts, reports, integrations, Testing, Logs, Settings, and secret-safety checks.
+
 Manual post-deploy checklist:
 
 - Fresh browser session reaches GitHub sign-in.
@@ -173,7 +175,7 @@ Manual post-deploy checklist:
 - Existing users land in the dashboard without repeated onboarding.
 - Project switch, create, rename, and archive behave predictably.
 - Graph node edits autosave and survive refresh.
-- Automation Map handles are visible on every node; view mode cannot create links, Edit mode can drag output-to-input links, clicked links expose a label editor, link labels autosave, self-links and duplicate same-direction links are blocked, and saved links survive refresh.
+- Automation Map handles are visible on every node; the React Flow attribution watermark is hidden; view mode cannot create links, Edit mode can drag output-to-input links, clicked links expose a label editor, link labels autosave, self-links and duplicate same-direction links are blocked, and saved links survive refresh.
 - Team invitation save shows a visible result.
 - Pending invited users are attached to the organization on first matching GitHub login.
 - Owner/admin users can change roles, remove members, and cancel pending invitations.
