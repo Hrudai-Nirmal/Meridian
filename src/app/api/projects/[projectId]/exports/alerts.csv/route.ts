@@ -1,10 +1,13 @@
+import { NextResponse } from "next/server"
+
 import { getApiUserId, requireProjectRole } from "@/lib/api-session"
 import { csvResponse, toCsv } from "@/lib/csv"
 import { getPrisma } from "@/lib/prisma"
+import { dateBoundsWhere, parseBoundedQuery } from "@/lib/query-limits"
 
 export const dynamic = "force-dynamic"
 
-export async function GET(_: Request, context: { params: Promise<{ projectId: string }> }) {
+export async function GET(request: Request, context: { params: Promise<{ projectId: string }> }) {
   const { error, userId } = await getApiUserId()
   if (error) return error
 
@@ -12,20 +15,33 @@ export async function GET(_: Request, context: { params: Promise<{ projectId: st
   const accessError = await requireProjectRole(userId, projectId, ["OWNER", "ADMIN"])
   if (accessError) return accessError
 
+  const bounds = parseBoundedQuery(new URL(request.url).searchParams, {
+    defaultLimit: 5000,
+    maxLimit: 10000,
+    defaultWindow: "30d",
+  })
+  if (!bounds.ok) {
+    return NextResponse.json({ error: bounds.error }, { status: 400 })
+  }
+
   const prisma = getPrisma()
-  const alerts = await prisma.alertEvent.findMany({
+  const createdAtWhere = dateBoundsWhere(bounds.value)
+  const alertsWithSentinel = await prisma.alertEvent.findMany({
     where: {
+      ...(createdAtWhere ? { createdAt: createdAtWhere } : {}),
       OR: [
         { node: { projectId } },
         { rule: { projectId } },
       ],
     },
     orderBy: { createdAt: "desc" },
+    take: bounds.value.limit + 1,
     include: {
       node: { select: { label: true } },
       rule: { select: { name: true } },
     },
   })
+  const alerts = alertsWithSentinel.slice(0, bounds.value.limit)
 
   const csv = toCsv(
     ["alert_id", "title", "severity", "node", "rule", "created_at", "resolved_at", "message"],
@@ -41,5 +57,9 @@ export async function GET(_: Request, context: { params: Promise<{ projectId: st
     ])
   )
 
-  return csvResponse("argusgrid-alerts.csv", csv)
+  return csvResponse("argusgrid-alerts.csv", csv, {
+    rowLimit: bounds.value.limit,
+    rowCount: alerts.length,
+    truncated: alertsWithSentinel.length > bounds.value.limit,
+  })
 }

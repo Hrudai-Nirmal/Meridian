@@ -357,6 +357,12 @@ type ProjectLogRecord = {
   metadata?: Record<string, unknown> | null
   createdAt: string
 }
+type ProjectLogMeta = {
+  limit: number
+  returned: number
+  truncated: boolean
+  window: ProjectLogWindow
+}
 
 const dashboardSections: {
   id: DashboardSection
@@ -664,6 +670,7 @@ export function ArgusGridDashboard({
   const [slackEventFilters, setSlackEventFilters] = useState<SlackEventFilter[]>(["alert.opened", "alert.resolved", "slack.test"])
   const [slackMessage, setSlackMessage] = useState("")
   const [logs, setLogs] = useState<ProjectLogRecord[]>([])
+  const [logMeta, setLogMeta] = useState<ProjectLogMeta | null>(null)
   const [logTypeFilter, setLogTypeFilter] = useState<ProjectLogType | "">("")
   const [logWindowFilter, setLogWindowFilter] = useState<ProjectLogWindow>("7d")
   const [logQuery, setLogQuery] = useState("")
@@ -848,6 +855,7 @@ export function ArgusGridDashboard({
     async (overrides: { type?: ProjectLogType | ""; window?: ProjectLogWindow; q?: string } = {}) => {
       setIsLoadingLogs(true)
       setLogMessage("Loading logs...")
+      setLogMeta(null)
       const nextType = overrides.type ?? logTypeFilter
       const nextWindow = overrides.window ?? logWindowFilter
       const nextQuery = overrides.q ?? logQuery
@@ -860,10 +868,12 @@ export function ArgusGridDashboard({
         const payload = await response.json().catch(() => null)
         if (!response.ok) {
           setLogMessage(payload?.error ?? "Logs failed to load.")
+          setLogMeta(null)
           return
         }
         setLogs(payload.logs ?? [])
-        setLogMessage(`${payload.logs?.length ?? 0} log entries loaded.`)
+        setLogMeta(payload.meta ?? null)
+        setLogMessage(`${payload.meta?.returned ?? payload.logs?.length ?? 0} log entries loaded.`)
       } catch {
         setLogMessage("Logs failed to load.")
       } finally {
@@ -2563,6 +2573,7 @@ export function ArgusGridDashboard({
         ) : activeSection === "logs" ? (
           <LogsSection
             logs={logs}
+            meta={logMeta}
             typeFilter={logTypeFilter}
             windowFilter={logWindowFilter}
             query={logQuery}
@@ -4396,6 +4407,7 @@ function formatLogMetadata(metadata: Record<string, unknown> | null | undefined)
 
 function LogsSection({
   logs,
+  meta,
   typeFilter,
   windowFilter,
   query,
@@ -4408,6 +4420,7 @@ function LogsSection({
   onRefresh,
 }: {
   logs: ProjectLogRecord[]
+  meta: ProjectLogMeta | null
   typeFilter: ProjectLogType | ""
   windowFilter: ProjectLogWindow
   query: string
@@ -4455,6 +4468,12 @@ function LogsSection({
               <Button onClick={onRefresh} disabled={isLoading}>Refresh</Button>
             </div>
             {message ? <div className="text-xs text-muted-foreground">{message}</div> : null}
+            {meta ? (
+              <div className="text-xs text-muted-foreground">
+                Showing {meta.returned} of up to {meta.limit} logs for {meta.window}
+                {meta.truncated ? "; more entries match the current filters." : "."}
+              </div>
+            ) : null}
           </CardContent>
         </Card>
 

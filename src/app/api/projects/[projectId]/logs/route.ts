@@ -7,13 +7,12 @@ import { z } from "zod"
 import { getApiUserId, requireProjectRole } from "@/lib/api-session"
 import { sanitizeAuditMetadata } from "@/lib/audit-log"
 import { getPrisma } from "@/lib/prisma"
+import { dateBoundsWhere, parseBoundedQuery } from "@/lib/query-limits"
 
 const LOG_TYPES = ["activity", "alerts", "polling", "deliveries", "runs", "reports", "webhooks", "team", "map"] as const
-const WINDOW_OPTIONS = ["24h", "7d", "30d", "all"] as const
 
 const logsQuerySchema = z.object({
   type: z.enum(LOG_TYPES).optional(),
-  window: z.enum(WINDOW_OPTIONS).default("7d"),
   q: z.string().max(120).optional(),
 })
 
@@ -31,13 +30,6 @@ type ProjectLogItem = {
   actor?: string | null
   metadata?: Record<string, unknown> | null
   createdAt: string
-}
-
-function getWindowStart(window: (typeof WINDOW_OPTIONS)[number]) {
-  if (window === "all") return undefined
-  const now = Date.now()
-  const days = window === "24h" ? 1 : window === "7d" ? 7 : 30
-  return new Date(now - days * 24 * 60 * 60 * 1000)
 }
 
 function getAuditType(entity: string, action: string): LogType {
@@ -99,6 +91,14 @@ export async function GET(request: Request, context: { params: Promise<{ project
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid logs query.", details: parsed.error.flatten() }, { status: 400 })
   }
+  const bounds = parseBoundedQuery(new URL(request.url).searchParams, {
+    defaultLimit: 100,
+    maxLimit: 250,
+    defaultWindow: "7d",
+  })
+  if (!bounds.ok) {
+    return NextResponse.json({ error: bounds.error }, { status: 400 })
+  }
 
   const prisma = getPrisma()
   const project = await prisma.project.findUnique({
@@ -109,8 +109,8 @@ export async function GET(request: Request, context: { params: Promise<{ project
     return NextResponse.json({ error: "Project not found." }, { status: 404 })
   }
 
-  const createdAtFilter = getWindowStart(parsed.data.window)
-  const createdAtWhere = createdAtFilter ? { gte: createdAtFilter } : undefined
+  const createdAtWhere = dateBoundsWhere(bounds.value)
+  const sourceTake = Math.min(250, bounds.value.limit + 1)
   const [auditLogs, alertEvents, deliveries, pollExecutions, workflowRuns, reportShares, webhooks, slackDestinations, tokens, graphEdges] =
     await Promise.all([
       prisma.auditLog.findMany({
@@ -120,7 +120,7 @@ export async function GET(request: Request, context: { params: Promise<{ project
           OR: [{ projectId }, { projectId: null }],
         },
         orderBy: { createdAt: "desc" },
-        take: 200,
+        take: sourceTake,
       }),
       prisma.alertEvent.findMany({
         where: {
@@ -128,7 +128,7 @@ export async function GET(request: Request, context: { params: Promise<{ project
           OR: [{ node: { projectId } }, { rule: { projectId } }],
         },
         orderBy: { createdAt: "desc" },
-        take: 100,
+        take: sourceTake,
         include: { node: { select: { label: true } }, rule: { select: { name: true } } },
       }),
       prisma.alertNotificationDelivery.findMany({
@@ -139,13 +139,13 @@ export async function GET(request: Request, context: { params: Promise<{ project
           },
         },
         orderBy: { attemptedAt: "desc" },
-        take: 100,
+        take: sourceTake,
         include: { alertEvent: { include: { node: { select: { label: true } } } } },
       }),
       prisma.pollExecution.findMany({
         where: createdAtWhere ? { startedAt: createdAtWhere } : undefined,
         orderBy: { startedAt: "desc" },
-        take: 100,
+        take: sourceTake,
       }),
       prisma.workflowRun.findMany({
         where: {
@@ -153,34 +153,34 @@ export async function GET(request: Request, context: { params: Promise<{ project
           node: { projectId },
         },
         orderBy: { startedAt: "desc" },
-        take: 100,
+        take: sourceTake,
         include: { node: { select: { label: true } } },
       }),
       prisma.reportShare.findMany({
         where: { projectId, ...(createdAtWhere ? { createdAt: createdAtWhere } : {}) },
         orderBy: { createdAt: "desc" },
-        take: 50,
+        take: sourceTake,
       }),
       prisma.projectWebhookDestination.findMany({
         where: { projectId, ...(createdAtWhere ? { createdAt: createdAtWhere } : {}) },
         orderBy: { createdAt: "desc" },
-        take: 50,
+        take: sourceTake,
       }),
       prisma.projectSlackDestination.findMany({
         where: { projectId, ...(createdAtWhere ? { createdAt: createdAtWhere } : {}) },
         orderBy: { createdAt: "desc" },
-        take: 50,
+        take: sourceTake,
       }),
       prisma.ingestionToken.findMany({
         where: { projectId, ...(createdAtWhere ? { createdAt: createdAtWhere } : {}) },
         orderBy: { createdAt: "desc" },
-        take: 50,
+        take: sourceTake,
         select: { id: true, name: true, prefix: true, revokedAt: true, createdAt: true, lastUsedAt: true },
       }),
       prisma.graphEdge.findMany({
         where: { projectId, ...(createdAtWhere ? { createdAt: createdAtWhere } : {}) },
         orderBy: { createdAt: "desc" },
-        take: 50,
+        take: sourceTake,
       }),
     ])
 
@@ -313,11 +313,17 @@ export async function GET(request: Request, context: { params: Promise<{ project
     .filter((item) => !parsed.data.type || item.type === parsed.data.type)
     .filter((item) => matchesQuery(item, parsed.data.q))
     .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
-    .slice(0, 250)
+  const logs = filteredItems.slice(0, bounds.value.limit)
 
   return NextResponse.json({
     project: { id: project.id, name: project.name },
-    filters: parsed.data,
-    logs: filteredItems,
+    filters: { ...parsed.data, window: bounds.value.window, limit: bounds.value.limit },
+    meta: {
+      limit: bounds.value.limit,
+      returned: logs.length,
+      truncated: filteredItems.length > bounds.value.limit,
+      window: bounds.value.window,
+    },
+    logs,
   })
 }

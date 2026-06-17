@@ -64,7 +64,7 @@ Use this checklist for production validation on `https://argusgrid.hrudainirmal.
 - Confirm the public report is read-only and does not expose secrets, tokens, credentials, or private team data.
 - Use Print / Save PDF and confirm print layout is clean.
 - Revoke the report link and confirm the public page and map image no longer open.
-- Download CSV exports for runs, metrics, and alerts as an owner/admin.
+- Download CSV exports for runs, metrics, and alerts as an owner/admin; confirm they are bounded, open cleanly, and contain no secrets.
 
 ## Integrations
 
@@ -94,6 +94,7 @@ Use this checklist for production validation on `https://argusgrid.hrudainirmal.
 - Filter by Activity, Alerts, Polling, Deliveries, Runs, Reports, Webhooks, Team, and Map.
 - Search for a known report, webhook, Slack destination, token, or alert action.
 - Confirm log rows show timestamp, type, title/action, entity, status, context, and safe metadata.
+- Confirm Logs shows returned/limit/truncation metadata for the current filter.
 - Confirm Logs never expose raw tokens, webhook secrets, Slack URLs, encrypted payloads, env values, or private credential bodies.
 
 ## Settings

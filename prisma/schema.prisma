@@ -388,6 +388,7 @@ model WorkflowRun {
   @@unique([nodeId, externalId])
   @@index([nodeId, startedAt])
   @@index([nodeId, externalId])
+  @@index([startedAt])
 }
 
 model WorkflowStep {
@@ -414,6 +415,7 @@ model MetricSample {
 
   @@index([nodeId, sampledAt])
   @@index([mappingId, sampledAt])
+  @@index([sampledAt])
 }
 
 model MetricRollup {
@@ -481,7 +483,9 @@ model AlertEvent {
   createdAt  DateTime                    @default(now())
 
   @@index([nodeId, resolvedAt])
+  @@index([nodeId, createdAt])
   @@index([ruleId, createdAt])
+  @@index([createdAt])
 }
 
 model NotificationPreference {
@@ -511,8 +515,10 @@ model AlertNotificationDelivery {
   sentAt        DateTime?
 
   @@index([alertEventId])
+  @@index([alertEventId, attemptedAt])
   @@index([status, attemptedAt])
   @@index([recipient, attemptedAt])
+  @@index([attemptedAt])
 }
 
 model AuditLog {
