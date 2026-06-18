@@ -8,7 +8,8 @@ export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
 export const maxDuration = 30
 
-const CHECK_INTERVAL_MS = 5_000
+// A live signal does not need dashboard-grade polling frequency; this keeps idle tabs inexpensive.
+const CHECK_INTERVAL_MS = 20_000
 const STREAM_TTL_MS = 25_000
 
 type LiveEventType = "connected" | "heartbeat" | "refresh"

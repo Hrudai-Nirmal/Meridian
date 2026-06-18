@@ -66,7 +66,7 @@ HTTP auth username: argusgrid-cron
 HTTP auth password: production CRON_SECRET
 ```
 
-After creating the job, run a manual test execution in cron-job.org and expect HTTP 200 with `ok: true` and `mode: "secured-cron"`. Then confirm Testing and `/api/health` show updated latest poll metadata.
+After creating the job, run a manual test execution in cron-job.org and expect HTTP 200 with `ok: true` and `mode: "secured-cron"`. The scheduler checks every minute, but each endpoint is claimed only when its configured cadence is due; an idle tick returns `status: "SKIPPED"` without adding poll history. Then confirm Testing and `/api/health` show updated latest completed poll metadata.
 
 The deployed app exposes `/api/health` for safe readiness checks. It returns booleans and poll metadata only; it must never return secret values.
 
@@ -95,7 +95,7 @@ Client report flow:
 
 Attached maps are served through `/reports/[shareToken]/map.png`; expired or revoked report links return `404` for both the report page and map image.
 
-Authenticated dashboards connect to `/api/projects/[projectId]/events` for lightweight live updates. The SSE stream only sends safe project-scoped metadata such as cursors and changed areas, then the client refreshes the existing project payload. If the stream disconnects, the dashboard shows a reconnecting/manual state and the existing refresh controls remain available.
+Authenticated dashboards connect to `/api/projects/[projectId]/events` for lightweight live updates. The SSE stream only sends safe project-scoped metadata such as cursors and changed areas, checks for changes at a bounded interval, and closes while the browser tab is hidden. The client refreshes the existing project payload only after a change. If the stream disconnects, the dashboard shows a reconnecting/manual state and the existing refresh controls remain available.
 
 The dashboard header and Control Room show the live stream state, last checked time, latest changed areas, and a manual `Refresh telemetry now` fallback. Use this to verify whether new runs, polling changes, and alert updates are arriving through the live signal path or need manual refresh.
 

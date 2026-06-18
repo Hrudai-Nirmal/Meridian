@@ -17,7 +17,7 @@ export async function POST(_: Request, context: { params: Promise<{ projectId: s
   const accessError = await requireProjectRole(userId, projectId, ["OWNER", "ADMIN"])
   if (accessError) return accessError
 
-  const result = await runProjectPolling({ projectId })
+  const result = await runProjectPolling({ projectId, force: true })
   const [diagnostics, workspace] = await Promise.all([getReadinessStatus(), serializeGraphForProject(userId, projectId)])
   await createAuditLog(getPrisma(), {
     action: "poll.manual",

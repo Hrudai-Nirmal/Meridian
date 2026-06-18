@@ -22,6 +22,12 @@ export type PollingResult = {
   errorSummary?: string
 }
 
+const MAX_NODES_PER_POLL = 100
+
+function getNextPollAt(checkedAt: Date, cadenceMin: number) {
+  return new Date(checkedAt.getTime() + cadenceMin * 60 * 1000)
+}
+
 function applyTransform(value: unknown, transform?: string | null) {
   const numeric = typeof value === "number" ? value : Number(value)
   if (!Number.isFinite(numeric)) return null
@@ -167,9 +173,62 @@ async function createAlertIfNeeded(
   return true
 }
 
-export async function runProjectPolling(options: { projectId?: string } = {}): Promise<PollingResult> {
+/**
+ * Polls the next due endpoint batch, or forces an immediate project batch for an operator action.
+ */
+export async function runProjectPolling(options: { projectId?: string; force?: boolean } = {}): Promise<PollingResult> {
   const prisma = getPrisma()
   const checkedAt = new Date()
+  const candidates = await prisma.endpointNode.findMany({
+    where: {
+      endpointConfig: { isNot: null },
+      project: {
+        archivedAt: null,
+        ...(options.projectId ? { id: options.projectId } : {}),
+      },
+    },
+    orderBy: { updatedAt: "asc" },
+    take: MAX_NODES_PER_POLL * 5,
+    select: {
+      id: true,
+      status: true,
+      updatedAt: true,
+      endpointConfig: { select: { id: true, cadenceMin: true } },
+    },
+  })
+  const dueCandidates = candidates
+    .filter((candidate) => {
+      if (options.force) return true
+      const cadenceMin = candidate.endpointConfig?.cadenceMin ?? 15
+      return getNextPollAt(candidate.updatedAt, cadenceMin) <= checkedAt
+    })
+    .slice(0, MAX_NODES_PER_POLL)
+  const claimedNodeIds: string[] = []
+
+  for (const candidate of dueCandidates) {
+    const claim = await prisma.endpointNode.updateMany({
+      where: {
+        id: candidate.id,
+        ...(options.force ? {} : { updatedAt: candidate.updatedAt }),
+      },
+      // Writing the current status advances the existing polling timestamp and makes the claim atomic.
+      data: { status: candidate.status },
+    })
+    if (claim.count === 1) claimedNodeIds.push(candidate.id)
+  }
+
+  if (!claimedNodeIds.length) {
+    return {
+      checkedAt: checkedAt.toISOString(),
+      sampledNodes: 0,
+      createdSamples: 0,
+      evaluatedAlerts: 0,
+      rollupsQueued: 0,
+      deletedSamples: 0,
+      status: "SKIPPED",
+    }
+  }
+
   const execution = await prisma.pollExecution.create({
     data: {
       status: "RUNNING",
@@ -181,10 +240,7 @@ export async function runProjectPolling(options: { projectId?: string } = {}): P
       endpointConfig: {
         isNot: null,
       },
-      project: {
-        archivedAt: null,
-        ...(options.projectId ? { id: options.projectId } : {}),
-      },
+      id: { in: claimedNodeIds },
     },
     include: {
       endpointConfig: {

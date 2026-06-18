@@ -931,7 +931,7 @@ export function ArgusGridDashboard({
     }
 
     function connect() {
-      if (closed) return
+      if (closed || document.visibilityState === "hidden") return
       setLiveConnectionState((state) => (state === "live" ? "reconnecting" : "connecting"))
       const source = new EventSource(`/api/projects/${initialWorkspace.project.id}/events`)
       liveEventSourceRef.current = source
@@ -942,9 +942,19 @@ export function ArgusGridDashboard({
     }
 
     connect()
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        closeCurrentSource()
+        setLiveConnectionState("manual")
+        return
+      }
+      connect()
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange)
 
     return () => {
       closed = true
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
       if (liveReconnectTimerRef.current) clearTimeout(liveReconnectTimerRef.current)
       closeCurrentSource()
     }

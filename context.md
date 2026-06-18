@@ -58,6 +58,7 @@ ArgusGrid is a PC-first AI automation control room for agencies and teams. The p
 - Hardened GitHub login with a native CSRF-protected Auth.js form redirect and smoke coverage that verifies the sign-in button reaches GitHub OAuth.
 - Hardened database startup by preferring Vercel Neon's managed Prisma URL over a separately maintained `DATABASE_URL`, while retaining the standard URL as a local/non-Vercel fallback.
 - Added structured incident logging and safe health issue metadata for database/auth failures, a database-aware login readiness gate, recoverable service-unavailable UI, and production smoke enforcement for database/auth readiness.
+- Reduced idle database transfer after the June 2026 quota incident: scheduled polling now atomically claims only endpoints whose configured cadence is due, caps each batch at 100 nodes, skips poll-history writes when no work is due, and manual project polling remains immediate. Dashboard live checks now use a lower-frequency signal and close while the tab is hidden.
 - Documented the June 2026 Neon network-transfer quota outage and added `docs/incident-response.md` for health checks, incident-ID log correlation, database recovery, and release gates.
 - Added Playwright smoke script for public deployed checks, optional authenticated checks, and optional private-beta mutation checks.
 - Added API stubs for project state and REST endpoint test/mapping behavior.
@@ -70,6 +71,7 @@ ArgusGrid is a PC-first AI automation control room for agencies and teams. The p
 - Team-first account model with owner/admin/member/viewer roles.
 - Vercel Hobby + Neon Free prototype target.
 - Secured cron routes for cloud-friendly polling.
+- The every-minute scheduler is a due-work dispatcher, not a mandate to poll every node every minute; each node's configured `cadenceMin` controls actual endpoint work.
 - Retention plus rollups for historical metric storage.
 - Small custom node icons can be stored in Postgres in the prototype.
 - Node graph edges are visual relationships only in v1.

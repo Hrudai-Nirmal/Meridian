@@ -47,10 +47,12 @@ Use this checklist for production validation on `https://argusgrid.hrudainirmal.
 - Post a valid `/api/ingest/runs` payload for a selected node.
 - Confirm Runs updates with status, timestamps, cost/tokens when supplied, and step details.
 - Confirm live indicator updates or manual refresh brings the new run into view.
+- Background the dashboard tab, return to it, and confirm the live indicator reconnects without a page reload.
 
 ## Polling, Metrics, And Alerts
 
 - Configure a node with the demo metric shortcut.
+- Set a cadence above one minute and confirm scheduled polls do not create a sample on every scheduler tick.
 - Run manual poll from Testing.
 - Confirm the selected node shows the deterministic `95 score` sample and trend/freshness details.
 - Confirm a matching threshold alert opens once and does not duplicate while unresolved.
