@@ -71,6 +71,12 @@ try {
   })
   assert(ingestResponse.status() === 401, "Workflow run ingestion did not reject missing token authentication.")
 
+  const githubSignInButton = publicPage.getByRole("button", { name: "Continue with GitHub" })
+  if ((await githubSignInButton.count()) === 1) {
+    await githubSignInButton.click()
+    await publicPage.waitForURL(/^https:\/\/github\.com\//, { timeout: 15000 })
+  }
+
   await publicPage.close()
 
   if (authState) {
