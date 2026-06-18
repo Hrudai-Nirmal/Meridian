@@ -24,4 +24,5 @@ jobs:
       - name: Run production smoke checks
         env:
           SMOKE_BASE_URL: https://argusgrid.hrudainirmal.in
+          SMOKE_REQUIRE_READY: "1"
         run: npm run test:smoke

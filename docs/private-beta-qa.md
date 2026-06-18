@@ -18,6 +18,7 @@ Use this checklist for production validation on `https://argusgrid.hrudainirmal.
 - Returning users land in the dashboard without repeated onboarding.
 - `/api/health` returns safe readiness JSON without raw secret values.
 - `/api/health` includes safe version, commit, build time, and environment metadata.
+- A database outage disables GitHub sign-in, shows a safe incident ID, and emits a matching structured runtime log without connection strings or credentials.
 
 ## Projects
 

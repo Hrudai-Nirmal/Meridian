@@ -26,7 +26,9 @@ RESEND_API_KEY="optional-resend-api-key-for-alert-email"
 ALERT_FROM_EMAIL="ArgusGrid <alerts@example.com>"
 ```
 
-On Vercel, ArgusGrid prefers the Neon integration-managed `NeonDB_POSTGRES_PRISMA_URL` when present and falls back to `DATABASE_URL` for local or independently managed Postgres deployments.
+On Vercel, ArgusGrid prefers the Neon integration-managed `NeonDB_POSTGRES_PRISMA_URL` when present and falls back to `DATABASE_URL` for local or independently managed Postgres deployments. Database and authentication failures emit structured, secret-safe runtime logs with incident IDs; `/api/health` returns matching safe issue metadata, and the login screen blocks OAuth while session persistence is unavailable.
+
+Production diagnosis and recovery steps live in `docs/incident-response.md`.
 
 GitHub OAuth callback URL:
 

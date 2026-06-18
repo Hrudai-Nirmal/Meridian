@@ -13,6 +13,15 @@ function getDatabaseUrl() {
 }
 
 /**
+ * Identifies the active connection source without exposing its value.
+ */
+export function getDatabaseConnectionSource() {
+  if (process.env.NeonDB_POSTGRES_PRISMA_URL) return "managed-neon"
+  if (process.env.DATABASE_URL) return "database-url"
+  return "unconfigured"
+}
+
+/**
  * Reports whether a supported database connection is configured.
  */
 export function hasDatabaseConfig() {

@@ -3,7 +3,15 @@ import "server-only"
 import { getAppBuildMetadata, type AppBuildMetadata } from "@/lib/app-version"
 import { hasGithubAuthConfig } from "@/lib/auth"
 import { isEmailConfigured } from "@/lib/notifications"
-import { getPrisma, hasDatabaseConfig } from "@/lib/prisma"
+import { getDatabaseConnectionSource, getPrisma, hasDatabaseConfig } from "@/lib/prisma"
+import { logServerError } from "@/lib/server-logging"
+
+export type ReadinessIssue = {
+  code: string
+  component: "database" | "health"
+  message: string
+  incidentId: string | null
+}
 
 export type ReadinessStatus = {
   ok: boolean
@@ -34,8 +42,12 @@ export type ReadinessStatus = {
     attemptedAt: string
     sentAt: string | null
   } | null
+  issues: ReadinessIssue[]
 }
 
+/**
+ * Returns secret-safe deployment and dependency readiness details.
+ */
 export async function getReadinessStatus(): Promise<ReadinessStatus> {
   const databaseConfigured = hasDatabaseConfig()
   const checks = {
@@ -47,6 +59,7 @@ export async function getReadinessStatus(): Promise<ReadinessStatus> {
   }
   let latestPoll: ReadinessStatus["latestPoll"] = null
   let latestEmail: ReadinessStatus["latestEmail"] = null
+  const issues: ReadinessIssue[] = []
 
   if (databaseConfigured) {
     try {
@@ -88,9 +101,26 @@ export async function getReadinessStatus(): Promise<ReadinessStatus> {
             sentAt: delivery.sentAt?.toISOString() ?? null,
           }
         : null
-    } catch {
+    } catch (error) {
       checks.database = false
+      const incident = logServerError("health.database_check_failed", error, {
+        component: "database",
+        connectionSource: getDatabaseConnectionSource(),
+      })
+      issues.push({
+        code: incident.errorCode,
+        component: "database",
+        message: "The database is temporarily unavailable.",
+        incidentId: incident.incidentId,
+      })
     }
+  } else {
+    issues.push({
+      code: "DATABASE_NOT_CONFIGURED",
+      component: "database",
+      message: "A database connection is not configured.",
+      incidentId: null,
+    })
   }
 
   return {
@@ -100,5 +130,6 @@ export async function getReadinessStatus(): Promise<ReadinessStatus> {
     checks,
     latestPoll,
     latestEmail,
+    issues,
   }
 }

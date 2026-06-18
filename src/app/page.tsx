@@ -1,11 +1,15 @@
 import { ArgusGridDashboard } from "@/components/argusgrid/dashboard";
 import { OnboardingScreen } from "@/components/auth/onboarding-screen";
 import { SignInScreen } from "@/components/auth/sign-in-screen";
+import { ServiceUnavailable } from "@/components/auth/service-unavailable";
 import { SetupRequired } from "@/components/auth/setup-required";
 import { authOptions, hasGithubAuthConfig } from "@/lib/auth";
 import { hasDatabaseConfig } from "@/lib/prisma";
+import { logServerError } from "@/lib/server-logging";
 import { ensureWorkspaceForUser, getOnboardingState, getWorkspaceForUser } from "@/lib/workspace";
 import { getServerSession } from "next-auth";
+
+export const dynamic = "force-dynamic";
 
 export default async function Home({
   searchParams,
@@ -19,18 +23,34 @@ export default async function Home({
     return <SetupRequired databaseReady={databaseReady} githubReady={githubReady} />;
   }
 
-  const session = await getServerSession(authOptions);
+  let session;
+  try {
+    session = await getServerSession(authOptions);
+  } catch (error) {
+    const incident = logServerError("page.auth_session_failed", error, { component: "authentication" });
+    return <ServiceUnavailable incidentId={incident.incidentId} />;
+  }
 
   if (!session?.user?.id) {
     return <SignInScreen />;
   }
 
-  await ensureWorkspaceForUser(session.user);
-  const params = await searchParams;
-  const workspace = await getWorkspaceForUser(session.user.id, params?.project);
+  let workspace;
+  let onboarding;
+  try {
+    await ensureWorkspaceForUser(session.user);
+    const params = await searchParams;
+    workspace = await getWorkspaceForUser(session.user.id, params?.project);
+
+    if (!workspace) {
+      onboarding = await getOnboardingState(session.user.id);
+    }
+  } catch (error) {
+    const incident = logServerError("page.workspace_load_failed", error, { component: "workspace" });
+    return <ServiceUnavailable incidentId={incident.incidentId} />;
+  }
 
   if (!workspace) {
-    const onboarding = await getOnboardingState(session.user.id);
     if (onboarding) {
       return <OnboardingScreen organizationName={onboarding.organization.name} />;
     }
