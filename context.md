@@ -56,6 +56,7 @@ ArgusGrid is a PC-first AI automation control room for agencies and teams. The p
 - Added Enterprise Foundation v1 basics: GitHub Actions CI, manual production smoke workflow, safe build/version metadata in `/api/health` and Testing readiness, `CHANGELOG.md`, and expanded smoke checks for health metadata and secret-safety.
 - Added Enterprise Data Scale v1 basics: bounded CSV export windows/limits with row-count/truncation headers, Logs API limit/truncation metadata, shared query-limit parsing, and index-only support for enterprise query paths.
 - Hardened GitHub login with a native CSRF-protected Auth.js form redirect and smoke coverage that verifies the sign-in button reaches GitHub OAuth.
+- Hardened database startup by preferring Vercel Neon's managed Prisma URL over a separately maintained `DATABASE_URL`, while retaining the standard URL as a local/non-Vercel fallback.
 - Added Playwright smoke script for public deployed checks, optional authenticated checks, and optional private-beta mutation checks.
 - Added API stubs for project state and REST endpoint test/mapping behavior.
 - If database or GitHub OAuth env vars are missing, the app shows a setup-required screen instead of trying to start Auth.js against incomplete config.

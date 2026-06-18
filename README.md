@@ -26,6 +26,8 @@ RESEND_API_KEY="optional-resend-api-key-for-alert-email"
 ALERT_FROM_EMAIL="ArgusGrid <alerts@example.com>"
 ```
 
+On Vercel, ArgusGrid prefers the Neon integration-managed `NeonDB_POSTGRES_PRISMA_URL` when present and falls back to `DATABASE_URL` for local or independently managed Postgres deployments.
+
 GitHub OAuth callback URL:
 
 ```text
