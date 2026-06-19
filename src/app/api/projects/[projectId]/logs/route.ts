@@ -10,9 +10,11 @@ import { getPrisma } from "@/lib/prisma"
 import { dateBoundsWhere, parseBoundedQuery } from "@/lib/query-limits"
 
 const LOG_TYPES = ["activity", "alerts", "polling", "deliveries", "runs", "reports", "webhooks", "team", "map"] as const
+const JOB_STATUSES = ["queued", "running", "retrying", "sent", "failed", "skipped", "cancelled"] as const
 
 const logsQuerySchema = z.object({
   type: z.enum(LOG_TYPES).optional(),
+  jobStatus: z.enum(JOB_STATUSES).optional(),
   q: z.string().max(120).optional(),
 })
 
@@ -34,6 +36,7 @@ type ProjectLogItem = {
 
 function getAuditType(entity: string, action: string): LogType {
   if (entity === "alert") return "alerts"
+  if (entity === "notification-job") return "deliveries"
   if (entity === "webhook" || entity === "slack") return "webhooks"
   if (entity === "report") return "reports"
   if (entity === "token") return "activity"
@@ -111,7 +114,7 @@ export async function GET(request: Request, context: { params: Promise<{ project
 
   const createdAtWhere = dateBoundsWhere(bounds.value)
   const sourceTake = Math.min(250, bounds.value.limit + 1)
-  const [auditLogs, alertEvents, deliveries, pollExecutions, workflowRuns, reportShares, webhooks, slackDestinations, tokens, graphEdges] =
+  const [auditLogs, alertEvents, deliveries, notificationJobs, pollExecutions, workflowRuns, reportShares, webhooks, slackDestinations, tokens, graphEdges] =
     await Promise.all([
       prisma.auditLog.findMany({
         where: {
@@ -139,6 +142,16 @@ export async function GET(request: Request, context: { params: Promise<{ project
           },
         },
         orderBy: { attemptedAt: "desc" },
+        take: sourceTake,
+        include: { alertEvent: { include: { node: { select: { label: true } } } } },
+      }),
+      prisma.notificationJob.findMany({
+        where: {
+          projectId,
+          ...(createdAtWhere ? { createdAt: createdAtWhere } : {}),
+          ...(parsed.data.jobStatus ? { status: parsed.data.jobStatus.toUpperCase() as "QUEUED" | "RUNNING" | "RETRYING" | "SENT" | "FAILED" | "SKIPPED" | "CANCELLED" } : {}),
+        },
+        orderBy: { createdAt: "desc" },
         take: sourceTake,
         include: { alertEvent: { include: { node: { select: { label: true } } } } },
       }),
@@ -223,6 +236,25 @@ export async function GET(request: Request, context: { params: Promise<{ project
       nodeLabel: delivery.alertEvent?.node?.label ?? null,
       metadata: { channel: delivery.channel, provider: delivery.provider, recipient: delivery.recipient, sentAt: delivery.sentAt?.toISOString() ?? null },
       createdAt: delivery.attemptedAt.toISOString(),
+    })),
+    ...notificationJobs.map((job) => ({
+      id: `notification-job-${job.id}`,
+      type: "deliveries" as const,
+      title: `${job.channel} job ${job.status}`,
+      message: job.lastError ?? `${job.eventType} for ${job.recipient ?? "configured destination"}`,
+      status: job.status.toLowerCase(),
+      entity: "notification-job",
+      entityId: job.id,
+      nodeLabel: job.alertEvent?.node?.label ?? null,
+      metadata: {
+        channel: job.channel,
+        eventType: job.eventType,
+        recipient: job.recipient,
+        attempts: job.attemptCount,
+        maxAttempts: job.maxAttempts,
+        completedAt: job.completedAt?.toISOString() ?? null,
+      },
+      createdAt: job.updatedAt.toISOString(),
     })),
     ...pollExecutions.map((poll) => ({
       id: `poll-${poll.id}`,
@@ -311,6 +343,7 @@ export async function GET(request: Request, context: { params: Promise<{ project
 
   const filteredItems = items
     .filter((item) => !parsed.data.type || item.type === parsed.data.type)
+    .filter((item) => !parsed.data.jobStatus || (item.entity === "notification-job" && item.status === parsed.data.jobStatus))
     .filter((item) => matchesQuery(item, parsed.data.q))
     .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
   const logs = filteredItems.slice(0, bounds.value.limit)

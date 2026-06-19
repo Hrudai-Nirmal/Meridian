@@ -5,15 +5,15 @@ import { NextResponse } from "next/server"
 
 import { getApiUserId, requireProjectRole } from "@/lib/api-session"
 import { createAuditLog } from "@/lib/audit-log"
+import { dispatchNotificationJobs, queueTestSlackJob } from "@/lib/notification-jobs"
 import { getPrisma } from "@/lib/prisma"
-import { deliverProjectSlack } from "@/lib/slack"
 
 export async function POST(_: Request, context: { params: Promise<{ projectId: string; slackId: string }> }) {
   const { error, userId } = await getApiUserId()
   if (error) return error
 
   const { projectId, slackId } = await context.params
-  const accessError = await requireProjectRole(userId, projectId)
+  const accessError = await requireProjectRole(userId, projectId, ["OWNER", "ADMIN"])
   if (accessError) return accessError
 
   const prisma = getPrisma()
@@ -25,23 +25,21 @@ export async function POST(_: Request, context: { params: Promise<{ projectId: s
     return NextResponse.json({ error: "Slack destination not found." }, { status: 404 })
   }
 
-  const result = await deliverProjectSlack(prisma, {
-    eventType: "slack.test",
-    projectId,
-    destinationId: slackId,
-  })
+  const job = await queueTestSlackJob(prisma, { projectId, destinationId: slackId, recipient: destination.name })
+  await dispatchNotificationJobs([job])
   await createAuditLog(prisma, {
     action: "slack.tested",
     entity: "slack",
     entityId: destination.id,
     projectId,
     userId,
-    metadata: { name: destination.name, sent: result.sent, failed: result.failed },
+    metadata: { name: destination.name, jobId: job.id, status: "QUEUED" },
   })
 
   return NextResponse.json({
-    ok: result.sent > 0,
-    message: result.sent > 0 ? "Slack test delivered." : "Slack test failed.",
-    result,
-  })
+    ok: true,
+    queued: true,
+    message: "Slack test queued.",
+    jobId: job.id,
+  }, { status: 202 })
 }

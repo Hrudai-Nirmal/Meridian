@@ -62,6 +62,7 @@ Meridian is a PC-first AI automation control room for agencies and teams. The pr
 - Documented the June 2026 Neon network-transfer quota outage and added `docs/incident-response.md` for health checks, incident-ID log correlation, database recovery, and release gates.
 - Migrated the production database on 2026-06-19 from the Vercel-managed Neon resource to the independently owned Neon project `Meridian`: all 32 public tables and exact table row counts were restored, normalized data dumps matched byte-for-byte, the pending enterprise query-index migration was applied, Vercel now uses the independent pooled `DATABASE_URL`, the old Marketplace resource is disconnected but retained temporarily, and required-ready production smoke checks pass.
 - Renamed the product and deployment from ArgusGrid to Meridian on 2026-06-19. The canonical domain is `https://meridian.hrudainirmal.in`; Vercel, GitHub OAuth, Resend, cron-job.org, application branding, SDK previews, CI, reports, notifications, and operational docs use Meridian. Deprecated ArgusGrid webhook headers, ingestion headers, SDK exports, cron username, and build-time variable remain accepted temporarily for integration compatibility.
+- Added durable notification jobs backed by Postgres and Inngest: alert lifecycle changes transactionally queue one email/Slack/webhook job per destination, Inngest performs five total attempts with backoff, a one-minute sweep recovers undispatched/stale work, and Testing/Logs expose safe queue state with owner/admin retry and cancellation controls.
 - Added Playwright smoke script for public deployed checks, optional authenticated checks, and optional private-beta mutation checks.
 - Added API stubs for project state and REST endpoint test/mapping behavior.
 - If database or GitHub OAuth env vars are missing, the app shows a setup-required screen instead of trying to start Auth.js against incomplete config.
@@ -80,7 +81,7 @@ Meridian is a PC-first AI automation control room for agencies and teams. The pr
 - Node status is computed from health rules but supports admin overrides.
 - Reports start as secure share links and PNG exports, not full client portals.
 - Project rename/archive remains an organization-shared owner/admin action for now; account-local project aliases, visibility, and per-user project lifecycle behavior are deferred to the future team hierarchy and permissions phase.
-- SSE live updates are implemented as a lightweight signal channel; anomaly alerting, generic outbound alert webhooks, native Slack incoming-webhook notifications, and audit-backed operational logs are implemented for metric incidents and operator actions; durable queues and SDK publishing remain next-stage priorities.
+- SSE live updates are implemented as a lightweight signal channel; anomaly alerting, generic outbound alert webhooks, native Slack incoming-webhook notifications, durable notification jobs, and audit-backed operational logs are implemented for metric incidents and operator actions; SDK publishing remains a next-stage priority.
 - WebSockets and true multi-user graph collaboration remain deferred until the product needs lower-latency editing or explicit shared-presence behavior.
 - Sankey and forecast/correlation views are deferred until usage data proves demand.
 

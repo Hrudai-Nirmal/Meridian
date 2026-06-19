@@ -283,6 +283,21 @@ type LiveConnectionState = "connecting" | "live" | "reconnecting" | "manual"
 type DashboardSection = "control-room" | "projects" | "map" | "runs" | "alerts" | "reports" | "integrations" | "testing" | "logs" | "team" | "settings"
 type ProjectLogType = "activity" | "alerts" | "polling" | "deliveries" | "runs" | "reports" | "webhooks" | "team" | "map"
 type ProjectLogWindow = "24h" | "7d" | "30d" | "all"
+type NotificationJobStatus = "QUEUED" | "RUNNING" | "RETRYING" | "SENT" | "FAILED" | "SKIPPED" | "CANCELLED"
+type NotificationJobRecord = {
+  id: string
+  channel: string
+  eventType: string
+  status: NotificationJobStatus
+  recipient: string | null
+  alertEventId: string | null
+  attemptCount: number
+  maxAttempts: number
+  lastError: string | null
+  createdAt: string
+  updatedAt: string
+  completedAt: string | null
+}
 type IngestionTokenRecord = {
   id: string
   name: string
@@ -485,6 +500,7 @@ const sectionSubsections: Record<DashboardSection, { id: string; label: string; 
   ],
   testing: [
     { id: "testing-readiness", label: "Readiness" },
+    { id: "testing-jobs", label: "Notification jobs" },
     { id: "testing-polling", label: "Polling" },
     { id: "testing-notifications", label: "Notifications" },
     { id: "testing-integrations", label: "Integrations" },
@@ -676,10 +692,14 @@ export function MeridianDashboard({
   const [logs, setLogs] = useState<ProjectLogRecord[]>([])
   const [logMeta, setLogMeta] = useState<ProjectLogMeta | null>(null)
   const [logTypeFilter, setLogTypeFilter] = useState<ProjectLogType | "">("")
+  const [logJobStatusFilter, setLogJobStatusFilter] = useState<Lowercase<NotificationJobStatus> | "">("")
   const [logWindowFilter, setLogWindowFilter] = useState<ProjectLogWindow>("7d")
   const [logQuery, setLogQuery] = useState("")
   const [logMessage, setLogMessage] = useState("")
   const [isLoadingLogs, setIsLoadingLogs] = useState(false)
+  const [notificationJobs, setNotificationJobs] = useState<NotificationJobRecord[]>([])
+  const [notificationJobCounts, setNotificationJobCounts] = useState<Record<string, number>>({})
+  const [notificationJobMessage, setNotificationJobMessage] = useState("")
   const [reportShares, setReportShares] = useState<ReportShareRecord[]>([])
   const [reportTitle, setReportTitle] = useState("Client automation report")
   const [reportClientName, setReportClientName] = useState("")
@@ -856,16 +876,18 @@ export function MeridianDashboard({
   }, [initialWorkspace.project.id, setNodes])
 
   const loadProjectLogs = useCallback(
-    async (overrides: { type?: ProjectLogType | ""; window?: ProjectLogWindow; q?: string } = {}) => {
+    async (overrides: { type?: ProjectLogType | ""; window?: ProjectLogWindow; q?: string; jobStatus?: Lowercase<NotificationJobStatus> | "" } = {}) => {
       setIsLoadingLogs(true)
       setLogMessage("Loading logs...")
       setLogMeta(null)
       const nextType = overrides.type ?? logTypeFilter
       const nextWindow = overrides.window ?? logWindowFilter
       const nextQuery = overrides.q ?? logQuery
+      const nextJobStatus = overrides.jobStatus ?? logJobStatusFilter
       const searchParams = new URLSearchParams({ window: nextWindow })
       if (nextType) searchParams.set("type", nextType)
       if (nextQuery.trim()) searchParams.set("q", nextQuery.trim())
+      if (nextJobStatus) searchParams.set("jobStatus", nextJobStatus)
 
       try {
         const response = await fetch(`/api/projects/${initialWorkspace.project.id}/logs?${searchParams.toString()}`)
@@ -884,7 +906,7 @@ export function MeridianDashboard({
         setIsLoadingLogs(false)
       }
     },
-    [initialWorkspace.project.id, logQuery, logTypeFilter, logWindowFilter]
+    [initialWorkspace.project.id, logJobStatusFilter, logQuery, logTypeFilter, logWindowFilter]
   )
 
   const openSubsection = (subsection: { id: string; logType?: ProjectLogType }) => {
@@ -1250,15 +1272,69 @@ export function MeridianDashboard({
     setEmailMessage("Notification preference saved.")
   }
 
+  const waitForNotificationJob = async (jobId: string, onStatus: (message: string) => void) => {
+    for (let attempt = 0; attempt < 15; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, 1000))
+      const response = await fetch(`/api/projects/${initialWorkspace.project.id}/notification-jobs/${jobId}`)
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.job) {
+        onStatus(payload?.error ?? "Queued job status could not be loaded.")
+        return
+      }
+      const job = payload.job as NotificationJobRecord
+      if (["SENT", "FAILED", "SKIPPED", "CANCELLED"].includes(job.status)) {
+        onStatus(job.status === "SENT" ? "Test delivery sent." : `Test delivery ${job.status.toLowerCase()}: ${job.lastError ?? "No additional detail."}`)
+        void loadNotificationJobs()
+        return
+      }
+      onStatus(`Test delivery ${job.status.toLowerCase()} (${job.attemptCount}/${job.maxAttempts} attempts).`)
+    }
+    onStatus("Test delivery is still queued. Check Notification jobs or Logs for progress.")
+  }
+
+  const loadNotificationJobs = async () => {
+    setNotificationJobMessage("Loading notification jobs...")
+    const response = await fetch(`/api/projects/${initialWorkspace.project.id}/notification-jobs?limit=25`)
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      setNotificationJobMessage(payload?.error ?? "Notification jobs failed to load.")
+      return
+    }
+    setNotificationJobs(payload.jobs ?? [])
+    setNotificationJobCounts(payload.counts ?? {})
+    setNotificationJobMessage(`${payload.jobs?.length ?? 0} recent notification jobs loaded.`)
+  }
+
+  const retryNotificationJob = async (jobId: string) => {
+    setNotificationJobMessage("Requeueing failed notification job...")
+    const response = await fetch(`/api/projects/${initialWorkspace.project.id}/notification-jobs/${jobId}/retry`, { method: "POST" })
+    const payload = await response.json().catch(() => null)
+    setNotificationJobMessage(response.ok ? "Notification job requeued." : payload?.error ?? "Notification job retry failed.")
+    await loadNotificationJobs()
+  }
+
+  const cancelNotificationJob = async (jobId: string) => {
+    setNotificationJobMessage("Cancelling notification job...")
+    const response = await fetch(`/api/projects/${initialWorkspace.project.id}/notification-jobs/${jobId}/cancel`, { method: "POST" })
+    const payload = await response.json().catch(() => null)
+    setNotificationJobMessage(response.ok ? "Notification job cancelled." : payload?.error ?? "Notification job cancellation failed.")
+    await loadNotificationJobs()
+  }
+
   const sendTestEmail = async () => {
     if (!canManageOrganization) {
       setEmailMessage("Only owners and admins can send test emails.")
       return
     }
-    setEmailMessage("Sending test email...")
+    setEmailMessage("Queueing test email...")
     const response = await fetch("/api/notifications/test-email", { method: "POST" })
     const payload = await response.json().catch(() => null)
-    setEmailMessage(payload?.message ?? (response.ok ? "Test email sent." : "Test email failed."))
+    if (!response.ok || !payload?.jobId) {
+      setEmailMessage(payload?.message ?? payload?.error ?? "Test email failed to queue.")
+      return
+    }
+    setEmailMessage("Test email queued.")
+    void waitForNotificationJob(payload.jobId, setEmailMessage)
   }
 
   const copyText = async (value: string, successMessage: string) => {
@@ -1373,14 +1449,19 @@ export function MeridianDashboard({
 
     setWebhooks((current) => [payload.webhook, ...current])
     setGeneratedWebhookSecret(payload.signingSecret ?? "")
-    setWebhookMessage(payload.testResult?.sent > 0 ? "Webhook created and test delivered." : "Webhook created. Test delivery did not succeed.")
+    setWebhookMessage("Webhook destination created. Use Testing to send a test event.")
   }
 
   const testWebhook = async (webhookId: string) => {
-    setWebhookMessage("Sending test webhook...")
+    setWebhookMessage("Queueing test webhook...")
     const response = await fetch(`/api/projects/${initialWorkspace.project.id}/webhooks/${webhookId}/test`, { method: "POST" })
     const payload = await response.json().catch(() => null)
-    setWebhookMessage(payload?.message ?? (response.ok ? "Test webhook delivered." : "Test webhook failed."))
+    if (!response.ok || !payload?.jobId) {
+      setWebhookMessage(payload?.message ?? payload?.error ?? "Test webhook failed to queue.")
+      return
+    }
+    setWebhookMessage("Test webhook queued.")
+    void waitForNotificationJob(payload.jobId, setWebhookMessage)
   }
 
   const toggleWebhook = async (webhook: ProjectWebhookRecord) => {
@@ -1461,14 +1542,19 @@ export function MeridianDashboard({
 
     setSlackDestinations((current) => [payload.slackDestination, ...current])
     setSlackWebhookUrl("")
-    setSlackMessage(payload.testResult?.sent > 0 ? "Slack destination created and test delivered." : "Slack destination created. Test delivery did not succeed.")
+    setSlackMessage("Slack destination created. Use Testing to send a test event.")
   }
 
   const testSlackDestination = async (slackId: string) => {
-    setSlackMessage("Sending Slack test...")
+    setSlackMessage("Queueing Slack test...")
     const response = await fetch(`/api/projects/${initialWorkspace.project.id}/slack/${slackId}/test`, { method: "POST" })
     const payload = await response.json().catch(() => null)
-    setSlackMessage(payload?.message ?? (response.ok ? "Slack test delivered." : "Slack test failed."))
+    if (!response.ok || !payload?.jobId) {
+      setSlackMessage(payload?.message ?? payload?.error ?? "Slack test failed to queue.")
+      return
+    }
+    setSlackMessage("Slack test queued.")
+    void waitForNotificationJob(payload.jobId, setSlackMessage)
   }
 
   const toggleSlackDestination = async (destination: ProjectSlackRecord) => {
@@ -1795,6 +1881,9 @@ export function MeridianDashboard({
     if (section === "testing" && canEditProject && !webhooks.length) {
       void loadWebhooks()
     }
+    if (section === "testing") {
+      void loadNotificationJobs()
+    }
   }
 
   return (
@@ -2062,6 +2151,7 @@ export function MeridianDashboard({
                   <ReadinessItem label="Encryption enabled" ready={initialWorkspace.diagnostics.checks.encryption} />
                   <ReadinessItem label="Cron secret configured" ready={initialWorkspace.diagnostics.checks.cron} />
                   <ReadinessItem label="Email provider configured" ready={initialWorkspace.diagnostics.checks.email} />
+                  <ReadinessItem label="Inngest durable jobs ready" ready={initialWorkspace.diagnostics.checks.jobs} />
                 </div>
                 <BuildMetadataCard build={initialWorkspace.diagnostics.build} />
                 <div className="grid gap-2 rounded-lg border bg-muted/20 p-3 text-sm">
@@ -2570,6 +2660,9 @@ export function MeridianDashboard({
             slackMessage={slackMessage}
             webhooks={webhooks}
             slackDestinations={slackDestinations}
+            notificationJobs={notificationJobs}
+            notificationJobCounts={notificationJobCounts}
+            notificationJobMessage={notificationJobMessage}
             selectedNode={selectedNode}
             canManageOrganization={canManageOrganization}
             canEditProject={canEditProject}
@@ -2579,6 +2672,9 @@ export function MeridianDashboard({
             onLoadWebhooks={loadWebhooks}
             onTestSlackDestination={testSlackDestination}
             onLoadSlackDestinations={loadSlackDestinations}
+            onLoadNotificationJobs={loadNotificationJobs}
+            onRetryNotificationJob={retryNotificationJob}
+            onCancelNotificationJob={cancelNotificationJob}
             onOpenMap={() => openDashboardSection("map")}
             onOpenSettings={() => openDashboardSection("settings")}
             onOpenIntegrations={() => openDashboardSection("integrations")}
@@ -2589,6 +2685,7 @@ export function MeridianDashboard({
             logs={logs}
             meta={logMeta}
             typeFilter={logTypeFilter}
+            jobStatusFilter={logJobStatusFilter}
             windowFilter={logWindowFilter}
             query={logQuery}
             message={logMessage}
@@ -2596,6 +2693,10 @@ export function MeridianDashboard({
             onTypeFilterChange={(value) => {
               setLogTypeFilter(value)
               void loadProjectLogs({ type: value })
+            }}
+            onJobStatusFilterChange={(value) => {
+              setLogJobStatusFilter(value)
+              void loadProjectLogs({ jobStatus: value })
             }}
             onWindowFilterChange={(value) => {
               setLogWindowFilter(value)
@@ -3926,7 +4027,7 @@ function IntegrationsSection({
                         <Badge variant={destination.enabled ? "secondary" : "outline"}>{destination.enabled ? "Enabled" : "Disabled"}</Badge>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <Button variant="outline" size="sm" onClick={() => onTestSlackDestination(destination.id)} disabled={!canEditProject || !destination.enabled}>Test</Button>
+                        <Button variant="outline" size="sm" onClick={() => onTestSlackDestination(destination.id)} disabled={!canManageOrganization || !destination.enabled}>Test</Button>
                         <Button variant="ghost" size="sm" onClick={() => onToggleSlackDestination(destination)} disabled={!canEditProject}>
                           {destination.enabled ? "Disable" : "Enable"}
                         </Button>
@@ -4201,6 +4302,9 @@ function TestingSection({
   slackMessage,
   webhooks,
   slackDestinations,
+  notificationJobs,
+  notificationJobCounts,
+  notificationJobMessage,
   selectedNode,
   canManageOrganization,
   canEditProject,
@@ -4210,6 +4314,9 @@ function TestingSection({
   onLoadWebhooks,
   onTestSlackDestination,
   onLoadSlackDestinations,
+  onLoadNotificationJobs,
+  onRetryNotificationJob,
+  onCancelNotificationJob,
   onOpenMap,
   onOpenSettings,
   onOpenIntegrations,
@@ -4224,6 +4331,9 @@ function TestingSection({
   slackMessage: string
   webhooks: ProjectWebhookRecord[]
   slackDestinations: ProjectSlackRecord[]
+  notificationJobs: NotificationJobRecord[]
+  notificationJobCounts: Record<string, number>
+  notificationJobMessage: string
   selectedNode?: EndpointNodeData
   canManageOrganization: boolean
   canEditProject: boolean
@@ -4233,6 +4343,9 @@ function TestingSection({
   onLoadWebhooks: () => Promise<void>
   onTestSlackDestination: (slackId: string) => Promise<void>
   onLoadSlackDestinations: () => Promise<void>
+  onLoadNotificationJobs: () => Promise<void>
+  onRetryNotificationJob: (jobId: string) => Promise<void>
+  onCancelNotificationJob: (jobId: string) => Promise<void>
   onOpenMap: () => void
   onOpenSettings: () => void
   onOpenIntegrations: () => void
@@ -4250,8 +4363,42 @@ function TestingSection({
               <ReadinessItem label="Encryption enabled" ready={diagnostics.checks.encryption} />
               <ReadinessItem label="Cron secret configured" ready={diagnostics.checks.cron} />
               <ReadinessItem label="Email provider configured" ready={diagnostics.checks.email} />
+              <ReadinessItem label="Inngest durable jobs ready" ready={diagnostics.checks.jobs} />
             </div>
             <BuildMetadataCard build={diagnostics.build} />
+          </div>
+        </details>
+
+        <details id="testing-jobs" open className="rounded-lg border bg-background">
+          <summary className="cursor-pointer px-5 py-4 font-semibold">Notification jobs</summary>
+          <div className="grid gap-4 px-5 pb-5">
+            <div className="flex flex-wrap items-center gap-2">
+              {(["QUEUED", "RUNNING", "RETRYING", "SENT", "FAILED", "SKIPPED", "CANCELLED"] as NotificationJobStatus[]).map((status) => (
+                <Badge key={status} variant={status === "FAILED" ? "destructive" : "outline"} className="capitalize">
+                  {status.toLowerCase()}: {notificationJobCounts[status] ?? 0}
+                </Badge>
+              ))}
+              <Button size="sm" variant="outline" onClick={onLoadNotificationJobs}>Refresh jobs</Button>
+            </div>
+            {notificationJobMessage ? <div className="text-xs text-muted-foreground">{notificationJobMessage}</div> : null}
+            <div className="grid gap-2">
+              {notificationJobs.length ? notificationJobs.slice(0, 10).map((job) => (
+                <div key={job.id} className="grid gap-2 rounded-md border p-3 text-xs sm:grid-cols-[1fr_auto] sm:items-center">
+                  <div className="min-w-0">
+                    <div className="font-medium">{job.channel} / {job.eventType}</div>
+                    <div className="mt-1 truncate text-muted-foreground">
+                      {job.recipient ?? "Configured destination"} / {job.attemptCount} of {job.maxAttempts} attempts / {new Date(job.updatedAt).toLocaleString()}
+                    </div>
+                    {job.lastError ? <div className="mt-1 text-muted-foreground">{job.lastError}</div> : null}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={job.status === "FAILED" ? "destructive" : "secondary"}>{job.status}</Badge>
+                    {job.status === "FAILED" ? <Button size="sm" variant="outline" disabled={!canManageOrganization} onClick={() => onRetryNotificationJob(job.id)}>Retry</Button> : null}
+                    {job.status === "QUEUED" || job.status === "RETRYING" ? <Button size="sm" variant="ghost" disabled={!canManageOrganization} onClick={() => onCancelNotificationJob(job.id)}>Cancel</Button> : null}
+                  </div>
+                </div>
+              )) : <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">Load notification jobs to inspect queue health.</div>}
+            </div>
           </div>
         </details>
 
@@ -4326,7 +4473,7 @@ function TestingSection({
                           <div className="truncate font-medium">{webhook.name}</div>
                           <div className="truncate text-muted-foreground">{webhook.eventFilters.join(", ")}</div>
                         </div>
-                        <Button size="sm" variant="outline" disabled={!canEditProject || !webhook.enabled} onClick={() => onTestWebhook(webhook.id)}>
+                        <Button size="sm" variant="outline" disabled={!canManageOrganization || !webhook.enabled} onClick={() => onTestWebhook(webhook.id)}>
                           Test
                         </Button>
                       </div>
@@ -4357,7 +4504,7 @@ function TestingSection({
                           <div className="truncate font-medium">{destination.name}</div>
                           <div className="truncate text-muted-foreground">{destination.minimumSeverity}+ / {destination.eventFilters.join(", ")}</div>
                         </div>
-                        <Button size="sm" variant="outline" disabled={!canEditProject || !destination.enabled} onClick={() => onTestSlackDestination(destination.id)}>
+                        <Button size="sm" variant="outline" disabled={!canManageOrganization || !destination.enabled} onClick={() => onTestSlackDestination(destination.id)}>
                           Test
                         </Button>
                       </div>
@@ -4423,11 +4570,13 @@ function LogsSection({
   logs,
   meta,
   typeFilter,
+  jobStatusFilter,
   windowFilter,
   query,
   message,
   isLoading,
   onTypeFilterChange,
+  onJobStatusFilterChange,
   onWindowFilterChange,
   onQueryChange,
   onSearch,
@@ -4436,11 +4585,13 @@ function LogsSection({
   logs: ProjectLogRecord[]
   meta: ProjectLogMeta | null
   typeFilter: ProjectLogType | ""
+  jobStatusFilter: Lowercase<NotificationJobStatus> | ""
   windowFilter: ProjectLogWindow
   query: string
   message: string
   isLoading: boolean
   onTypeFilterChange: (value: ProjectLogType | "") => void
+  onJobStatusFilterChange: (value: Lowercase<NotificationJobStatus> | "") => void
   onWindowFilterChange: (value: ProjectLogWindow) => void
   onQueryChange: (value: string) => void
   onSearch: () => Promise<void>
@@ -4455,7 +4606,7 @@ function LogsSection({
             <CardDescription>Safe operational timeline across project activity, alerts, polling, deliveries, runs, reports, webhooks, team, and map changes.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
-            <div className="grid gap-2 lg:grid-cols-[180px_180px_1fr_auto_auto]">
+            <div className="grid gap-2 lg:grid-cols-[160px_150px_150px_1fr_auto_auto]">
               <select className="h-10 rounded-lg border bg-background px-2 text-sm" value={typeFilter} onChange={(event) => onTypeFilterChange(event.target.value as ProjectLogType | "")}>
                 <option value="">All types</option>
                 <option value="activity">Activity</option>
@@ -4467,6 +4618,16 @@ function LogsSection({
                 <option value="webhooks">Webhooks</option>
                 <option value="team">Team</option>
                 <option value="map">Map</option>
+              </select>
+              <select className="h-10 rounded-lg border bg-background px-2 text-sm" value={jobStatusFilter} onChange={(event) => onJobStatusFilterChange(event.target.value as Lowercase<NotificationJobStatus> | "")}>
+                <option value="">All job statuses</option>
+                <option value="queued">Queued jobs</option>
+                <option value="running">Running jobs</option>
+                <option value="retrying">Retrying jobs</option>
+                <option value="sent">Sent jobs</option>
+                <option value="failed">Failed jobs</option>
+                <option value="skipped">Skipped jobs</option>
+                <option value="cancelled">Cancelled jobs</option>
               </select>
               <select className="h-10 rounded-lg border bg-background px-2 text-sm" value={windowFilter} onChange={(event) => onWindowFilterChange(event.target.value as ProjectLogWindow)}>
                 <option value="24h">24h</option>

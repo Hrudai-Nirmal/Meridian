@@ -3,7 +3,6 @@
  */
 import "server-only"
 
-import { randomUUID } from "crypto"
 import type { AlertSeverity, PrismaClient, ProjectSlackDestination } from "@prisma/client"
 
 import { decryptSecret, encryptSecret } from "@/lib/crypto"
@@ -39,11 +38,12 @@ type SlackAlertPayload = {
   }
 }
 
-type DeliverSlackInput = {
+type SendSlackAttemptInput = {
+  jobId: string
   eventType: SlackAlertEventType
   alertEventId?: string
-  projectId?: string
-  destinationId?: string
+  projectId: string
+  destinationId: string
 }
 
 const SLACK_EVENTS: SlackAlertEventType[] = ["alert.opened", "alert.resolved", "slack.test"]
@@ -54,17 +54,13 @@ const severityRank: Record<AlertSeverity, number> = {
   CRITICAL: 2,
 }
 
-function waitForRetry() {
-  return new Promise((resolve) => setTimeout(resolve, 500))
-}
-
-function normalizeSlackEvents(value: unknown) {
+export function normalizeSlackEvents(value: unknown) {
   if (!Array.isArray(value)) return SLACK_EVENTS
   const events = value.filter((event): event is SlackAlertEventType => SLACK_EVENTS.includes(event as SlackAlertEventType))
   return events.length ? events : SLACK_EVENTS
 }
 
-function severityAllows(minimumSeverity: AlertSeverity, alertSeverity: AlertSeverity) {
+export function slackSeverityAllows(minimumSeverity: AlertSeverity, alertSeverity: AlertSeverity) {
   return severityRank[alertSeverity] >= severityRank[minimumSeverity]
 }
 
@@ -145,7 +141,7 @@ async function postSlackWebhook(destination: ProjectSlackDestination, payload: S
   })
 }
 
-async function buildSlackPayload(prisma: PrismaClient, input: DeliverSlackInput, deliveryId: string): Promise<SlackAlertPayload | null> {
+async function buildSlackPayload(prisma: PrismaClient, input: SendSlackAttemptInput, deliveryId: string): Promise<SlackAlertPayload | null> {
   if (input.eventType === "slack.test") {
     if (!input.projectId) return null
     const project = await prisma.project.findUnique({
@@ -254,69 +250,27 @@ export function serializeProjectSlackDestination(destination: ProjectSlackDestin
 }
 
 /**
- * Sends native Slack alert messages to enabled matching project destinations.
+ * Performs one native Slack attempt for a queued destination.
  */
-export async function deliverProjectSlack(prisma: PrismaClient, input: DeliverSlackInput) {
-  const deliveryId = randomUUID()
-  const payload = await buildSlackPayload(prisma, input, deliveryId)
-  if (!payload) return { attempted: 0, sent: 0, failed: 0 }
-
-  const destinations = await prisma.projectSlackDestination.findMany({
-    where: {
-      projectId: payload.project.id,
-      ...(input.destinationId ? { id: input.destinationId } : { enabled: true }),
-    },
-    orderBy: { createdAt: "asc" },
+export async function sendSlackAttempt(prisma: PrismaClient, input: SendSlackAttemptInput) {
+  const destination = await prisma.projectSlackDestination.findFirst({
+    where: { id: input.destinationId, projectId: input.projectId },
   })
-  const matchingDestinations = destinations
-    .filter((destination) => normalizeSlackEvents(destination.eventFilters).includes(input.eventType))
-    .filter((destination) => input.eventType === "slack.test" || severityAllows(destination.minimumSeverity, payload.alert.severity))
-
-  let sent = 0
-  let failed = 0
-
-  for (const destination of matchingDestinations) {
-    const attemptedAt = new Date()
-    let response: Response | null = null
-    let failureReason: string | undefined
-
-    try {
-      response = await postSlackWebhook(destination, payload)
-      if (!response.ok) {
-        failureReason = await response.text().catch(() => undefined)
-        await waitForRetry()
-        response = await postSlackWebhook(destination, payload)
-      }
-      if (!response.ok) failureReason = await response.text().catch(() => undefined)
-    } catch (error) {
-      failureReason = error instanceof Error ? error.message : "Slack delivery failed."
-      await waitForRetry()
-      try {
-        response = await postSlackWebhook(destination, payload)
-        failureReason = response.ok ? undefined : await response.text().catch(() => undefined)
-      } catch (retryError) {
-        failureReason = retryError instanceof Error ? retryError.message : "Slack delivery failed."
-      }
-    }
-
-    const isSent = Boolean(response?.ok)
-    if (isSent) sent += 1
-    else failed += 1
-
-    await prisma.alertNotificationDelivery.create({
-      data: {
-        channel: "slack",
-        recipient: destination.name,
-        status: isSent ? "SENT" : "FAILED",
-        provider: "slack-incoming-webhook",
-        providerId: deliveryId,
-        failureReason: isSent ? undefined : getSlackFailureReason(response, failureReason).slice(0, 240),
-        alertEventId: input.alertEventId,
-        attemptedAt,
-        sentAt: isSent ? new Date() : undefined,
-      },
-    })
+  if (!destination?.enabled) return { skipped: true, reason: "Slack destination is disabled or unavailable." }
+  if (!normalizeSlackEvents(destination.eventFilters).includes(input.eventType)) {
+    return { skipped: true, reason: "Slack destination no longer accepts this event." }
   }
 
-  return { attempted: matchingDestinations.length, sent, failed }
+  const payload = await buildSlackPayload(prisma, input, input.jobId)
+  if (!payload) return { skipped: true, reason: "Slack source data is unavailable." }
+  if (input.eventType !== "slack.test" && !slackSeverityAllows(destination.minimumSeverity, payload.alert.severity)) {
+    return { skipped: true, reason: "Alert no longer meets the Slack severity filter." }
+  }
+
+  const response = await postSlackWebhook(destination, payload)
+  if (!response.ok) {
+    const reason = await response.text().catch(() => undefined)
+    throw new Error(getSlackFailureReason(response, reason).slice(0, 240))
+  }
+  return { skipped: false, providerId: input.jobId }
 }

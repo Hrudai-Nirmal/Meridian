@@ -57,6 +57,8 @@ try {
   assert(!JSON.stringify(health).includes("ENCRYPTION_KEY"), "Health route leaked secret field names.")
   assert(!JSON.stringify(health).includes("CRON_SECRET"), "Health route leaked secret field names.")
   assert(!JSON.stringify(health).includes("RESEND_API_KEY"), "Health route leaked secret field names.")
+  assert(!JSON.stringify(health).includes("INNGEST_EVENT_KEY"), "Health route leaked Inngest event-key field names.")
+  assert(!JSON.stringify(health).includes("INNGEST_SIGNING_KEY"), "Health route leaked Inngest signing-key field names.")
   assert(!JSON.stringify(health).includes("hooks.slack.com/services/"), "Health route leaked a Slack webhook URL.")
 
   const cronResponse = await publicPage.request.get(`${baseUrl}/api/cron/poll`, {
@@ -82,6 +84,14 @@ try {
     },
   })
   assert(ingestResponse.status() === 401, "Workflow run ingestion did not reject missing token authentication.")
+
+  const notificationJobsResponse = await publicPage.request.get(`${baseUrl}/api/projects/not-a-real-project/notification-jobs`)
+  assertAuthenticationGuard(notificationJobsResponse, "Notification jobs route did not enforce authentication.")
+
+  const inngestResponse = await publicPage.request.post(`${baseUrl}/api/inngest`, {
+    data: { name: "unauthorized-smoke" },
+  })
+  assert([401, 403, 503].includes(inngestResponse.status()), "Inngest execution route accepted an unsigned request.")
 
   const githubSignInButton = publicPage.getByRole("button", { name: "Continue with GitHub" })
   const githubSignInButtonCount = await githubSignInButton.count()

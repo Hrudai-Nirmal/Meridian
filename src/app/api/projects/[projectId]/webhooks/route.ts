@@ -6,7 +6,6 @@ import { createAuditLog } from "@/lib/audit-log"
 import { getPrisma } from "@/lib/prisma"
 import {
   createWebhookSigningSecret,
-  deliverProjectWebhooks,
   encryptWebhookSigningSecret,
   serializeProjectWebhook,
 } from "@/lib/webhooks"
@@ -95,16 +94,10 @@ export async function POST(request: Request, context: { params: Promise<{ projec
     userId,
     metadata: { name: webhook.name, host: getWebhookHost(webhook.url), enabled: webhook.enabled, eventFilters: webhook.eventFilters },
   })
-
   return NextResponse.json(
     {
       webhook: serializeProjectWebhook(webhook),
       signingSecret,
-      testResult: await deliverProjectWebhooks(prisma, {
-        eventType: "webhook.test",
-        projectId,
-        destinationId: webhook.id,
-      }),
     },
     { status: 201 }
   )

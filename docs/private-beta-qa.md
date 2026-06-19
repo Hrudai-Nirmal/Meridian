@@ -83,7 +83,10 @@ Use this checklist for production validation on `https://meridian.hrudainirmal.i
 
 ## Testing
 
-- Confirm readiness cards show database, auth, encryption, cron, email, and poll status.
+- Confirm readiness cards show database, auth, encryption, cron, email, Inngest jobs, and poll status.
+- Queue email, webhook, and Slack tests; confirm the UI follows each job from queued to a terminal result.
+- In `Notification jobs`, verify counts, refresh, failed-job retry, queued/retrying cancellation, and owner/admin enforcement.
+- Use a failing disposable webhook and confirm retry progress before the job becomes failed.
 - Confirm Deployment readiness shows safe version, commit, build time, and environment metadata.
 - Run manual poll and confirm latest poll metadata updates.
 - Send test email and confirm success/failure feedback does not expose provider secrets.
@@ -95,10 +98,12 @@ Use this checklist for production validation on `https://meridian.hrudainirmal.i
 
 - Filter Logs by 24h, 7d, 30d, and All.
 - Filter by Activity, Alerts, Polling, Deliveries, Runs, Reports, Webhooks, Team, and Map.
+- Filter notification jobs by queued, running, retrying, sent, failed, skipped, and cancelled status.
 - Search for a known report, webhook, Slack destination, token, or alert action.
 - Confirm log rows show timestamp, type, title/action, entity, status, context, and safe metadata.
 - Confirm Logs shows returned/limit/truncation metadata for the current filter.
 - Confirm Logs never expose raw tokens, webhook secrets, Slack URLs, encrypted payloads, env values, or private credential bodies.
+- Confirm notification job rows expose attempts and safe summaries, never provider URLs, keys, or message payloads.
 
 ## Settings
 

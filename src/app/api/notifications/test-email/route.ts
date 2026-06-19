@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server"
 
 import { getApiUserId, requireOrganizationRole } from "@/lib/api-session"
+import { dispatchNotificationJobs, queueTestEmailJob } from "@/lib/notification-jobs"
 import { getPrisma } from "@/lib/prisma"
-import { sendEmailWithDeliveryLog } from "@/lib/notifications"
 import { getWorkspaceForUser } from "@/lib/workspace"
 
 export async function POST() {
@@ -27,27 +27,13 @@ export async function POST() {
     return NextResponse.json({ error: "Your account does not have an email address." }, { status: 400 })
   }
 
-  const result = await sendEmailWithDeliveryLog(prisma, {
-    to: [user.email],
-    subject: "[Meridian] Test alert email",
-    text: [
-      "Meridian test alert email",
-      "",
-      "This confirms that the deployed email notification path can reach your account.",
-      "",
-      `Organization: ${workspace.organization.name}`,
-      `Project: ${workspace.project.name}`,
-    ].join("\n"),
-  })
+  const job = await queueTestEmailJob(prisma, { projectId: workspace.project.id, recipient: user.email })
+  await dispatchNotificationJobs([job])
 
   return NextResponse.json({
-    ok: result.sent > 0,
-    message:
-      result.sent > 0
-        ? "Test email sent."
-        : result.skipped > 0
-          ? "Email provider is not configured."
-          : result.error ?? "Test email failed.",
-    result,
-  })
+    ok: true,
+    queued: true,
+    message: "Test email queued.",
+    jobId: job.id,
+  }, { status: 202 })
 }

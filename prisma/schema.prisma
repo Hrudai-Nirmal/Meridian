@@ -52,6 +52,16 @@ enum AlertSeverity {
   CRITICAL
 }
 
+enum NotificationJobStatus {
+  QUEUED
+  RUNNING
+  RETRYING
+  SENT
+  FAILED
+  SKIPPED
+  CANCELLED
+}
+
 model User {
   id              String                   @id @default(cuid())
   name            String?
@@ -163,6 +173,7 @@ model Project {
   slackDestinations   ProjectSlackDestination[]
   reportShares        ReportShare[]
   alertRules          AlertRule[]
+  notificationJobs    NotificationJob[]
   auditLogs           AuditLog[]
   archivedAt          DateTime?
   createdAt           DateTime                    @default(now())
@@ -470,17 +481,18 @@ model AlertRule {
 }
 
 model AlertEvent {
-  id         String                      @id @default(cuid())
-  title      String
-  message    String
-  severity   AlertSeverity
-  resolvedAt DateTime?
-  nodeId     String?
-  ruleId     String?
-  node       EndpointNode?               @relation(fields: [nodeId], references: [id], onDelete: SetNull)
-  rule       AlertRule?                  @relation(fields: [ruleId], references: [id], onDelete: SetNull)
-  deliveries AlertNotificationDelivery[]
-  createdAt  DateTime                    @default(now())
+  id               String                      @id @default(cuid())
+  title            String
+  message          String
+  severity         AlertSeverity
+  resolvedAt       DateTime?
+  nodeId           String?
+  ruleId           String?
+  node             EndpointNode?               @relation(fields: [nodeId], references: [id], onDelete: SetNull)
+  rule             AlertRule?                  @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  deliveries       AlertNotificationDelivery[]
+  notificationJobs NotificationJob[]
+  createdAt        DateTime                    @default(now())
 
   @@index([nodeId, resolvedAt])
   @@index([nodeId, createdAt])
@@ -501,24 +513,54 @@ model NotificationPreference {
 }
 
 model AlertNotificationDelivery {
-  id            String      @id @default(cuid())
-  channel       String
-  recipient     String
-  status        String
-  provider      String
-  providerId    String?
-  failureReason String?
-  alertEventId  String?
-  alertEvent    AlertEvent? @relation(fields: [alertEventId], references: [id], onDelete: SetNull)
-  createdAt     DateTime    @default(now())
-  attemptedAt   DateTime    @default(now())
-  sentAt        DateTime?
+  id                String           @id @default(cuid())
+  channel           String
+  recipient         String
+  status            String
+  provider          String
+  providerId        String?
+  failureReason     String?
+  alertEventId      String?
+  notificationJobId String?          @unique
+  alertEvent        AlertEvent?      @relation(fields: [alertEventId], references: [id], onDelete: SetNull)
+  notificationJob   NotificationJob? @relation(fields: [notificationJobId], references: [id], onDelete: SetNull)
+  createdAt         DateTime         @default(now())
+  attemptedAt       DateTime         @default(now())
+  sentAt            DateTime?
 
   @@index([alertEventId])
   @@index([alertEventId, attemptedAt])
   @@index([status, attemptedAt])
   @@index([recipient, attemptedAt])
   @@index([attemptedAt])
+}
+
+model NotificationJob {
+  id             String                     @id @default(cuid())
+  channel        String
+  eventType      String
+  status         NotificationJobStatus      @default(QUEUED)
+  recipient      String?
+  destinationId  String?
+  idempotencyKey String                     @unique
+  generation     Int                        @default(0)
+  attemptCount   Int                        @default(0)
+  maxAttempts    Int                        @default(5)
+  lockedAt       DateTime?
+  lastError      String?
+  completedAt    DateTime?
+  projectId      String
+  alertEventId   String?
+  project        Project                    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  alertEvent     AlertEvent?                @relation(fields: [alertEventId], references: [id], onDelete: SetNull)
+  delivery       AlertNotificationDelivery?
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+
+  @@index([projectId, createdAt])
+  @@index([projectId, status, createdAt])
+  @@index([status, updatedAt])
+  @@index([alertEventId])
 }
 
 model AuditLog {

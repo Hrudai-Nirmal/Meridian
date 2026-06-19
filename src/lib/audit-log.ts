@@ -45,7 +45,7 @@ function sanitizeMetadataValue(value: unknown): unknown {
 /**
  * Writes an AuditLog row after a user-visible operational action succeeds.
  */
-export async function createAuditLog(prisma: PrismaClient, input: CreateAuditLogInput) {
+export async function createAuditLog(prisma: PrismaClient | Prisma.TransactionClient, input: CreateAuditLogInput) {
   if (!input.organizationId && !input.projectId) {
     throw new Error("Audit logs require an organizationId or projectId.")
   }

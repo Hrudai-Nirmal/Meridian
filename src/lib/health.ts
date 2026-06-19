@@ -23,6 +23,7 @@ export type ReadinessStatus = {
     encryption: boolean
     cron: boolean
     email: boolean
+    jobs: boolean
   }
   latestPoll: {
     status: string
@@ -42,6 +43,7 @@ export type ReadinessStatus = {
     attemptedAt: string
     sentAt: string | null
   } | null
+  notificationJobs: Record<string, number>
   issues: ReadinessIssue[]
 }
 
@@ -56,9 +58,11 @@ export async function getReadinessStatus(): Promise<ReadinessStatus> {
     encryption: Boolean(process.env.ENCRYPTION_KEY),
     cron: Boolean(process.env.CRON_SECRET),
     email: isEmailConfigured(),
+    jobs: Boolean(process.env.INNGEST_EVENT_KEY && process.env.INNGEST_SIGNING_KEY),
   }
   let latestPoll: ReadinessStatus["latestPoll"] = null
   let latestEmail: ReadinessStatus["latestEmail"] = null
+  let notificationJobs: ReadinessStatus["notificationJobs"] = {}
   const issues: ReadinessIssue[] = []
 
   if (databaseConfigured) {
@@ -66,18 +70,15 @@ export async function getReadinessStatus(): Promise<ReadinessStatus> {
       const prisma = getPrisma()
       await prisma.$queryRaw`SELECT 1`
       checks.database = true
-      const poll = await prisma.pollExecution.findFirst({
-        orderBy: { startedAt: "desc" },
-      })
-      const delivery = await prisma.alertNotificationDelivery.findFirst({
-        orderBy: { attemptedAt: "desc" },
-        select: {
-          status: true,
-          provider: true,
-          attemptedAt: true,
-          sentAt: true,
-        },
-      })
+      const [poll, delivery, groupedJobs] = await Promise.all([
+        prisma.pollExecution.findFirst({ orderBy: { startedAt: "desc" } }),
+        prisma.alertNotificationDelivery.findFirst({
+          orderBy: { attemptedAt: "desc" },
+          select: { status: true, provider: true, attemptedAt: true, sentAt: true },
+        }),
+        prisma.notificationJob.groupBy({ by: ["status"], _count: { _all: true } }),
+      ])
+      notificationJobs = Object.fromEntries(groupedJobs.map((item) => [item.status, item._count._all]))
 
       latestPoll = poll
         ? {
@@ -123,6 +124,15 @@ export async function getReadinessStatus(): Promise<ReadinessStatus> {
     })
   }
 
+  if (!checks.jobs) {
+    issues.push({
+      code: "DURABLE_JOBS_NOT_CONFIGURED",
+      component: "health",
+      message: "Inngest event and signing keys are not configured.",
+      incidentId: null,
+    })
+  }
+
   return {
     ok: Object.values(checks).every(Boolean),
     checkedAt: new Date().toISOString(),
@@ -130,6 +140,7 @@ export async function getReadinessStatus(): Promise<ReadinessStatus> {
     checks,
     latestPoll,
     latestEmail,
+    notificationJobs,
     issues,
   }
 }

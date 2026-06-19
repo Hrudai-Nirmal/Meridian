@@ -28,6 +28,16 @@ Meridian prefers Vercel Neon's managed `NeonDB_POSTGRES_PRISMA_URL` and falls ba
 
 GitHub OAuth requires both a working provider configuration and a writable database session. The login page checks `/api/health` before enabling OAuth. If persistence is unavailable, sign-in stays disabled and displays a correlated incident ID instead of redirecting repeatedly.
 
+## Notification Queue Recovery
+
+1. Confirm `/api/health` reports `checks.jobs: true`.
+2. Open `Testing` -> `Notification jobs` and inspect queued, retrying, and failed counts.
+3. Check Inngest for `process-notification-job` and `recover-queued-notifications` runs.
+4. If credentials were unavailable, restore `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY`, redeploy, and manually sync `/api/inngest`; the one-minute sweep recovers queued database jobs.
+5. Retry terminal failures only after fixing the provider. Cancel only queued/retrying work that should no longer be delivered.
+
+Inngest events contain job ids and generations only. Never paste provider keys, webhook URLs, signing secrets, or message payloads into incident records.
+
 ## Release Gate
 
 Run the manual GitHub Actions `Production smoke` workflow after every production deployment. It sets `SMOKE_REQUIRE_READY=1` and fails when database or authentication readiness is false, or when GitHub sign-in cannot begin.

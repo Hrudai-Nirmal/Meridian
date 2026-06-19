@@ -8,7 +8,6 @@ import { getApiUserId, requireProjectRole } from "@/lib/api-session"
 import { createAuditLog } from "@/lib/audit-log"
 import { getPrisma } from "@/lib/prisma"
 import {
-  deliverProjectSlack,
   encryptSlackWebhookUrl,
   serializeProjectSlackDestination,
   validateSlackWebhookUrl,
@@ -87,16 +86,9 @@ export async function POST(request: Request, context: { params: Promise<{ projec
     },
   })
 
-  const testResult = await deliverProjectSlack(prisma, {
-    eventType: "slack.test",
-    projectId,
-    destinationId: destination.id,
-  })
-
   return NextResponse.json(
     {
       slackDestination: serializeProjectSlackDestination(destination),
-      testResult,
     },
     { status: 201 }
   )

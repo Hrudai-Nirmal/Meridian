@@ -4,10 +4,8 @@ import { JSONPath } from "jsonpath-plus"
 
 import { normalizeAlertRuleMetadata, type AnomalyDirection } from "@/lib/alert-rule-metadata"
 import { decryptSecret } from "@/lib/crypto"
-import { notifyNewAlert } from "@/lib/notifications"
+import { dispatchNotificationJobs, queueAlertNotificationJobs } from "@/lib/notification-jobs"
 import { getPrisma } from "@/lib/prisma"
-import { deliverProjectSlack } from "@/lib/slack"
-import { deliverProjectWebhooks } from "@/lib/webhooks"
 
 type JsonDocument = string | number | boolean | object | unknown[] | null
 
@@ -135,42 +133,27 @@ async function createAlertIfNeeded(
     ruleId?: string | null
   }
 ) {
-  const existing = await prisma.alertEvent.findFirst({
-    where: {
-      nodeId: input.nodeId,
-      title: input.title,
-      resolvedAt: null,
-    },
-    select: { id: true },
-  })
+  const result = await prisma.$transaction(async (transaction) => {
+    const existing = await transaction.alertEvent.findFirst({
+      where: { nodeId: input.nodeId, title: input.title, resolvedAt: null },
+      select: { id: true },
+    })
+    if (existing) return { created: false, jobs: [] }
 
-  if (existing) return false
-
-  const alertEvent = await prisma.alertEvent.create({
-    data: {
-      title: input.title,
-      message: input.message,
-      severity: input.severity,
-      nodeId: input.nodeId,
-      ruleId: input.ruleId,
-    },
+    const alertEvent = await transaction.alertEvent.create({
+      data: {
+        title: input.title,
+        message: input.message,
+        severity: input.severity,
+        nodeId: input.nodeId,
+        ruleId: input.ruleId,
+      },
+    })
+    const jobs = await queueAlertNotificationJobs(transaction, alertEvent.id, "alert.opened")
+    return { created: true, jobs }
   })
-  await notifyNewAlert(prisma, {
-    alertEventId: alertEvent.id,
-    nodeId: input.nodeId,
-    title: input.title,
-    message: input.message,
-    severity: input.severity,
-  })
-  await deliverProjectWebhooks(prisma, {
-    eventType: "alert.opened",
-    alertEventId: alertEvent.id,
-  })
-  await deliverProjectSlack(prisma, {
-    eventType: "alert.opened",
-    alertEventId: alertEvent.id,
-  })
-  return true
+  await dispatchNotificationJobs(result.jobs)
+  return result.created
 }
 
 /**

@@ -24,6 +24,8 @@ GITHUB_SECRET="replace-with-github-oauth-client-secret"
 CRON_SECRET="replace-with-a-long-random-cron-secret"
 RESEND_API_KEY="optional-resend-api-key-for-alert-email"
 ALERT_FROM_EMAIL="Meridian <alerts@meridian.hrudainirmal.in>"
+INNGEST_EVENT_KEY="replace-with-production-inngest-event-key"
+INNGEST_SIGNING_KEY="signkey-prod-replace-with-inngest-signing-key"
 ```
 
 Meridian production uses the independently managed Neon project `Meridian` through the server-only `DATABASE_URL`. The Prisma client still supports an integration-managed `NeonDB_POSTGRES_PRISMA_URL` when present, but that variable must not remain configured after an independent-database cutover because it takes precedence. Database and authentication failures emit structured, secret-safe runtime logs with incident IDs; `/api/health` returns matching safe issue metadata, and the login screen blocks OAuth while session persistence is unavailable.
@@ -124,7 +126,7 @@ The node inspector includes Basic and Advanced integration templates for Dify, n
 
 Alert rules support static thresholds and anomaly baselines. Anomaly rules learn from the previous 7 days of metric samples, require at least 8 prior samples, and fire when the next value is more than 2 standard deviations outside the selected direction. The node inspector's alert-rule dialog previews the selected mapping's sample count, baseline mean, standard deviation, watch band, and whether more samples are needed before anomaly alerts can fire.
 
-Project editors can create outbound webhook destinations from `Integrations` and test them from `Integrations` or `Testing`. Meridian sends `alert.opened`, `alert.resolved`, and `webhook.test` JSON payloads to enabled destinations, retries once on failure, and records webhook delivery status in alert details and Logs. Signing secrets are shown once at creation and are not exposed again.
+Project editors can create outbound webhook destinations from `Integrations`; owners/admins test them from `Testing`. Meridian queues `alert.opened`, `alert.resolved`, and `webhook.test` JSON payloads for enabled destinations, retries through durable jobs, and records delivery status in alert details and Logs. Signing secrets are shown once at creation and are not exposed again.
 
 Webhook receivers can verify these headers:
 
@@ -139,7 +141,23 @@ The signature is HMAC SHA-256 over `timestamp.rawJsonBody` using the destination
 
 During the rename transition, webhook deliveries also include the deprecated `X-ArgusGrid-*` header aliases and an `argusgrid` payload metadata alias. Ingestion accepts both `X-Meridian-Token` and the deprecated `X-ArgusGrid-Token`; bearer authentication is unchanged. New integrations should use Meridian names.
 
-Native Slack alert destinations also live in `Integrations`, using Slack incoming webhook URLs. Create a Slack destination with a friendly name, a `https://hooks.slack.com/...` incoming webhook URL, minimum severity, and event filters for `alert.opened`, `alert.resolved`, and `slack.test`. The webhook URL is encrypted, write-only, and never returned to the browser after creation. Meridian sends Slack Block Kit messages for matching enabled destinations, retries once on failure, and records delivery evidence in alert details and Logs.
+Native Slack alert destinations also live in `Integrations`, using Slack incoming webhook URLs. Create a Slack destination with a friendly name, a `https://hooks.slack.com/...` incoming webhook URL, minimum severity, and event filters for `alert.opened`, `alert.resolved`, and `slack.test`. The webhook URL is encrypted, write-only, and never returned to the browser after creation. Meridian queues Slack Block Kit messages for matching enabled destinations, retries through durable jobs, and records delivery evidence in alert details and Logs.
+
+## Durable Notification Jobs
+
+Alert email, generic webhook, and Slack delivery run through a Postgres-backed outbox and Inngest. Meridian writes one job per recipient/destination in the same transaction as the alert lifecycle change, then sends Inngest only the job id and generation. Jobs survive failed event publishing, retry five total attempts with backoff, recover stale locks, and retain terminal state for 30 days. Resend receives a stable idempotency key; signed webhooks retain a stable delivery id. Slack is at-least-once when a timeout makes the remote outcome unknowable.
+
+Manual production setup:
+
+1. Create a production environment and `Meridian` app in Inngest.
+2. Create an event key and copy the production signing key.
+3. Add `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY` to Vercel Production only.
+4. Redeploy Meridian, then manually sync `https://meridian.hrudainirmal.in/api/inngest` from Inngest.
+5. Open `Testing` -> `Notification jobs` and confirm Inngest readiness plus queue counts.
+
+Do not configure Preview until it has a separate database and Inngest environment. For local development, run the app, start the Inngest Dev Server against `http://localhost:3000/api/inngest`, and use `INNGEST_DEV=1`; cloud keys are not required.
+
+Testing notification actions return `202` and a job id. Testing follows the job to `SENT`, `FAILED`, `SKIPPED`, or `CANCELLED`. Logs supports job-status filters for every queue state. Owners/admins may retry failed jobs or cancel queued/retrying jobs.
 
 Slack setup flow:
 

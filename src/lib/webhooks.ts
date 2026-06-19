@@ -1,6 +1,6 @@
 import "server-only"
 
-import { createHmac, randomBytes, randomUUID } from "crypto"
+import { createHmac, randomBytes } from "crypto"
 import type { AlertSeverity, PrismaClient, ProjectWebhookDestination } from "@prisma/client"
 
 import { decryptSecret, encryptSecret } from "@/lib/crypto"
@@ -53,26 +53,23 @@ type AlertWebhookPayload = {
   }
 }
 
-type DeliverWebhookInput = {
+type SendWebhookAttemptInput = {
+  jobId: string
   eventType: AlertWebhookEventType
   alertEventId?: string
-  projectId?: string
-  destinationId?: string
+  projectId: string
+  destinationId: string
 }
 
 const WEBHOOK_EVENTS: AlertWebhookEventType[] = ["alert.opened", "alert.resolved", "webhook.test"]
 
-function waitForRetry() {
-  return new Promise((resolve) => setTimeout(resolve, 500))
-}
-
-function normalizeWebhookEvents(value: unknown) {
+export function normalizeWebhookEvents(value: unknown) {
   if (!Array.isArray(value)) return WEBHOOK_EVENTS
   const events = value.filter((event): event is AlertWebhookEventType => WEBHOOK_EVENTS.includes(event as AlertWebhookEventType))
   return events.length ? events : WEBHOOK_EVENTS
 }
 
-function getWebhookRecipient(destination: Pick<ProjectWebhookDestination, "name" | "url">) {
+export function getWebhookRecipient(destination: Pick<ProjectWebhookDestination, "name" | "url">) {
   try {
     return `${destination.name} (${new URL(destination.url).host})`
   } catch {
@@ -132,7 +129,7 @@ async function postSignedWebhook(destination: ProjectWebhookDestination, eventTy
   })
 }
 
-async function buildPayload(prisma: PrismaClient, input: DeliverWebhookInput, deliveryId: string): Promise<AlertWebhookPayload | null> {
+async function buildPayload(prisma: PrismaClient, input: SendWebhookAttemptInput, deliveryId: string): Promise<AlertWebhookPayload | null> {
   if (input.eventType === "webhook.test") {
     if (!input.projectId) return null
     const project = await prisma.project.findUnique({
@@ -210,64 +207,19 @@ async function buildPayload(prisma: PrismaClient, input: DeliverWebhookInput, de
   }
 }
 
-export async function deliverProjectWebhooks(prisma: PrismaClient, input: DeliverWebhookInput) {
-  const deliveryId = randomUUID()
-  const payload = await buildPayload(prisma, input, deliveryId)
-  if (!payload) return { attempted: 0, sent: 0, failed: 0 }
-
-  const destinations = await prisma.projectWebhookDestination.findMany({
-    where: {
-      projectId: payload.project.id,
-      ...(input.destinationId ? { id: input.destinationId } : { enabled: true }),
-    },
-    orderBy: { createdAt: "asc" },
+/** Performs one signed webhook attempt for a queued destination. */
+export async function sendWebhookAttempt(prisma: PrismaClient, input: SendWebhookAttemptInput) {
+  const destination = await prisma.projectWebhookDestination.findFirst({
+    where: { id: input.destinationId, projectId: input.projectId },
   })
-  const matchingDestinations = destinations.filter((destination) => normalizeWebhookEvents(destination.eventFilters).includes(input.eventType))
-  let sent = 0
-  let failed = 0
-
-  for (const destination of matchingDestinations) {
-    const attemptedAt = new Date()
-    let response: Response | null = null
-    let failureReason: string | undefined
-
-    try {
-      response = await postSignedWebhook(destination, input.eventType, payload)
-      if (!response.ok) {
-        failureReason = `Webhook returned HTTP ${response.status}.`
-        await waitForRetry()
-        response = await postSignedWebhook(destination, input.eventType, payload)
-      }
-      if (!response.ok) failureReason = `Webhook returned HTTP ${response.status}.`
-    } catch (error) {
-      failureReason = error instanceof Error ? error.message : "Webhook delivery failed."
-      await waitForRetry()
-      try {
-        response = await postSignedWebhook(destination, input.eventType, payload)
-        failureReason = response.ok ? undefined : `Webhook returned HTTP ${response.status}.`
-      } catch (retryError) {
-        failureReason = retryError instanceof Error ? retryError.message : "Webhook delivery failed."
-      }
-    }
-
-    const isSent = Boolean(response?.ok)
-    if (isSent) sent += 1
-    else failed += 1
-
-    await prisma.alertNotificationDelivery.create({
-      data: {
-        channel: "webhook",
-        recipient: getWebhookRecipient(destination),
-        status: isSent ? "SENT" : "FAILED",
-        provider: "webhook",
-        providerId: deliveryId,
-        failureReason: isSent ? undefined : failureReason ?? "Webhook delivery failed.",
-        alertEventId: input.alertEventId,
-        attemptedAt,
-        sentAt: isSent ? new Date() : undefined,
-      },
-    })
+  if (!destination?.enabled) return { skipped: true, reason: "Webhook destination is disabled or unavailable." }
+  if (!normalizeWebhookEvents(destination.eventFilters).includes(input.eventType)) {
+    return { skipped: true, reason: "Webhook destination no longer accepts this event." }
   }
 
-  return { attempted: matchingDestinations.length, sent, failed }
+  const payload = await buildPayload(prisma, input, input.jobId)
+  if (!payload) return { skipped: true, reason: "Webhook source data is unavailable." }
+  const response = await postSignedWebhook(destination, input.eventType, payload)
+  if (!response.ok) throw new Error(`Webhook returned HTTP ${response.status}.`)
+  return { skipped: false, providerId: input.jobId }
 }

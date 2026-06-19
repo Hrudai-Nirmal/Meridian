@@ -2,9 +2,8 @@ import { NextResponse } from "next/server"
 
 import { getApiUserId } from "@/lib/api-session"
 import { createAuditLog } from "@/lib/audit-log"
+import { dispatchNotificationJobs, queueAlertNotificationJobs } from "@/lib/notification-jobs"
 import { getPrisma } from "@/lib/prisma"
-import { deliverProjectSlack } from "@/lib/slack"
-import { deliverProjectWebhooks } from "@/lib/webhooks"
 
 export async function PATCH(_: Request, context: { params: Promise<{ alertId: string }> }) {
   const { error, userId } = await getApiUserId()
@@ -75,26 +74,20 @@ export async function PATCH(_: Request, context: { params: Promise<{ alertId: st
     return NextResponse.json({ error: "Alert resolution access denied." }, { status: 403 })
   }
 
-  await prisma.alertEvent.update({
-    where: { id: alertId },
-    data: { resolvedAt: new Date() },
+  const jobs = await prisma.$transaction(async (transaction) => {
+    await transaction.alertEvent.update({ where: { id: alertId }, data: { resolvedAt: new Date() } })
+    const queuedJobs = await queueAlertNotificationJobs(transaction, alertId, "alert.resolved")
+    await createAuditLog(transaction, {
+      action: "alert.resolved",
+      entity: "alert",
+      entityId: alertId,
+      projectId,
+      userId,
+      metadata: { title: alert.title, severity: alert.severity },
+    })
+    return queuedJobs
   })
-  await deliverProjectWebhooks(prisma, {
-    eventType: "alert.resolved",
-    alertEventId: alertId,
-  })
-  await deliverProjectSlack(prisma, {
-    eventType: "alert.resolved",
-    alertEventId: alertId,
-  })
-  await createAuditLog(prisma, {
-    action: "alert.resolved",
-    entity: "alert",
-    entityId: alertId,
-    projectId,
-    userId,
-    metadata: { title: alert.title, severity: alert.severity },
-  })
+  await dispatchNotificationJobs(jobs)
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, queuedJobs: jobs.length })
 }
