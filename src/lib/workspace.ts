@@ -11,7 +11,7 @@ import {
   type EndpointNodeData,
   type IconKind,
   type NodeStatus,
-} from "@/lib/argusgrid-data"
+} from "@/lib/meridian-data"
 import { normalizeAlertRuleMetadata, type AlertRuleMode, type AnomalyDirection } from "@/lib/alert-rule-metadata"
 import { getReadinessStatus, type ReadinessStatus } from "@/lib/health"
 import { getPrisma } from "@/lib/prisma"

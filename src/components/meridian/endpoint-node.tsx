@@ -9,7 +9,7 @@ import type { NodeProps } from "@xyflow/react"
 import { Handle, Position } from "@xyflow/react"
 
 import { Badge } from "@/components/ui/badge"
-import { type EndpointNodeData, iconRegistry, statusCopy, statusStyles } from "@/lib/argusgrid-data"
+import { type EndpointNodeData, iconRegistry, statusCopy, statusStyles } from "@/lib/meridian-data"
 import { cn } from "@/lib/utils"
 
 const connectorHandleClasses = cn(

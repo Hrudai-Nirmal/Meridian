@@ -31,11 +31,11 @@ try {
   await publicPage.goto(baseUrl, { waitUntil: "networkidle" })
   const publicText = await publicPage.textContent("body")
   assert(
-    publicText?.includes("Sign in to ArgusGrid") ||
-      publicText?.includes("Connect ArgusGrid") ||
-      publicText?.includes("Set up your ArgusGrid workspace") ||
-      publicText?.includes("ArgusGrid"),
-    "Public app shell did not render an expected ArgusGrid state."
+    publicText?.includes("Sign in to Meridian") ||
+      publicText?.includes("Connect Meridian") ||
+      publicText?.includes("Set up your Meridian workspace") ||
+      publicText?.includes("Meridian"),
+    "Public app shell did not render an expected Meridian state."
   )
   const overflow = await publicPage.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)
   assert(!overflow, "Public page has horizontal overflow at 1440px.")
@@ -100,7 +100,7 @@ try {
     const context = await browser.newContext({ storageState: authState, viewport: { width: 1440, height: 900 } })
     const page = await context.newPage()
     await page.goto(baseUrl, { waitUntil: "networkidle" })
-    await page.getByText("ArgusGrid").first().waitFor({ timeout: 15000 })
+    await page.getByText("Meridian").first().waitFor({ timeout: 15000 })
     await page.getByText("Deployment").click()
     await page.getByText("Deployment readiness").waitFor()
     await page.keyboard.press("Escape")
@@ -119,7 +119,7 @@ try {
       await page.getByText("Rename").click()
       await page.waitForLoadState("networkidle")
       await page.getByText("Team").click()
-      await page.getByPlaceholder("teammate@example.com").fill(`smoke+${suffix}@argusgrid.test`)
+      await page.getByPlaceholder("teammate@example.com").fill(`smoke+${suffix}@meridian.test`)
       await page.getByText("Save invitation").click()
       await page.getByText("Invitation saved.").waitFor()
     }

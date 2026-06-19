@@ -1,6 +1,6 @@
-# ArgusGrid Product Replan
+# Meridian Product Replan
 
-ArgusGrid is now positioned as the AI automation control room for agencies and teams. The early commercial wedge is AI automation agencies that need to prove reliability and ROI to clients.
+Meridian is now positioned as the AI automation control room for agencies and teams. The early commercial wedge is AI automation agencies that need to prove reliability and ROI to clients.
 
 ## Pillars
 

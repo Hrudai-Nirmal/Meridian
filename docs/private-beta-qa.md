@@ -1,6 +1,6 @@
 # Private-Beta QA Checklist
 
-Use this checklist for production validation on `https://argusgrid.hrudainirmal.in`. Create only disposable test projects, test reports, test webhooks, and test Slack destinations.
+Use this checklist for production validation on `https://meridian.hrudainirmal.in`. Create only disposable test projects, test reports, test webhooks, and test Slack destinations.
 
 ## Setup
 
@@ -111,6 +111,6 @@ Use this checklist for production validation on `https://argusgrid.hrudainirmal.
 
 - Test desktop at 1440px wide and a smaller laptop/tablet width.
 - Toggle light/dark mode and confirm readable text, borders, controls, graph dots, and report surfaces.
-- Run `SMOKE_BASE_URL="https://argusgrid.hrudainirmal.in" npm run test:smoke`.
+- Run `SMOKE_BASE_URL="https://meridian.hrudainirmal.in" npm run test:smoke`.
 - After Vercel deploys `main`, manually dispatch the GitHub Actions `Production smoke` workflow.
 - Record failures as separate fix tasks with reproduction steps and screenshots when useful.

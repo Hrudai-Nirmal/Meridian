@@ -29,9 +29,9 @@ export async function POST() {
 
   const result = await sendEmailWithDeliveryLog(prisma, {
     to: [user.email],
-    subject: "[ArgusGrid] Test alert email",
+    subject: "[Meridian] Test alert email",
     text: [
-      "ArgusGrid test alert email",
+      "Meridian test alert email",
       "",
       "This confirms that the deployed email notification path can reach your account.",
       "",

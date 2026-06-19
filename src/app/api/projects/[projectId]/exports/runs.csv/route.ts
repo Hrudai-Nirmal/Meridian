@@ -55,7 +55,7 @@ export async function GET(request: Request, context: { params: Promise<{ project
     ])
   )
 
-  return csvResponse("argusgrid-runs.csv", csv, {
+  return csvResponse("meridian-runs.csv", csv, {
     rowLimit: bounds.value.limit,
     rowCount: runs.length,
     truncated: runsWithSentinel.length > bounds.value.limit,

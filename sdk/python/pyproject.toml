@@ -1,9 +1,9 @@
 [project]
-name = "argusgrid"
+name = "meridian"
 version = "0.1.0"
-description = "Python tracing SDK for ArgusGrid AI automation telemetry."
+description = "Python tracing SDK for Meridian AI automation telemetry."
 requires-python = ">=3.9"
-authors = [{ name = "ArgusGrid" }]
+authors = [{ name = "Meridian" }]
 
 [build-system]
 requires = ["setuptools>=68"]

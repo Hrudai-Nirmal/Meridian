@@ -113,11 +113,11 @@ const edges = [
 
 async function main() {
   const user = await prisma.user.upsert({
-    where: { email: process.env.SEED_USER_EMAIL ?? "demo@argusgrid.local" },
+    where: { email: process.env.SEED_USER_EMAIL ?? "demo@meridian.local" },
     update: {},
     create: {
-      email: process.env.SEED_USER_EMAIL ?? "demo@argusgrid.local",
-      name: process.env.SEED_USER_NAME ?? "ArgusGrid Demo",
+      email: process.env.SEED_USER_EMAIL ?? "demo@meridian.local",
+      name: process.env.SEED_USER_NAME ?? "Meridian Demo",
     },
   })
 
@@ -211,7 +211,7 @@ async function main() {
     })),
   })
 
-  console.log("Seeded ArgusGrid demo workspace.")
+  console.log("Seeded Meridian demo workspace.")
 }
 
 main()

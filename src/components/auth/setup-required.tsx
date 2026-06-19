@@ -24,7 +24,7 @@ export function SetupRequired({
           <div className="mb-2 flex size-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
             <Network className="size-6" />
           </div>
-          <CardTitle>Connect ArgusGrid to Neon and GitHub</CardTitle>
+          <CardTitle>Connect Meridian to Neon and GitHub</CardTitle>
           <CardDescription>
             The app is ready for real persistence, but the required environment variables are not configured in this runtime.
           </CardDescription>

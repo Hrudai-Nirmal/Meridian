@@ -1,7 +1,7 @@
 "use client"
 
 /*
- * ArgusGrid's primary authenticated workspace shell: live operations, map editing,
+ * Meridian's primary authenticated workspace shell: live operations, map editing,
  * node setup, alert rules, reports, and team/project controls share this client UI.
  */
 
@@ -76,8 +76,8 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { CostQualityChart, IncidentHeatmap, LatencyChart } from "@/components/argusgrid/charts"
-import { EndpointGraphNode } from "@/components/argusgrid/endpoint-node"
+import { CostQualityChart, IncidentHeatmap, LatencyChart } from "@/components/meridian/charts"
+import { EndpointGraphNode } from "@/components/meridian/endpoint-node"
 import { anomalyDefaults, type AlertRuleMode, type AnomalyDirection } from "@/lib/alert-rule-metadata"
 import {
   allEndpointNodes,
@@ -85,7 +85,7 @@ import {
   statusCopy,
   type EndpointNodeData,
   type NodeStatus,
-} from "@/lib/argusgrid-data"
+} from "@/lib/meridian-data"
 import { integrationTemplates, type IntegrationTemplate } from "@/lib/integration-templates"
 import { cn } from "@/lib/utils"
 import type { WorkspacePayload } from "@/lib/workspace"
@@ -151,7 +151,7 @@ function runBadgeVariant(status: string): "destructive" | "secondary" | "outline
 }
 
 function buildIntegrationSnippet(template: IntegrationTemplate, nodeId: string) {
-  const ingestUrl = "https://argusgrid.hrudainirmal.in/api/ingest/runs"
+  const ingestUrl = "https://meridian.hrudainirmal.in/api/ingest/runs"
 
   if (template.id === "dify") {
     return `POST ${ingestUrl}
@@ -194,16 +194,16 @@ Content-Type: application/json
   }
 
   if (template.id === "github-actions") {
-    return `- name: Report workflow run to ArgusGrid
+    return `- name: Report workflow run to Meridian
   if: always()
   shell: bash
   env:
-    ARGUSGRID_TOKEN: \${{ secrets.ARGUSGRID_INGESTION_TOKEN }}
+    MERIDIAN_TOKEN: \${{ secrets.MERIDIAN_INGESTION_TOKEN }}
   run: |
     STATUS="success"
     if [ "\${{ job.status }}" != "success" ]; then STATUS="failed"; fi
     curl -X POST "${ingestUrl}" \\
-      -H "Authorization: Bearer $ARGUSGRID_TOKEN" \\
+      -H "Authorization: Bearer $MERIDIAN_TOKEN" \\
       -H "Content-Type: application/json" \\
       -d '{
         "nodeId": "${nodeId}",
@@ -225,7 +225,7 @@ Content-Type: application/json
   }
 }
 
-ArgusGrid polling preset:
+Meridian polling preset:
 Endpoint URL: https://api.example.com/automation/health
 JSONPath: $.health.score
 Transform: none
@@ -257,7 +257,7 @@ function buildIntegrationTestPayload(template: IntegrationTemplate, node: Endpoi
 
   return {
     nodeId: node.id,
-    externalId: `argusgrid-test-${template.id}-${finishedAt.getTime()}`,
+    externalId: `meridian-test-${template.id}-${finishedAt.getTime()}`,
     status: "success",
     startedAt: startedAt.toISOString(),
     finishedAt: finishedAt.toISOString(),
@@ -522,7 +522,11 @@ const alertTimelineWindows: Record<Exclude<AlertTimelineFilter, "all">, number> 
 
 function getInitialTheme(): "light" | "dark" {
   if (typeof window === "undefined") return "dark"
-  const storedTheme = window.localStorage.getItem("argusgrid-theme")
+  const storedTheme = window.localStorage.getItem("meridian-theme") ?? window.localStorage.getItem("argusgrid-theme")
+  if (!window.localStorage.getItem("meridian-theme") && storedTheme) {
+    window.localStorage.setItem("meridian-theme", storedTheme)
+    window.localStorage.removeItem("argusgrid-theme")
+  }
   return storedTheme === "light" || storedTheme === "dark" ? storedTheme : "dark"
 }
 
@@ -611,7 +615,7 @@ function formatSignalNumber(value: number | null, unit?: string) {
   return unit ? `${formatted} ${unit}` : formatted
 }
 
-export function ArgusGridDashboard({
+export function MeridianDashboard({
   initialWorkspace,
   currentUser,
 }: {
@@ -1630,7 +1634,7 @@ export function ArgusGridDashboard({
     context.fillText(initialWorkspace.project.name, padding, 48)
     context.font = "400 13px Arial"
     context.fillStyle = "#6b7280"
-    context.fillText("ArgusGrid AI automation control room map", padding, 72)
+    context.fillText("Meridian AI automation control room map", padding, 72)
 
     const centers = new Map(graphNodes.map((node) => [
       node.id,
@@ -1687,7 +1691,7 @@ export function ArgusGridDashboard({
     if (!dataUrl) return
 
     const link = document.createElement("a")
-    link.download = `${initialWorkspace.project.slug}-argusgrid-map.png`
+    link.download = `${initialWorkspace.project.slug}-meridian-map.png`
     link.href = dataUrl
     link.click()
     setActionMessage("Project map exported as PNG.")
@@ -1769,7 +1773,7 @@ export function ArgusGridDashboard({
   const toggleTheme = () => {
     const next = theme === "light" ? "dark" : "light"
     setTheme(next)
-    window.localStorage.setItem("argusgrid-theme", next)
+    window.localStorage.setItem("meridian-theme", next)
   }
 
   const openDashboardSection = (section: DashboardSection) => {
@@ -1801,7 +1805,7 @@ export function ArgusGridDashboard({
             <Network className="size-5" />
           </div>
           <div>
-            <div className="text-base font-semibold">ArgusGrid</div>
+            <div className="text-base font-semibold">Meridian</div>
             <div className="text-xs text-muted-foreground">AI workflow monitoring</div>
           </div>
         </div>
@@ -2133,7 +2137,7 @@ export function ArgusGridDashboard({
                     Workflow telemetry
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">
-                    Project-scoped ingestion tokens let external automations post workflow runs to ArgusGrid.
+                    Project-scoped ingestion tokens let external automations post workflow runs to Meridian.
                   </div>
                   <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
                     <Input
@@ -3262,7 +3266,7 @@ function RunsSection({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-xl font-semibold">Workflow Runs</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Recent run telemetry posted through ArgusGrid ingestion tokens.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Recent run telemetry posted through Meridian ingestion tokens.</p>
           </div>
           <Button variant="outline" onClick={onRefreshProject} disabled={isRefreshingProject}>
             <Activity data-icon="inline-start" />
@@ -3692,8 +3696,8 @@ function IntegrationsSection({
   const selectedTemplate = integrationTemplates.find((template) => template.id === selectedTemplateId) ?? integrationTemplates[0]
   const snippet = selectedNode ? buildIntegrationSnippet(selectedTemplate, selectedNode.id) : "Select a node on the Automation Map first."
   const envBlock = selectedTemplate.setupKind === "telemetry"
-    ? `ARGUSGRID_INGESTION_TOKEN=<ingestion-token>\nARGUSGRID_NODE_ID=${selectedNode?.id ?? "<node-id>"}\nARGUSGRID_INGEST_URL=https://argusgrid.hrudainirmal.in/api/ingest/runs`
-    : `ARGUSGRID_ENDPOINT_URL=https://api.example.com/automation/health\nARGUSGRID_JSONPATH=${selectedTemplate.preset?.jsonPath ?? "$.value"}\nARGUSGRID_THRESHOLD=${selectedTemplate.preset?.threshold ?? "> 90"}`
+    ? `MERIDIAN_INGESTION_TOKEN=<ingestion-token>\nMERIDIAN_NODE_ID=${selectedNode?.id ?? "<node-id>"}\nMERIDIAN_INGEST_URL=https://meridian.hrudainirmal.in/api/ingest/runs`
+    : `MERIDIAN_ENDPOINT_URL=https://api.example.com/automation/health\nMERIDIAN_JSONPATH=${selectedTemplate.preset?.jsonPath ?? "$.value"}\nMERIDIAN_THRESHOLD=${selectedTemplate.preset?.threshold ?? "> 90"}`
   const workflowTemplates = integrationTemplates.filter((template) => template.setupKind === "telemetry")
   const metricTemplates = integrationTemplates.filter((template) => template.setupKind === "metric")
   const readiness = selectedNode
@@ -4626,7 +4630,7 @@ function SettingsSection({
             <CardContent className="grid gap-3">
               <div className="grid gap-2 sm:grid-cols-[1fr_1.4fr]">
                 <Input value={webhookName} onChange={(event) => onWebhookNameChange(event.target.value)} aria-label="Webhook name" disabled={!canEditProject} />
-                <Input value={webhookUrl} onChange={(event) => onWebhookUrlChange(event.target.value)} placeholder="https://hooks.example.com/argusgrid" disabled={!canEditProject} />
+                <Input value={webhookUrl} onChange={(event) => onWebhookUrlChange(event.target.value)} placeholder="https://hooks.example.com/meridian" disabled={!canEditProject} />
               </div>
               <div className="grid gap-2 rounded-lg border bg-muted/20 p-3 text-xs">
                 <div className="font-medium">Events</div>
@@ -4879,7 +4883,7 @@ function NodeInspector({
     null,
     2
   )
-  const telemetryCurl = `curl -X POST "https://argusgrid.hrudainirmal.in/api/ingest/runs" \\
+  const telemetryCurl = `curl -X POST "https://meridian.hrudainirmal.in/api/ingest/runs" \\
   -H "Authorization: Bearer <ingestion-token>" \\
   -H "Content-Type: application/json" \\
   -d '${telemetryPayload}'`
@@ -5733,7 +5737,7 @@ function NodeInspector({
                                 </div>
                               ) : (
                                 <div>
-                                  ArgusGrid will save the rule now, then wait for {anomalyDefaults.minSamples} prior samples before opening anomaly incidents.
+                                  Meridian will save the rule now, then wait for {anomalyDefaults.minSamples} prior samples before opening anomaly incidents.
                                 </div>
                               )}
                             </div>

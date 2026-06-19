@@ -143,7 +143,7 @@ export async function notifyNewAlert(prisma: PrismaClient, alert: AlertEmailInpu
 
   return sendEmailWithDeliveryLog(prisma, {
     to: recipients,
-    subject: `[ArgusGrid] ${alert.severity}: ${alert.title}`,
+    subject: `[Meridian] ${alert.severity}: ${alert.title}`,
     text: [
         `${alert.title}`,
         "",

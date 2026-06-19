@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ArgusGrid",
+  title: "Meridian",
   description: "The AI automation control room for agencies and teams.",
 };
 

@@ -1,7 +1,7 @@
 {
-  "name": "@argusgrid/sdk",
+  "name": "@meridian/sdk",
   "version": "0.1.0",
-  "description": "JavaScript tracing SDK for ArgusGrid AI automation telemetry.",
+  "description": "JavaScript tracing SDK for Meridian AI automation telemetry.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

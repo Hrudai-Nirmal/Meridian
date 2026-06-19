@@ -88,13 +88,13 @@ function buildSlackMessage(payload: SlackAlertPayload) {
   const nodeOrRule = payload.node?.label ?? payload.rule?.name ?? "Project"
 
   return {
-    text: `[ArgusGrid] ${statusLabel}: ${title}`,
+    text: `[Meridian] ${statusLabel}: ${title}`,
     blocks: [
       {
         type: "header",
         text: {
           type: "plain_text",
-          text: `ArgusGrid ${statusLabel} Alert`,
+          text: `Meridian ${statusLabel} Alert`,
           emoji: true,
         },
       },
@@ -121,7 +121,7 @@ function buildSlackMessage(payload: SlackAlertPayload) {
         elements: [
           {
             type: "mrkdwn",
-            text: `ArgusGrid delivery ${payload.deliveryId}`,
+            text: `Meridian delivery ${payload.deliveryId}`,
           },
         ],
       },
@@ -139,7 +139,7 @@ async function postSlackWebhook(destination: ProjectSlackDestination, payload: S
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "User-Agent": "ArgusGrid-Slack/1.0",
+      "User-Agent": "Meridian-Slack/1.0",
     },
     body: JSON.stringify(buildSlackMessage(payload)),
   })
@@ -165,8 +165,8 @@ async function buildSlackPayload(prisma: PrismaClient, input: DeliverSlackInput,
       source: "Slack test",
       alert: {
         id: "test",
-        title: "ArgusGrid Slack test",
-        message: "This confirms that ArgusGrid can reach this Slack incoming webhook.",
+        title: "Meridian Slack test",
+        message: "This confirms that Meridian can reach this Slack incoming webhook.",
         severity: "INFO",
         status: "test",
         createdAt: now,

@@ -5,7 +5,7 @@
 import { PrismaClient } from "@prisma/client"
 
 const globalForPrisma = globalThis as unknown as {
-  argusGridPrisma?: PrismaClient
+  meridianPrisma?: PrismaClient
 }
 
 function getDatabaseUrl() {
@@ -34,16 +34,16 @@ export function hasDatabaseConfig() {
 export function getPrisma() {
   const databaseUrl = getDatabaseUrl()
   if (!databaseUrl) {
-    throw new Error("A database URL is required for database-backed ArgusGrid features.")
+    throw new Error("A database URL is required for database-backed Meridian features.")
   }
 
-  if (!globalForPrisma.argusGridPrisma) {
-    globalForPrisma.argusGridPrisma = new PrismaClient({
+  if (!globalForPrisma.meridianPrisma) {
+    globalForPrisma.meridianPrisma = new PrismaClient({
       datasources: {
         db: { url: databaseUrl },
       },
     })
   }
 
-  return globalForPrisma.argusGridPrisma
+  return globalForPrisma.meridianPrisma
 }

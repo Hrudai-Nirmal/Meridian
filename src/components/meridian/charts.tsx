@@ -2,7 +2,7 @@
 
 import ReactECharts from "echarts-for-react"
 
-import type { EndpointNodeData } from "@/lib/argusgrid-data"
+import type { EndpointNodeData } from "@/lib/meridian-data"
 
 const axisLabel = { color: "#64748b", fontSize: 10 }
 const grid = { left: 32, right: 12, top: 22, bottom: 26 }

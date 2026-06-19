@@ -36,6 +36,9 @@ export function csvResponse(filename: string, csv: string, metadata?: CsvRespons
       "Cache-Control": "no-store",
       ...(metadata
         ? {
+            "X-Meridian-Row-Limit": String(metadata.rowLimit),
+            "X-Meridian-Row-Count": String(metadata.rowCount),
+            "X-Meridian-Truncated": String(metadata.truncated),
             "X-ArgusGrid-Row-Limit": String(metadata.rowLimit),
             "X-ArgusGrid-Row-Count": String(metadata.rowCount),
             "X-ArgusGrid-Truncated": String(metadata.truncated),

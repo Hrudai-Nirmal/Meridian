@@ -1,4 +1,4 @@
-import { allEndpointNodes, graphEdges, projectCategories, projectSummary } from "@/lib/argusgrid-data"
+import { allEndpointNodes, graphEdges, projectCategories, projectSummary } from "@/lib/meridian-data"
 
 export async function GET() {
   return Response.json({

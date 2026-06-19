@@ -1,26 +1,27 @@
-export type ArgusGridRunStatus = "success" | "degraded" | "failed" | "running" | "queued"
+export type MeridianRunStatus = "success" | "degraded" | "failed" | "running" | "queued"
 
-export type ArgusGridStep = {
+export type MeridianStep = {
   name: string
-  status: ArgusGridRunStatus
+  status: MeridianRunStatus
   latencyMs?: number
   toolName?: string
 }
 
-export type ArgusGridRunPayload = {
+export type MeridianRunPayload = {
   nodeId: string
   externalId?: string
-  status: ArgusGridRunStatus
+  status: MeridianRunStatus
   startedAt: string
   finishedAt?: string
   costUsd?: number
   tokens?: number
-  steps?: ArgusGridStep[]
+  steps?: MeridianStep[]
 }
 
-export type ArgusGridClientOptions = {
+export type MeridianClientOptions = {
   token: string
   baseUrl?: string
+  onError?: (error: unknown) => void
 }
 
 export type TraceOptions = {
@@ -31,10 +32,11 @@ export type TraceOptions = {
   tokens?: number
 }
 
-export function createArgusGrid(options: ArgusGridClientOptions) {
-  const baseUrl = (options.baseUrl ?? "https://argusgrid.hrudainirmal.in").replace(/\/$/, "")
+/** Creates a Meridian telemetry client for run ingestion and tracing. */
+export function createMeridian(options: MeridianClientOptions) {
+  const baseUrl = (options.baseUrl ?? "https://meridian.hrudainirmal.in").replace(/\/$/, "")
 
-  async function ingestRun(payload: ArgusGridRunPayload) {
+  async function ingestRun(payload: MeridianRunPayload) {
     const response = await fetch(`${baseUrl}/api/ingest/runs`, {
       method: "POST",
       headers: {
@@ -45,14 +47,14 @@ export function createArgusGrid(options: ArgusGridClientOptions) {
     })
 
     if (!response.ok) {
-      throw new Error(`ArgusGrid ingestion failed with HTTP ${response.status}`)
+      throw new Error(`Meridian ingestion failed with HTTP ${response.status}`)
     }
   }
 
   async function trace<T>(traceOptions: TraceOptions, operation: () => Promise<T> | T): Promise<T> {
     const startedAt = new Date().toISOString()
     const started = performance.now()
-    let status: ArgusGridRunStatus = "success"
+    let status: MeridianRunStatus = "success"
 
     try {
       return await operation()
@@ -61,7 +63,7 @@ export function createArgusGrid(options: ArgusGridClientOptions) {
       throw error
     } finally {
       const latencyMs = Math.round(performance.now() - started)
-      const payload: ArgusGridRunPayload = {
+      const payload: MeridianRunPayload = {
         nodeId: traceOptions.nodeId,
         externalId: traceOptions.externalId,
         status,
@@ -79,9 +81,26 @@ export function createArgusGrid(options: ArgusGridClientOptions) {
         ],
       }
 
-      ingestRun(payload).catch(() => undefined)
+      ingestRun(payload).catch((error: unknown) => {
+        if (options.onError) {
+          options.onError(error)
+          return
+        }
+        console.warn("Meridian telemetry delivery failed.", error)
+      })
     }
   }
 
   return { ingestRun, trace }
 }
+
+/** @deprecated Use MeridianRunStatus. */
+export type ArgusGridRunStatus = MeridianRunStatus
+/** @deprecated Use MeridianStep. */
+export type ArgusGridStep = MeridianStep
+/** @deprecated Use MeridianRunPayload. */
+export type ArgusGridRunPayload = MeridianRunPayload
+/** @deprecated Use MeridianClientOptions. */
+export type ArgusGridClientOptions = MeridianClientOptions
+/** @deprecated Use createMeridian. */
+export const createArgusGrid = createMeridian

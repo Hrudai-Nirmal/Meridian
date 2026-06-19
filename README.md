@@ -1,6 +1,6 @@
-# ArgusGrid
+# Meridian
 
-ArgusGrid is the AI automation control room for agencies and teams. Projects open to a graph-first automation map; selecting a node shows health, API metadata, alerts, recent runs, cost, latency, token usage, and quality signals so teams can prove whether automations are reliable and worth running.
+Meridian is the AI automation control room for agencies and teams. Projects open to a graph-first automation map; selecting a node shows health, API metadata, alerts, recent runs, cost, latency, token usage, and quality signals so teams can prove whether automations are reliable and worth running.
 
 ## Stack
 
@@ -15,25 +15,25 @@ ArgusGrid is the AI automation control room for agencies and teams. Projects ope
 Set these values in Vercel for the deployed app:
 
 ```bash
-DATABASE_URL="postgresql://USER:PASSWORD@HOST/argusgrid?sslmode=require"
-NEXTAUTH_URL="https://your-vercel-domain.vercel.app"
+DATABASE_URL="postgresql://USER:PASSWORD@HOST/meridian?sslmode=require"
+NEXTAUTH_URL="https://meridian.hrudainirmal.in"
 NEXTAUTH_SECRET="replace-with-a-long-random-secret"
 ENCRYPTION_KEY="replace-with-a-long-random-encryption-key"
 GITHUB_ID="replace-with-github-oauth-client-id"
 GITHUB_SECRET="replace-with-github-oauth-client-secret"
 CRON_SECRET="replace-with-a-long-random-cron-secret"
 RESEND_API_KEY="optional-resend-api-key-for-alert-email"
-ALERT_FROM_EMAIL="ArgusGrid <alerts@example.com>"
+ALERT_FROM_EMAIL="Meridian <alerts@meridian.hrudainirmal.in>"
 ```
 
-ArgusGrid production uses the independently managed Neon project `Meridian` through the server-only `DATABASE_URL`. The Prisma client still supports an integration-managed `NeonDB_POSTGRES_PRISMA_URL` when present, but that variable must not remain configured after an independent-database cutover because it takes precedence. Database and authentication failures emit structured, secret-safe runtime logs with incident IDs; `/api/health` returns matching safe issue metadata, and the login screen blocks OAuth while session persistence is unavailable.
+Meridian production uses the independently managed Neon project `Meridian` through the server-only `DATABASE_URL`. The Prisma client still supports an integration-managed `NeonDB_POSTGRES_PRISMA_URL` when present, but that variable must not remain configured after an independent-database cutover because it takes precedence. Database and authentication failures emit structured, secret-safe runtime logs with incident IDs; `/api/health` returns matching safe issue metadata, and the login screen blocks OAuth while session persistence is unavailable.
 
 Production diagnosis and recovery steps live in `docs/incident-response.md`.
 
 GitHub OAuth callback URL:
 
 ```text
-https://your-vercel-domain.vercel.app/api/auth/callback/github
+https://meridian.hrudainirmal.in/api/auth/callback/github
 ```
 
 ## Vercel Deployment
@@ -50,19 +50,19 @@ Run production migrations with:
 npm run prisma:deploy
 ```
 
-Vercel cron is configured in `vercel.json` to call `/api/cron/poll` daily as a backup for Hobby-compatible limits. The primary high-frequency scheduler can be one ArgusGrid-owned cron-job.org job that calls the same route every minute. The route requires `CRON_SECRET` and accepts either:
+Vercel cron is configured in `vercel.json` to call `/api/cron/poll` daily as a backup for Hobby-compatible limits. The primary high-frequency scheduler can be one Meridian-owned cron-job.org job that calls the same route every minute. The route requires `CRON_SECRET` and accepts either:
 
 - `Authorization: Bearer <CRON_SECRET>`
-- HTTP Basic auth with username `argusgrid-cron` and password `<CRON_SECRET>`
+- HTTP Basic auth with username `meridian-cron` and password `<CRON_SECRET>`
 
 cron-job.org setup:
 
 ```text
-Title: ArgusGrid production poll
-URL: https://argusgrid.hrudainirmal.in/api/cron/poll
+Title: Meridian production poll
+URL: https://meridian.hrudainirmal.in/api/cron/poll
 Schedule: every minute
 Method: GET
-HTTP auth username: argusgrid-cron
+HTTP auth username: meridian-cron
 HTTP auth password: production CRON_SECRET
 ```
 
@@ -102,7 +102,7 @@ The dashboard header and Control Room show the live stream state, last checked t
 Owners/admins can create project-scoped workflow telemetry tokens from Deployment diagnostics. The raw token is shown once, then only its prefix/hash metadata is retained. External automations can post run telemetry with:
 
 ```bash
-curl -X POST "https://your-vercel-domain.vercel.app/api/ingest/runs" \
+curl -X POST "https://meridian.hrudainirmal.in/api/ingest/runs" \
   -H "Authorization: Bearer <ingestion-token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -124,35 +124,37 @@ The node inspector includes Basic and Advanced integration templates for Dify, n
 
 Alert rules support static thresholds and anomaly baselines. Anomaly rules learn from the previous 7 days of metric samples, require at least 8 prior samples, and fire when the next value is more than 2 standard deviations outside the selected direction. The node inspector's alert-rule dialog previews the selected mapping's sample count, baseline mean, standard deviation, watch band, and whether more samples are needed before anomaly alerts can fire.
 
-Project editors can create outbound webhook destinations from `Integrations` and test them from `Integrations` or `Testing`. ArgusGrid sends `alert.opened`, `alert.resolved`, and `webhook.test` JSON payloads to enabled destinations, retries once on failure, and records webhook delivery status in alert details and Logs. Signing secrets are shown once at creation and are not exposed again.
+Project editors can create outbound webhook destinations from `Integrations` and test them from `Integrations` or `Testing`. Meridian sends `alert.opened`, `alert.resolved`, and `webhook.test` JSON payloads to enabled destinations, retries once on failure, and records webhook delivery status in alert details and Logs. Signing secrets are shown once at creation and are not exposed again.
 
 Webhook receivers can verify these headers:
 
 ```text
-X-ArgusGrid-Event: alert.opened | alert.resolved | webhook.test
-X-ArgusGrid-Delivery: delivery UUID
-X-ArgusGrid-Timestamp: ISO timestamp
-X-ArgusGrid-Signature: sha256=<hmac>
+X-Meridian-Event: alert.opened | alert.resolved | webhook.test
+X-Meridian-Delivery: delivery UUID
+X-Meridian-Timestamp: ISO timestamp
+X-Meridian-Signature: sha256=<hmac>
 ```
 
 The signature is HMAC SHA-256 over `timestamp.rawJsonBody` using the destination signing secret.
 
-Native Slack alert destinations also live in `Integrations`, using Slack incoming webhook URLs. Create a Slack destination with a friendly name, a `https://hooks.slack.com/...` incoming webhook URL, minimum severity, and event filters for `alert.opened`, `alert.resolved`, and `slack.test`. The webhook URL is encrypted, write-only, and never returned to the browser after creation. ArgusGrid sends Slack Block Kit messages for matching enabled destinations, retries once on failure, and records delivery evidence in alert details and Logs.
+During the rename transition, webhook deliveries also include the deprecated `X-ArgusGrid-*` header aliases and an `argusgrid` payload metadata alias. Ingestion accepts both `X-Meridian-Token` and the deprecated `X-ArgusGrid-Token`; bearer authentication is unchanged. New integrations should use Meridian names.
+
+Native Slack alert destinations also live in `Integrations`, using Slack incoming webhook URLs. Create a Slack destination with a friendly name, a `https://hooks.slack.com/...` incoming webhook URL, minimum severity, and event filters for `alert.opened`, `alert.resolved`, and `slack.test`. The webhook URL is encrypted, write-only, and never returned to the browser after creation. Meridian sends Slack Block Kit messages for matching enabled destinations, retries once on failure, and records delivery evidence in alert details and Logs.
 
 Slack setup flow:
 
 1. In Slack, create an incoming webhook for the target channel.
-2. In ArgusGrid, open `Integrations` -> `Slack alerts`.
+2. In Meridian, open `Integrations` -> `Slack alerts`.
 3. Enter a destination name and paste the Slack incoming webhook URL.
 4. Choose the minimum severity and event filters, then click `Add Slack destination`.
 5. Use `Send test` in `Integrations` or `Testing` and confirm Slack receives the message.
 6. Trigger and resolve a demo alert, then confirm alert details and Logs show Slack delivery status without exposing the URL.
 
-SDK previews live in `sdk/python` and `sdk/js`. See `docs/sdk.md` for one-minute `@argusgrid.trace` examples.
+SDK previews live in `sdk/python` and `sdk/js`. See `docs/sdk.md` for one-minute `@meridian.trace` examples.
 
 ## Release And CI
 
-ArgusGrid uses GitHub Actions as the first enterprise-readiness gate. CI runs on pull requests and pushes to `main` with dependency install, Prisma client generation, typecheck, lint, and production build. A separate `Production smoke` workflow is manual so it can be dispatched after Vercel finishes deploying `main`.
+Meridian uses GitHub Actions as the first enterprise-readiness gate. CI runs on pull requests and pushes to `main` with dependency install, Prisma client generation, typecheck, lint, and production build. A separate `Production smoke` workflow is manual so it can be dispatched after Vercel finishes deploying `main`.
 
 `/api/health` includes safe build metadata: app version, commit SHA, optional build time, and environment. Testing -> Deployment readiness renders the same metadata for operators. These fields must never include database URLs, OAuth secrets, encryption keys, cron secrets, email provider keys, Slack webhook URLs, webhook signing secrets, raw ingestion tokens, or encrypted payloads.
 
@@ -163,19 +165,19 @@ Release notes start in `CHANGELOG.md`. Keep `package.json` semver and the change
 Run public smoke checks against a deployment:
 
 ```bash
-SMOKE_BASE_URL="https://your-vercel-domain.vercel.app" npm run test:smoke
+SMOKE_BASE_URL="https://meridian.hrudainirmal.in" npm run test:smoke
 ```
 
 Authenticated smoke checks can use a Playwright storage state file:
 
 ```bash
-SMOKE_BASE_URL="https://your-vercel-domain.vercel.app" SMOKE_AUTH_STATE="./playwright-auth.json" npm run test:smoke
+SMOKE_BASE_URL="https://meridian.hrudainirmal.in" SMOKE_AUTH_STATE="./playwright-auth.json" npm run test:smoke
 ```
 
 Optional mutation checks create private-beta test data:
 
 ```bash
-SMOKE_BASE_URL="https://your-vercel-domain.vercel.app" SMOKE_AUTH_STATE="./playwright-auth.json" SMOKE_MUTATION=1 npm run test:smoke
+SMOKE_BASE_URL="https://meridian.hrudainirmal.in" SMOKE_AUTH_STATE="./playwright-auth.json" SMOKE_MUTATION=1 npm run test:smoke
 ```
 
 Manual production smoke workflow:
@@ -240,6 +242,6 @@ npm run dev
 
 ## Private Beta Scope
 
-On first GitHub login, ArgusGrid creates a personal organization and owner membership, then shows onboarding to confirm organization/project names and choose demo or blank setup.
+On first GitHub login, Meridian creates a personal organization and owner membership, then shows onboarding to confirm organization/project names and choose demo or blank setup.
 
 The app now includes project management, team invitation acceptance, member management, encrypted API credential storage, guided metric mapping tests, visible edit-mode map connection handles with editable link labels, focused basic/advanced integration templates, compact threshold/anomaly alert-rule management with baseline previews, signed outbound alert webhooks, native Slack incoming-webhook alerts, cron/manual polling, SSE-first live update signals with Control Room status and manual fallback, workflow run telemetry ingestion with hashed project tokens, secure client report links, bounded CSV exports, PNG map export, SDK previews, a deterministic demo metric source, real metric cards and trend charts from persisted samples/rollups, first-class Testing and Logs sections, contextual sidebar subsections, audit-backed safe operational logs, raw sample retention cleanup, in-app alerts, Resend email delivery logging/test flow/preferences, and small custom node icon uploads.

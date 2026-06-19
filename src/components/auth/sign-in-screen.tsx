@@ -34,7 +34,7 @@ export function SignInScreen() {
 
       if (!health?.checks?.database) {
         const incidentId = health?.issues?.find((issue: { component?: string }) => issue.component === "database")?.incidentId
-        setAuthError(`ArgusGrid cannot create a secure session because its database is unavailable.${incidentId ? ` Incident ID: ${incidentId}` : ""}`)
+        setAuthError(`Meridian cannot create a secure session because its database is unavailable.${incidentId ? ` Incident ID: ${incidentId}` : ""}`)
         return
       }
       if (!health?.checks?.auth) {
@@ -77,7 +77,7 @@ export function SignInScreen() {
           <div className="mb-2 flex size-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
             <Network className="size-6" />
           </div>
-          <CardTitle>Sign in to ArgusGrid</CardTitle>
+          <CardTitle>Sign in to Meridian</CardTitle>
           <CardDescription>Enter the AI automation control room for live ops, cost, quality, and client proof.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">

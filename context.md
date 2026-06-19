@@ -1,7 +1,7 @@
-# ArgusGrid Context
+# Meridian Context
 
 ## Project Purpose
-ArgusGrid is a PC-first AI automation control room for agencies and teams. The product is graph-first: each project opens to a visual automation map where nodes represent user-labelled services, APIs, tools, or automation endpoints. Selecting a node opens a dashboard inspector for health, runs, cost, latency, quality, alerts, and API parameter mappings. The strategic buyer focus is AI automation agencies that need to prove reliability and ROI to clients, with in-house AI ops teams as the secondary segment.
+Meridian is a PC-first AI automation control room for agencies and teams. The product is graph-first: each project opens to a visual automation map where nodes represent user-labelled services, APIs, tools, or automation endpoints. Selecting a node opens a dashboard inspector for health, runs, cost, latency, quality, alerts, and API parameter mappings. The strategic buyer focus is AI automation agencies that need to prove reliability and ROI to clients, with in-house AI ops teams as the secondary segment.
 
 ## Current Implementation State
 - Scaffolded with Next.js App Router, TypeScript, Tailwind CSS v4, and shadcn/ui base components.
@@ -21,7 +21,7 @@ ArgusGrid is a PC-first AI automation control room for agencies and teams. The p
 - Added compact alert-rule management for persisted node parameter mappings, including severity, threshold expression, enabled state, and source labeling for threshold-driven node health.
 - Added DB-backed custom PNG/SVG node icon uploads with size and MIME validation.
 - Added secured Vercel cron configuration for `/api/cron/poll`; Hobby-compatible schedule is daily.
-- Added cron-job.org-compatible HTTP Basic authentication for `/api/cron/poll` using username `argusgrid-cron` and `CRON_SECRET` as the password, while keeping bearer-token auth and the Vercel daily cron as backup.
+- Added cron-job.org-compatible HTTP Basic authentication for `/api/cron/poll` using username `meridian-cron` and `CRON_SECRET` as the password, while keeping bearer-token auth and the Vercel daily cron as backup.
 - Added safe deployed readiness checks through `/api/health`, dashboard deployment diagnostics, poll execution logging, duplicate-alert prevention, non-JSON polling tolerance, and raw metric sample retention cleanup.
 - Added owner/admin manual project polling for demos, a deterministic demo metric endpoint, and a dashboard shortcut for configuring a known threshold-breach metric.
 - Added real metric dashboards in the node inspector: workspace payloads now include recent `MetricSample` values, hourly `MetricRollup` trend data, freshness labels, threshold context, and seeded visuals only act as fallback when no persisted samples exist.
@@ -61,12 +61,13 @@ ArgusGrid is a PC-first AI automation control room for agencies and teams. The p
 - Reduced idle database transfer after the June 2026 quota incident: scheduled polling now atomically claims only endpoints whose configured cadence is due, caps each batch at 100 nodes, skips poll-history writes when no work is due, and manual project polling remains immediate. Dashboard live checks now use a lower-frequency signal and close while the tab is hidden.
 - Documented the June 2026 Neon network-transfer quota outage and added `docs/incident-response.md` for health checks, incident-ID log correlation, database recovery, and release gates.
 - Migrated the production database on 2026-06-19 from the Vercel-managed Neon resource to the independently owned Neon project `Meridian`: all 32 public tables and exact table row counts were restored, normalized data dumps matched byte-for-byte, the pending enterprise query-index migration was applied, Vercel now uses the independent pooled `DATABASE_URL`, the old Marketplace resource is disconnected but retained temporarily, and required-ready production smoke checks pass.
+- Renamed the product and deployment from ArgusGrid to Meridian on 2026-06-19. The canonical domain is `https://meridian.hrudainirmal.in`; Vercel, GitHub OAuth, Resend, cron-job.org, application branding, SDK previews, CI, reports, notifications, and operational docs use Meridian. Deprecated ArgusGrid webhook headers, ingestion headers, SDK exports, cron username, and build-time variable remain accepted temporarily for integration compatibility.
 - Added Playwright smoke script for public deployed checks, optional authenticated checks, and optional private-beta mutation checks.
 - Added API stubs for project state and REST endpoint test/mapping behavior.
 - If database or GitHub OAuth env vars are missing, the app shows a setup-required screen instead of trying to start Auth.js against incomplete config.
 - Neon Postgres has been connected locally, initial Prisma migration `20260602131024_init` has been applied, and the demo workspace seed has run successfully on 2026-06-02.
 - Local GitHub OAuth configuration is set for `http://localhost:3001`; production deployment uses the Vercel domain and matching GitHub OAuth callback.
-- Added completed ArgusGrid project description to `D:\KnowledgeBases\Projects\project_descriptions.md` on 2026-06-06.
+- Added completed Meridian project description to `D:\KnowledgeBases\Projects\project_descriptions.md` on 2026-06-06.
 
 ## Key Product Decisions
 - Team-first account model with owner/admin/member/viewer roles.

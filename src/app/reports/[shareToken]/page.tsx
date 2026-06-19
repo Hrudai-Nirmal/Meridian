@@ -61,7 +61,7 @@ export default async function ReportPage({ params }: { params: Promise<{ shareTo
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-6 py-8">
         <header className="flex flex-col gap-4 border-b pb-6 lg:flex-row lg:items-end lg:justify-between print:break-after-avoid">
           <div>
-            <div className="text-sm font-medium text-muted-foreground">ArgusGrid client report</div>
+            <div className="text-sm font-medium text-muted-foreground">Meridian client report</div>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight">{report.title}</h1>
             {report.subtitle ? <div className="mt-2 text-base text-muted-foreground">{report.subtitle}</div> : null}
             <p className="mt-2 text-sm text-muted-foreground">
@@ -111,7 +111,7 @@ export default async function ReportPage({ params }: { params: Promise<{ shareTo
               <p className="mt-1 text-sm text-muted-foreground">Visual overview of the monitored workflow components included in this report.</p>
             </div>
             {/* eslint-disable-next-line @next/next/no-img-element -- Report maps are user-generated PNG attachments served from a protected report route. */}
-            <img src={report.mapImageUrl} alt="ArgusGrid automation map" className="max-h-[680px] w-full rounded-lg border object-contain" />
+            <img src={report.mapImageUrl} alt="Meridian automation map" className="max-h-[680px] w-full rounded-lg border object-contain" />
           </section>
         ) : null}
 

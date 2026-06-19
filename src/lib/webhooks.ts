@@ -42,8 +42,13 @@ type AlertWebhookPayload = {
   rule: AlertWebhookRule
   source: string
   alert: AlertWebhookAlert
+  meridian: {
+    product: "Meridian"
+    version: "webhook-v1"
+  }
+  /** @deprecated Retained for existing webhook consumers during the Meridian migration. */
   argusgrid: {
-    product: "ArgusGrid"
+    product: "Meridian"
     version: "webhook-v1"
   }
 }
@@ -112,7 +117,12 @@ async function postSignedWebhook(destination: ProjectWebhookDestination, eventTy
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "User-Agent": "ArgusGrid-Webhooks/1.0",
+      "User-Agent": "Meridian-Webhooks/1.0",
+      "X-Meridian-Event": eventType,
+      "X-Meridian-Delivery": payload.deliveryId,
+      "X-Meridian-Timestamp": timestamp,
+      "X-Meridian-Signature": signature,
+      // Legacy headers keep existing receivers working through the product rename.
       "X-ArgusGrid-Event": eventType,
       "X-ArgusGrid-Delivery": payload.deliveryId,
       "X-ArgusGrid-Timestamp": timestamp,
@@ -142,14 +152,15 @@ async function buildPayload(prisma: PrismaClient, input: DeliverWebhookInput, de
       source: "Webhook test",
       alert: {
         id: "test",
-        title: "ArgusGrid webhook test",
-        message: "This confirms that ArgusGrid can reach this webhook destination.",
+        title: "Meridian webhook test",
+        message: "This confirms that Meridian can reach this webhook destination.",
         severity: "INFO",
         status: "test",
         createdAt: now,
         resolvedAt: null,
       },
-      argusgrid: { product: "ArgusGrid", version: "webhook-v1" },
+      meridian: { product: "Meridian", version: "webhook-v1" },
+      argusgrid: { product: "Meridian", version: "webhook-v1" },
     }
   }
 
@@ -194,7 +205,8 @@ async function buildPayload(prisma: PrismaClient, input: DeliverWebhookInput, de
       createdAt: alert.createdAt.toISOString(),
       resolvedAt: alert.resolvedAt?.toISOString() ?? null,
     },
-    argusgrid: { product: "ArgusGrid", version: "webhook-v1" },
+    meridian: { product: "Meridian", version: "webhook-v1" },
+    argusgrid: { product: "Meridian", version: "webhook-v1" },
   }
 }
 

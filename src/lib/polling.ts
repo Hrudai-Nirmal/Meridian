@@ -533,7 +533,7 @@ export function isCronAuthorized(request: Request) {
 
     const username = credentials.slice(0, separatorIndex)
     const password = credentials.slice(separatorIndex + 1)
-    return username === "argusgrid-cron" && password === configuredSecret
+    return (username === "meridian-cron" || username === "argusgrid-cron") && password === configuredSecret
   } catch {
     return false
   }

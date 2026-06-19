@@ -4,13 +4,13 @@ Use this runbook when sign-in, polling, or other database-backed behavior fails 
 
 ## First Checks
 
-1. Open `https://argusgrid.hrudainirmal.in/api/health`.
+1. Open `https://meridian.hrudainirmal.in/api/health`.
 2. Confirm the deployed `build.commitSha` and inspect `checks` plus `issues`.
 3. Copy any `incidentId`; it is safe to share internally and contains no credential data.
 4. Query Vercel runtime logs:
 
 ```bash
-vercel logs argusgrid.hrudainirmal.in --since 1h --level error --json --scope hrudais-projects-b520d79c
+vercel logs meridian.hrudainirmal.in --since 1h --level error --json --scope hrudais-projects-b520d79c
 ```
 
 Search for the incident ID or structured `event` field. Logs deliberately omit raw database URLs, OAuth payloads, tokens, cookies, passwords, and stack traces.
@@ -22,7 +22,7 @@ Search for the incident ID or structured `event` field. Logs deliberately omit r
 - `DATABASE_SCHEMA_MISMATCH`: Run `npm run prisma:deploy` against the intended database before redeploying.
 - `DATABASE_NOT_CONFIGURED`: Restore the Neon Vercel integration or `DATABASE_URL` environment variable.
 
-ArgusGrid prefers Vercel Neon's managed `NeonDB_POSTGRES_PRISMA_URL` and falls back to `DATABASE_URL`. Never paste connection strings into logs or tickets.
+Meridian prefers Vercel Neon's managed `NeonDB_POSTGRES_PRISMA_URL` and falls back to `DATABASE_URL`. Never paste connection strings into logs or tickets.
 
 ## Authentication Incidents
 

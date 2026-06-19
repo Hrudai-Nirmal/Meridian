@@ -20,7 +20,7 @@ export function ServiceUnavailable({ incidentId }: { incidentId: string }) {
           <div className="mb-2 flex size-12 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
             <AlertTriangle className="size-6" />
           </div>
-          <CardTitle>ArgusGrid is temporarily unavailable</CardTitle>
+          <CardTitle>Meridian is temporarily unavailable</CardTitle>
           <CardDescription>
             A required service could not be reached. Your data has not been changed. Please retry shortly.
           </CardDescription>

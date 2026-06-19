@@ -1,4 +1,4 @@
-import { ArgusGridDashboard } from "@/components/argusgrid/dashboard";
+import { MeridianDashboard } from "@/components/meridian/dashboard";
 import { OnboardingScreen } from "@/components/auth/onboarding-screen";
 import { SignInScreen } from "@/components/auth/sign-in-screen";
 import { ServiceUnavailable } from "@/components/auth/service-unavailable";
@@ -58,5 +58,5 @@ export default async function Home({
     return <SetupRequired databaseReady={databaseReady} githubReady={githubReady} />;
   }
 
-  return <ArgusGridDashboard initialWorkspace={workspace} currentUser={session.user} />;
+  return <MeridianDashboard initialWorkspace={workspace} currentUser={session.user} />;
 }

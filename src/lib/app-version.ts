@@ -24,7 +24,7 @@ export function getAppBuildMetadata(): AppBuildMetadata {
   return {
     version: packageJson.version,
     commitSha: safeValue(process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.GITHUB_SHA, "local"),
-    buildTime: process.env.ARGUSGRID_BUILD_TIME?.trim() || null,
+    buildTime: process.env.MERIDIAN_BUILD_TIME?.trim() || process.env.ARGUSGRID_BUILD_TIME?.trim() || null,
     environment: safeValue(process.env.VERCEL_ENV ?? process.env.NODE_ENV, "development"),
   }
 }
