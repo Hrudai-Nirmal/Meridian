@@ -26,7 +26,7 @@ RESEND_API_KEY="optional-resend-api-key-for-alert-email"
 ALERT_FROM_EMAIL="ArgusGrid <alerts@example.com>"
 ```
 
-On Vercel, ArgusGrid prefers the Neon integration-managed `NeonDB_POSTGRES_PRISMA_URL` when present and falls back to `DATABASE_URL` for local or independently managed Postgres deployments. Database and authentication failures emit structured, secret-safe runtime logs with incident IDs; `/api/health` returns matching safe issue metadata, and the login screen blocks OAuth while session persistence is unavailable.
+ArgusGrid production uses the independently managed Neon project `Meridian` through the server-only `DATABASE_URL`. The Prisma client still supports an integration-managed `NeonDB_POSTGRES_PRISMA_URL` when present, but that variable must not remain configured after an independent-database cutover because it takes precedence. Database and authentication failures emit structured, secret-safe runtime logs with incident IDs; `/api/health` returns matching safe issue metadata, and the login screen blocks OAuth while session persistence is unavailable.
 
 Production diagnosis and recovery steps live in `docs/incident-response.md`.
 
