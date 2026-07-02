@@ -11,7 +11,7 @@ export const processNotificationJob = inngest.createFunction(
     id: "process-notification-job",
     triggers: { event: "meridian/notification.process" },
     retries: 4,
-    concurrency: { limit: 20 },
+    concurrency: { limit: 5 },
     onFailure: async ({ event, error }) => {
       const failedEvent = event.data.event as { data?: { jobId?: string; generation?: number } }
       if (failedEvent.data?.jobId && typeof failedEvent.data.generation === "number") {

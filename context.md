@@ -65,6 +65,7 @@ Meridian is a PC-first AI automation control room for agencies and teams. The pr
 - Added durable notification jobs backed by Postgres and Inngest: alert lifecycle changes transactionally queue one email/Slack/webhook job per destination, Inngest performs five total attempts with backoff, a one-minute sweep recovers undispatched/stale work, and Testing/Logs expose safe queue state with owner/admin retry and cancellation controls.
 - Hardened the Inngest worker endpoint setup state: production `GET`/`POST`/`PUT /api/inngest` now returns a clear `503` while signing credentials are missing, and smoke coverage verifies the route does not degrade into a generic server error.
 - Clarified durable notification testing UX: email delivery cards now label provider status as historical evidence rather than the current test result, test routes expose whether Inngest dispatch was confirmed, and the Testing panel refreshes job state immediately after queueing.
+- Fixed the first production Inngest sync blocker: `process-notification-job` concurrency is capped at 5 to match the current Inngest plan limit; higher app-level concurrency rejected function sync and left jobs queued with zero attempts.
 - Added Playwright smoke script for public deployed checks, optional authenticated checks, and optional private-beta mutation checks.
 - Added API stubs for project state and REST endpoint test/mapping behavior.
 - If database or GitHub OAuth env vars are missing, the app shows a setup-required screen instead of trying to start Auth.js against incomplete config.
