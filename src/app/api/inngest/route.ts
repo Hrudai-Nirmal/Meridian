@@ -18,17 +18,24 @@ function isProductionWorkerConfigured() {
   return process.env.NODE_ENV !== "production" || Boolean(process.env.INNGEST_SIGNING_KEY)
 }
 
-/** Allows function discovery while rejecting production execution without signing configuration. */
-export const GET = handlers.GET
+function getUnconfiguredWorkerResponse() {
+  return Response.json({ error: "Durable jobs are not configured." }, { status: 503 })
+}
+
+/** Allows function discovery only after production signing is configured. */
+export function GET(request: NextRequest, context: Parameters<typeof handlers.GET>[1]) {
+  if (!isProductionWorkerConfigured()) return getUnconfiguredWorkerResponse()
+  return handlers.GET(request, context)
+}
 
 /** Rejects worker execution until production signing is configured, then delegates signature verification to Inngest. */
-export async function POST(request: NextRequest, context: Parameters<typeof handlers.POST>[1]) {
-  if (!isProductionWorkerConfigured()) return Response.json({ error: "Durable jobs are not configured." }, { status: 503 })
+export function POST(request: NextRequest, context: Parameters<typeof handlers.POST>[1]) {
+  if (!isProductionWorkerConfigured()) return getUnconfiguredWorkerResponse()
   return handlers.POST(request, context)
 }
 
 /** Rejects production sync without signing configuration. */
-export async function PUT(request: NextRequest, context: Parameters<typeof handlers.PUT>[1]) {
-  if (!isProductionWorkerConfigured()) return Response.json({ error: "Durable jobs are not configured." }, { status: 503 })
+export function PUT(request: NextRequest, context: Parameters<typeof handlers.PUT>[1]) {
+  if (!isProductionWorkerConfigured()) return getUnconfiguredWorkerResponse()
   return handlers.PUT(request, context)
 }

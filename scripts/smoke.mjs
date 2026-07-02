@@ -88,6 +88,9 @@ try {
   const notificationJobsResponse = await publicPage.request.get(`${baseUrl}/api/projects/not-a-real-project/notification-jobs`)
   assertAuthenticationGuard(notificationJobsResponse, "Notification jobs route did not enforce authentication.")
 
+  const inngestDiscoveryResponse = await publicPage.request.get(`${baseUrl}/api/inngest`)
+  assert([200, 503].includes(inngestDiscoveryResponse.status()), "Inngest discovery route did not report a valid configured or setup-required state.")
+
   const inngestResponse = await publicPage.request.post(`${baseUrl}/api/inngest`, {
     data: { name: "unauthorized-smoke" },
   })
