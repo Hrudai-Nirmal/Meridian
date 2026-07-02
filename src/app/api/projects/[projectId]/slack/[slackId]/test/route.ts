@@ -26,7 +26,7 @@ export async function POST(_: Request, context: { params: Promise<{ projectId: s
   }
 
   const job = await queueTestSlackJob(prisma, { projectId, destinationId: slackId, recipient: destination.name })
-  await dispatchNotificationJobs([job])
+  const dispatch = await dispatchNotificationJobs([job])
   await createAuditLog(prisma, {
     action: "slack.tested",
     entity: "slack",
@@ -39,6 +39,7 @@ export async function POST(_: Request, context: { params: Promise<{ projectId: s
   return NextResponse.json({
     ok: true,
     queued: true,
+    dispatched: dispatch.dispatched === 1,
     message: "Slack test queued.",
     jobId: job.id,
   }, { status: 202 })

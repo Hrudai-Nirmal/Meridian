@@ -144,6 +144,14 @@ function formatSampledAt(timestamp: string) {
   }).format(new Date(timestamp))
 }
 
+function getLatestEmailDeliveryCopy(latestEmail: WorkspacePayload["diagnostics"]["latestEmail"]) {
+  if (!latestEmail) return "No completed email delivery evidence is available yet."
+  return [
+    `Most recent email delivery evidence: ${latestEmail.status} via ${latestEmail.provider} at ${new Date(latestEmail.attemptedAt).toLocaleString()}.`,
+    "This may be older than the current queued test job.",
+  ].join(" ")
+}
+
 function runBadgeVariant(status: string): "destructive" | "secondary" | "outline" {
   if (status === "failed") return "destructive"
   if (status === "degraded") return "secondary"
@@ -1285,11 +1293,13 @@ export function MeridianDashboard({
       if (["SENT", "FAILED", "SKIPPED", "CANCELLED"].includes(job.status)) {
         onStatus(job.status === "SENT" ? "Test delivery sent." : `Test delivery ${job.status.toLowerCase()}: ${job.lastError ?? "No additional detail."}`)
         void loadNotificationJobs()
+        void refreshProjectData({ silent: true })
         return
       }
       onStatus(`Test delivery ${job.status.toLowerCase()} (${job.attemptCount}/${job.maxAttempts} attempts).`)
     }
-    onStatus("Test delivery is still queued. Check Notification jobs or Logs for progress.")
+    void loadNotificationJobs()
+    onStatus("Test delivery is still queued. If it stays queued, confirm the Inngest production app is synced to /api/inngest and the worker is receiving events.")
   }
 
   const loadNotificationJobs = async () => {
@@ -1333,7 +1343,8 @@ export function MeridianDashboard({
       setEmailMessage(payload?.message ?? payload?.error ?? "Test email failed to queue.")
       return
     }
-    setEmailMessage("Test email queued.")
+    setEmailMessage(payload.dispatched === false ? "Test email queued, but Inngest dispatch was not confirmed. The recovery sweep should retry it." : "Test email queued and published to Inngest.")
+    void loadNotificationJobs()
     void waitForNotificationJob(payload.jobId, setEmailMessage)
   }
 
@@ -1460,7 +1471,8 @@ export function MeridianDashboard({
       setWebhookMessage(payload?.message ?? payload?.error ?? "Test webhook failed to queue.")
       return
     }
-    setWebhookMessage("Test webhook queued.")
+    setWebhookMessage(payload.dispatched === false ? "Test webhook queued, but Inngest dispatch was not confirmed. The recovery sweep should retry it." : "Test webhook queued and published to Inngest.")
+    void loadNotificationJobs()
     void waitForNotificationJob(payload.jobId, setWebhookMessage)
   }
 
@@ -1553,7 +1565,8 @@ export function MeridianDashboard({
       setSlackMessage(payload?.message ?? payload?.error ?? "Slack test failed to queue.")
       return
     }
-    setSlackMessage("Slack test queued.")
+    setSlackMessage(payload.dispatched === false ? "Slack test queued, but Inngest dispatch was not confirmed. The recovery sweep should retry it." : "Slack test queued and published to Inngest.")
+    void loadNotificationJobs()
     void waitForNotificationJob(payload.jobId, setSlackMessage)
   }
 
@@ -2213,13 +2226,9 @@ export function MeridianDashboard({
                     </Button>
                   </div>
                   {emailMessage ? <div className="mt-2 text-xs text-muted-foreground">{emailMessage}</div> : null}
-                  {latestEmail ? (
-                    <div className="mt-3 rounded-md border bg-background/70 p-2 text-xs text-muted-foreground">
-                      Latest email: {latestEmail.status} via {latestEmail.provider} at {new Date(latestEmail.attemptedAt).toLocaleString()}
-                    </div>
-                  ) : (
-                    <div className="mt-3 rounded-md border border-dashed p-2 text-xs text-muted-foreground">No email delivery has been attempted yet.</div>
-                  )}
+                  <div className="mt-3 rounded-md border bg-background/70 p-2 text-xs text-muted-foreground">
+                    {getLatestEmailDeliveryCopy(latestEmail)}
+                  </div>
                 </div>
                 <div className="rounded-lg border bg-muted/20 p-3 text-sm">
                   <div className="flex items-center gap-2 font-medium">
@@ -4449,7 +4458,7 @@ function TestingSection({
                 </Button>
                 {emailMessage ? <div className="text-xs text-muted-foreground">{emailMessage}</div> : null}
                 <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
-                  {latestEmail ? `Latest email: ${latestEmail.status} via ${latestEmail.provider} at ${new Date(latestEmail.attemptedAt).toLocaleString()}` : "No email delivery has been attempted yet."}
+                  {getLatestEmailDeliveryCopy(latestEmail)}
                 </div>
               </CardContent>
             </Card>
@@ -4778,7 +4787,7 @@ function SettingsSection({
               <Button className="w-fit" variant="outline" onClick={onSaveNotificationPreference}>Save preference</Button>
               {emailMessage ? <div className="text-xs text-muted-foreground">{emailMessage}</div> : null}
               <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
-                {latestEmail ? `Latest email: ${latestEmail.status} via ${latestEmail.provider} at ${new Date(latestEmail.attemptedAt).toLocaleString()}` : "No email delivery has been attempted yet."}
+                {getLatestEmailDeliveryCopy(latestEmail)}
               </div>
             </CardContent>
           </Card>

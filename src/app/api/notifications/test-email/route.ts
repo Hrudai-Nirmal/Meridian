@@ -28,11 +28,12 @@ export async function POST() {
   }
 
   const job = await queueTestEmailJob(prisma, { projectId: workspace.project.id, recipient: user.email })
-  await dispatchNotificationJobs([job])
+  const dispatch = await dispatchNotificationJobs([job])
 
   return NextResponse.json({
     ok: true,
     queued: true,
+    dispatched: dispatch.dispatched === 1,
     message: "Test email queued.",
     jobId: job.id,
   }, { status: 202 })
