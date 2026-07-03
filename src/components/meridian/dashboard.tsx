@@ -2167,6 +2167,7 @@ export function MeridianDashboard({
                   <ReadinessItem label="Inngest durable jobs ready" ready={initialWorkspace.diagnostics.checks.jobs} />
                 </div>
                 <BuildMetadataCard build={initialWorkspace.diagnostics.build} />
+                <RuntimeSafetyCard diagnostics={initialWorkspace.diagnostics} />
                 <div className="grid gap-2 rounded-lg border bg-muted/20 p-3 text-sm">
                   <Button onClick={runPollNow} disabled={!canManageOrganization}>
                     <Activity data-icon="inline-start" />
@@ -2982,6 +2983,40 @@ function BuildMetadataCard({ build }: { build: WorkspacePayload["diagnostics"]["
         <div className="font-medium text-foreground">Build time</div>
         <div>{build.buildTime ?? "Not provided"}</div>
       </div>
+    </div>
+  )
+}
+
+function RuntimeSafetyCard({ diagnostics }: { diagnostics: WorkspacePayload["diagnostics"] }) {
+  const runtime = diagnostics.runtime
+  return (
+    <div className="grid gap-3 rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="font-medium text-foreground">Runtime Environment</div>
+          <div>{runtime.label}</div>
+        </div>
+        <Badge variant={runtime.isProduction ? "secondary" : "outline"}>{runtime.environment}</Badge>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <div>
+          <div className="font-medium text-foreground">Deployment URL</div>
+          <div className="break-all">{runtime.deploymentUrl}</div>
+        </div>
+        <div>
+          <div className="font-medium text-foreground">Side-effect Policy</div>
+          <div>Email/Slack/webhooks/polling: {runtime.externalSideEffectsEnabled ? "enabled" : "disabled"}</div>
+          <div>Background jobs: {runtime.backgroundJobsEnabled ? "enabled" : "disabled"}</div>
+          <div>Cron polling: {runtime.cronEnabled ? "enabled" : "disabled"}</div>
+        </div>
+      </div>
+      {diagnostics.warnings.length ? (
+        <div className="grid gap-1 rounded-md border border-amber-300/60 bg-amber-500/10 p-2 text-amber-800 dark:text-amber-200">
+          {diagnostics.warnings.map((warning) => (
+            <div key={warning.code}>{warning.message}</div>
+          ))}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -4375,6 +4410,7 @@ function TestingSection({
               <ReadinessItem label="Inngest durable jobs ready" ready={diagnostics.checks.jobs} />
             </div>
             <BuildMetadataCard build={diagnostics.build} />
+            <RuntimeSafetyCard diagnostics={diagnostics} />
           </div>
         </details>
 

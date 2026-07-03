@@ -4,6 +4,7 @@ import { createHmac, randomBytes } from "crypto"
 import type { AlertSeverity, PrismaClient, ProjectWebhookDestination } from "@prisma/client"
 
 import { decryptSecret, encryptSecret } from "@/lib/crypto"
+import { canUseExternalSideEffects } from "@/lib/runtime-environment"
 
 export type AlertWebhookEventType = "alert.opened" | "alert.resolved" | "webhook.test"
 
@@ -209,6 +210,7 @@ async function buildPayload(prisma: PrismaClient, input: SendWebhookAttemptInput
 
 /** Performs one signed webhook attempt for a queued destination. */
 export async function sendWebhookAttempt(prisma: PrismaClient, input: SendWebhookAttemptInput) {
+  if (!canUseExternalSideEffects()) return { skipped: true, reason: "Webhook delivery is disabled in this runtime." }
   const destination = await prisma.projectWebhookDestination.findFirst({
     where: { id: input.destinationId, projectId: input.projectId },
   })

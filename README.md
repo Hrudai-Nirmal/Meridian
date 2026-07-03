@@ -176,6 +176,10 @@ Meridian uses GitHub Actions as the first enterprise-readiness gate. CI runs on 
 
 `/api/health` includes safe build metadata: app version, commit SHA, optional build time, and environment. Testing -> Deployment readiness renders the same metadata for operators. These fields must never include database URLs, OAuth secrets, encryption keys, cron secrets, email provider keys, Slack webhook URLs, webhook signing secrets, raw ingestion tokens, or encrypted payloads.
 
+Meridian currently uses a minimum-safe environment model: Production is the only live runtime. Preview deployments and local development may render the app and readiness state, but external side effects are disabled by default outside Production. That means cron polling, manual endpoint polling, Resend email sends, Slack incoming-webhook sends, generic webhook sends, and Inngest cloud worker execution are blocked or skipped unless an explicit operator opt-in is configured. `/api/health` and Testing -> Deployment readiness show the runtime label, deployment URL, side-effect policy, background-job policy, cron policy, and safe warnings. The optional escape hatches `MERIDIAN_ALLOW_EXTERNAL_EFFECTS=1` and `MERIDIAN_ALLOW_BACKGROUND_JOBS=1` are reserved for deliberate isolated Preview/dev testing, not for shared production data.
+
+Full Preview isolation with a separate Neon database and separate Inngest environment is deferred until Preview is used for mutation QA. Until then, do not point Preview at production data for active testing.
+
 Release notes start in `CHANGELOG.md`. Keep `package.json` semver and the changelog aligned for production-facing changes.
 
 ## Deployed QA

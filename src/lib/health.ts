@@ -4,6 +4,7 @@ import { getAppBuildMetadata, type AppBuildMetadata } from "@/lib/app-version"
 import { hasGithubAuthConfig } from "@/lib/auth"
 import { isEmailConfigured } from "@/lib/notifications"
 import { getDatabaseConnectionSource, getPrisma, hasDatabaseConfig } from "@/lib/prisma"
+import { getRuntimeEnvironment, type RuntimeEnvironment } from "@/lib/runtime-environment"
 import { logServerError } from "@/lib/server-logging"
 
 export type ReadinessIssue = {
@@ -17,6 +18,7 @@ export type ReadinessStatus = {
   ok: boolean
   checkedAt: string
   build: AppBuildMetadata
+  runtime: RuntimeEnvironment
   checks: {
     database: boolean
     auth: boolean
@@ -45,6 +47,7 @@ export type ReadinessStatus = {
   } | null
   notificationJobs: Record<string, number>
   issues: ReadinessIssue[]
+  warnings: ReadinessIssue[]
 }
 
 /**
@@ -52,6 +55,7 @@ export type ReadinessStatus = {
  */
 export async function getReadinessStatus(): Promise<ReadinessStatus> {
   const databaseConfigured = hasDatabaseConfig()
+  const runtime = getRuntimeEnvironment()
   const checks = {
     database: false,
     auth: Boolean(process.env.NEXTAUTH_URL && process.env.NEXTAUTH_SECRET && hasGithubAuthConfig()),
@@ -64,6 +68,7 @@ export async function getReadinessStatus(): Promise<ReadinessStatus> {
   let latestEmail: ReadinessStatus["latestEmail"] = null
   let notificationJobs: ReadinessStatus["notificationJobs"] = {}
   const issues: ReadinessIssue[] = []
+  const warnings: ReadinessIssue[] = []
 
   if (databaseConfigured) {
     try {
@@ -133,14 +138,34 @@ export async function getReadinessStatus(): Promise<ReadinessStatus> {
     })
   }
 
+  if (!runtime.isProduction && databaseConfigured) {
+    warnings.push({
+      code: "NON_PRODUCTION_DATABASE_CONFIGURED",
+      component: "health",
+      message: "This non-production runtime has a database configured. Use only disposable or isolated data here.",
+      incidentId: null,
+    })
+  }
+
+  if (!runtime.externalSideEffectsEnabled) {
+    warnings.push({
+      code: "EXTERNAL_SIDE_EFFECTS_DISABLED",
+      component: "health",
+      message: "Email, Slack, webhooks, and endpoint polling are disabled in this runtime.",
+      incidentId: null,
+    })
+  }
+
   return {
     ok: Object.values(checks).every(Boolean),
     checkedAt: new Date().toISOString(),
     build: getAppBuildMetadata(),
+    runtime,
     checks,
     latestPoll,
     latestEmail,
     notificationJobs,
     issues,
+    warnings,
   }
 }

@@ -6,6 +6,7 @@ import "server-only"
 import type { AlertSeverity, PrismaClient, ProjectSlackDestination } from "@prisma/client"
 
 import { decryptSecret, encryptSecret } from "@/lib/crypto"
+import { canUseExternalSideEffects } from "@/lib/runtime-environment"
 
 export type SlackAlertEventType = "alert.opened" | "alert.resolved" | "slack.test"
 
@@ -253,6 +254,7 @@ export function serializeProjectSlackDestination(destination: ProjectSlackDestin
  * Performs one native Slack attempt for a queued destination.
  */
 export async function sendSlackAttempt(prisma: PrismaClient, input: SendSlackAttemptInput) {
+  if (!canUseExternalSideEffects()) return { skipped: true, reason: "Slack delivery is disabled in this runtime." }
   const destination = await prisma.projectSlackDestination.findFirst({
     where: { id: input.destinationId, projectId: input.projectId },
   })

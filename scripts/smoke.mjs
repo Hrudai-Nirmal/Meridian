@@ -46,7 +46,11 @@ try {
   assert(typeof health?.build?.version === "string" && health.build.version.length > 0, "Health route did not return app version metadata.")
   assert(typeof health?.build?.commitSha === "string" && health.build.commitSha.length > 0, "Health route did not return commit metadata.")
   assert(typeof health?.build?.environment === "string" && health.build.environment.length > 0, "Health route did not return environment metadata.")
+  assert(typeof health?.runtime?.environment === "string" && health.runtime.environment.length > 0, "Health route did not return runtime environment metadata.")
+  assert(typeof health?.runtime?.externalSideEffectsEnabled === "boolean", "Health route did not return runtime side-effect policy metadata.")
+  assert(typeof health?.runtime?.backgroundJobsEnabled === "boolean", "Health route did not return runtime background-job policy metadata.")
   assert(Array.isArray(health?.issues), "Health route did not return safe issue metadata.")
+  assert(Array.isArray(health?.warnings), "Health route did not return safe warning metadata.")
   if (requireReady) {
     assert(healthResponse.ok(), `Production readiness failed: ${health?.issues?.map((issue) => issue.code).join(", ") || "unknown issue"}.`)
     assert(health?.checks?.database === true, "Production database readiness is not healthy.")

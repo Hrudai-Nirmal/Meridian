@@ -1,5 +1,6 @@
 import { getReadinessStatus } from "@/lib/health"
 import { getAppBuildMetadata } from "@/lib/app-version"
+import { getRuntimeEnvironment } from "@/lib/runtime-environment"
 import { logServerError } from "@/lib/server-logging"
 
 export const dynamic = "force-dynamic"
@@ -17,15 +18,18 @@ export async function GET() {
       ok: false,
       checkedAt: new Date().toISOString(),
       build: getAppBuildMetadata(),
-      checks: { database: false, auth: false, encryption: false, cron: false, email: false },
+      runtime: getRuntimeEnvironment(),
+      checks: { database: false, auth: false, encryption: false, cron: false, email: false, jobs: false },
       latestPoll: null,
       latestEmail: null,
+      notificationJobs: {},
       issues: [{
         code: "HEALTH_CHECK_FAILED",
         component: "health",
         message: "Readiness checks could not be completed.",
         incidentId: incident.incidentId,
       }],
+      warnings: [],
     }, { status: 503 })
   }
 }

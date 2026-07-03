@@ -6,6 +6,7 @@ import type { NextRequest } from "next/server"
 
 import { inngest } from "@/inngest/client"
 import { processNotificationJob, recoverQueuedNotifications } from "@/inngest/functions"
+import { canRunBackgroundJobs, getRuntimeEnvironment } from "@/lib/runtime-environment"
 
 export const maxDuration = 60
 
@@ -15,11 +16,14 @@ const handlers = serve({
 })
 
 function isProductionWorkerConfigured() {
-  return process.env.NODE_ENV !== "production" || Boolean(process.env.INNGEST_SIGNING_KEY)
+  return canRunBackgroundJobs() && (process.env.INNGEST_DEV === "1" || Boolean(process.env.INNGEST_SIGNING_KEY))
 }
 
 function getUnconfiguredWorkerResponse() {
-  return Response.json({ error: "Durable jobs are not configured." }, { status: 503 })
+  return Response.json({
+    error: "Durable jobs are not configured for this runtime.",
+    runtime: getRuntimeEnvironment().label,
+  }, { status: 503 })
 }
 
 /** Allows function discovery only after production signing is configured. */

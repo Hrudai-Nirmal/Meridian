@@ -18,6 +18,7 @@ Use this checklist for production validation on `https://meridian.hrudainirmal.i
 - Returning users land in the dashboard without repeated onboarding.
 - `/api/health` returns safe readiness JSON without raw secret values.
 - `/api/health` includes safe version, commit, build time, and environment metadata.
+- `/api/health` includes runtime metadata for Production/Preview/Local, deployment URL, side-effect policy, background-job policy, cron policy, and safe warnings.
 - A database outage disables GitHub sign-in, shows a safe incident ID, and emits a matching structured runtime log without connection strings or credentials.
 
 ## Projects
@@ -84,6 +85,8 @@ Use this checklist for production validation on `https://meridian.hrudainirmal.i
 ## Testing
 
 - Confirm readiness cards show database, auth, encryption, cron, email, Inngest jobs, and poll status.
+- Confirm runtime safety shows Production on `https://meridian.hrudainirmal.in` with external side effects, background jobs, and cron enabled.
+- Confirm any Preview/local runtime clearly shows non-production status and does not send email, Slack, webhooks, or endpoint polling unless explicitly opted in.
 - Queue email, webhook, and Slack tests; confirm the UI follows each job from queued to a terminal result.
 - In `Notification jobs`, verify counts, refresh, failed-job retry, queued/retrying cancellation, and owner/admin enforcement.
 - Use a failing disposable webhook and confirm retry progress before the job becomes failed.

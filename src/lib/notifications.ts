@@ -3,6 +3,8 @@
  */
 import "server-only"
 
+import { canUseExternalSideEffects } from "@/lib/runtime-environment"
+
 type SendEmailAttemptInput = {
   recipient: string
   subject: string
@@ -29,6 +31,7 @@ export async function sendEmailAttempt(input: SendEmailAttemptInput): Promise<No
 
   if (!recipient) return { skipped: true, reason: "Email recipient is missing." }
   if (!apiKey || !from) return { skipped: true, reason: "Email provider is not configured." }
+  if (!canUseExternalSideEffects()) return { skipped: true, reason: "Email delivery is disabled in this runtime." }
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
