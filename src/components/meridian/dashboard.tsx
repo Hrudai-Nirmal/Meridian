@@ -107,6 +107,12 @@ const statusDot: Record<NodeStatus, string> = {
   unknown: "bg-slate-400",
 }
 
+const UTC_MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+function padUtcPart(value: number) {
+  return value.toString().padStart(2, "0")
+}
+
 function toFlowNode(node: EndpointNodeData): Node {
   return {
     id: node.id,
@@ -135,19 +141,33 @@ function snapToGridPosition(position: { x: number; y: number }) {
   }
 }
 
+function formatUtcTimestamp(timestamp: string, options: { includeYear?: boolean; includeSeconds?: boolean } = {}) {
+  const date = new Date(timestamp)
+  if (Number.isNaN(date.getTime())) return "Invalid date"
+
+  const month = UTC_MONTH_LABELS[date.getUTCMonth()]
+  const day = padUtcPart(date.getUTCDate())
+  const hours = padUtcPart(date.getUTCHours())
+  const minutes = padUtcPart(date.getUTCMinutes())
+  const seconds = options.includeSeconds ? `:${padUtcPart(date.getUTCSeconds())}` : ""
+  const year = options.includeYear ? ` ${date.getUTCFullYear()}` : ""
+
+  return `${month} ${day}${year}, ${hours}:${minutes}${seconds} UTC`
+}
+
 function formatSampledAt(timestamp: string) {
-  return new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(timestamp))
+  return formatUtcTimestamp(timestamp)
+}
+
+function formatDateTime(timestamp: string | null | undefined) {
+  if (!timestamp) return "Not available"
+  return formatUtcTimestamp(timestamp, { includeYear: true })
 }
 
 function getLatestEmailDeliveryCopy(latestEmail: WorkspacePayload["diagnostics"]["latestEmail"]) {
   if (!latestEmail) return "No completed email delivery evidence is available yet."
   return [
-    `Most recent email delivery evidence: ${latestEmail.status} via ${latestEmail.provider} at ${new Date(latestEmail.attemptedAt).toLocaleString()}.`,
+    `Most recent email delivery evidence: ${latestEmail.status} via ${latestEmail.provider} at ${formatDateTime(latestEmail.attemptedAt)}.`,
     "This may be older than the current queued test job.",
   ].join(" ")
 }
@@ -595,11 +615,7 @@ function getLiveConnectionDotClass(state: LiveConnectionState) {
 
 function formatLiveCheckedAt(timestamp: string | null) {
   if (!timestamp) return "Awaiting first live event"
-  return `Last checked ${new Intl.DateTimeFormat("en", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  }).format(new Date(timestamp))}`
+  return `Last checked ${formatUtcTimestamp(timestamp, { includeSeconds: true })}`
 }
 
 function formatChangedAreas(changedAreas: string[]) {
@@ -614,6 +630,12 @@ function getLiveConnectionDetail(state: LiveConnectionState, checkedAt: string |
   if (state === "connecting") return "Opening project event stream."
   if (state === "reconnecting") return checkedAt ? `${formatLiveCheckedAt(checkedAt)}; reconnecting.` : "Reconnecting to project events."
   return `${formatLiveCheckedAt(checkedAt)} / ${formatChangedAreas(changedAreas)}`
+}
+
+function getAlertTimelineReferenceTime(workspace: WorkspacePayload) {
+  const checkedAt = new Date(workspace.diagnostics.checkedAt).getTime()
+  if (Number.isFinite(checkedAt)) return checkedAt
+  return 0
 }
 
 function getAnomalyDirectionLabel(direction: AnomalyDirection) {
@@ -668,7 +690,7 @@ export function MeridianDashboard({
   const [alertStatusFilter, setAlertStatusFilter] = useState<"active" | "resolved" | "all">("active")
   const [alertSeverityFilter, setAlertSeverityFilter] = useState("all")
   const [alertTimelineFilter, setAlertTimelineFilter] = useState<AlertTimelineFilter>("7d")
-  const [alertTimelineReferenceTime, setAlertTimelineReferenceTime] = useState(() => new Date().getTime())
+  const [alertTimelineReferenceTime, setAlertTimelineReferenceTime] = useState(() => getAlertTimelineReferenceTime(initialWorkspace))
   const [selectedAlertDetail, setSelectedAlertDetail] = useState<ProjectAlert | null>(null)
   const [emailEnabled, setEmailEnabled] = useState(initialWorkspace.notificationPreference.enabled)
   const [emailSeverity, setEmailSeverity] = useState(initialWorkspace.notificationPreference.severity)
@@ -2277,7 +2299,7 @@ export function MeridianDashboard({
                           <div className="min-w-0">
                             <div className="truncate font-medium">{token.name}</div>
                             <div className="mt-1 text-muted-foreground">
-                              {token.prefix}... / {token.revokedAt ? "Revoked" : token.lastUsedAt ? `Last used ${new Date(token.lastUsedAt).toLocaleString()}` : "Never used"}
+                              {token.prefix}... / {token.revokedAt ? "Revoked" : token.lastUsedAt ? `Last used ${formatDateTime(token.lastUsedAt)}` : "Never used"}
                             </div>
                           </div>
                           {token.revokedAt ? (
@@ -2841,8 +2863,8 @@ export function MeridianDashboard({
                 </div>
                 {selectedAlertDetail.deliveryAttemptedAt ? (
                   <div className="mt-1 text-xs text-muted-foreground">
-                    Attempted {new Date(selectedAlertDetail.deliveryAttemptedAt).toLocaleString()}
-                    {selectedAlertDetail.deliverySentAt ? `, sent ${new Date(selectedAlertDetail.deliverySentAt).toLocaleString()}` : ""}
+                    Attempted {formatDateTime(selectedAlertDetail.deliveryAttemptedAt)}
+                    {selectedAlertDetail.deliverySentAt ? `, sent ${formatDateTime(selectedAlertDetail.deliverySentAt)}` : ""}
                   </div>
                 ) : null}
                 {selectedAlertDetail.deliveryFailureReason ? (
@@ -2860,8 +2882,8 @@ export function MeridianDashboard({
                 </div>
                 {selectedAlertDetail.webhookDeliveryAttemptedAt ? (
                   <div className="mt-1 text-xs text-muted-foreground">
-                    Attempted {new Date(selectedAlertDetail.webhookDeliveryAttemptedAt).toLocaleString()}
-                    {selectedAlertDetail.webhookDeliverySentAt ? `, sent ${new Date(selectedAlertDetail.webhookDeliverySentAt).toLocaleString()}` : ""}
+                    Attempted {formatDateTime(selectedAlertDetail.webhookDeliveryAttemptedAt)}
+                    {selectedAlertDetail.webhookDeliverySentAt ? `, sent ${formatDateTime(selectedAlertDetail.webhookDeliverySentAt)}` : ""}
                   </div>
                 ) : null}
                 {selectedAlertDetail.webhookDeliveryFailureReason ? (
@@ -2879,8 +2901,8 @@ export function MeridianDashboard({
                 </div>
                 {selectedAlertDetail.slackDeliveryAttemptedAt ? (
                   <div className="mt-1 text-xs text-muted-foreground">
-                    Attempted {new Date(selectedAlertDetail.slackDeliveryAttemptedAt).toLocaleString()}
-                    {selectedAlertDetail.slackDeliverySentAt ? `, sent ${new Date(selectedAlertDetail.slackDeliverySentAt).toLocaleString()}` : ""}
+                    Attempted {formatDateTime(selectedAlertDetail.slackDeliveryAttemptedAt)}
+                    {selectedAlertDetail.slackDeliverySentAt ? `, sent ${formatDateTime(selectedAlertDetail.slackDeliverySentAt)}` : ""}
                   </div>
                 ) : null}
                 {selectedAlertDetail.slackDeliveryFailureReason ? (
@@ -2892,17 +2914,17 @@ export function MeridianDashboard({
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-lg border p-3">
                   <div className="text-xs text-muted-foreground">First seen</div>
-                  <div className="font-medium">{new Date(selectedAlertDetail.firstSeen).toLocaleString()}</div>
+                  <div className="font-medium">{formatDateTime(selectedAlertDetail.firstSeen)}</div>
                 </div>
                 <div className="rounded-lg border p-3">
                   <div className="text-xs text-muted-foreground">Last seen</div>
-                  <div className="font-medium">{new Date(selectedAlertDetail.lastSeen).toLocaleString()}</div>
+                  <div className="font-medium">{formatDateTime(selectedAlertDetail.lastSeen)}</div>
                 </div>
               </div>
               {selectedAlertDetail.resolvedAt ? (
                 <div className="rounded-lg border p-3">
                   <div className="text-xs text-muted-foreground">Resolved at</div>
-                  <div className="font-medium">{new Date(selectedAlertDetail.resolvedAt).toLocaleString()}</div>
+                  <div className="font-medium">{formatDateTime(selectedAlertDetail.resolvedAt)}</div>
                 </div>
               ) : canEditProject ? (
                 <div className="grid gap-2">
@@ -4066,7 +4088,7 @@ function IntegrationsSection({
                           <div className="mt-1 text-muted-foreground">
                             {destination.minimumSeverity}+ / {destination.eventFilters.join(", ")}
                           </div>
-                          <div className="mt-1 text-muted-foreground">Created {new Date(destination.createdAt).toLocaleString()}</div>
+                          <div className="mt-1 text-muted-foreground">Created {formatDateTime(destination.createdAt)}</div>
                         </div>
                         <Badge variant={destination.enabled ? "secondary" : "outline"}>{destination.enabled ? "Enabled" : "Disabled"}</Badge>
                       </div>
@@ -4432,7 +4454,7 @@ function TestingSection({
                   <div className="min-w-0">
                     <div className="font-medium">{job.channel} / {job.eventType}</div>
                     <div className="mt-1 truncate text-muted-foreground">
-                      {job.recipient ?? "Configured destination"} / {job.attemptCount} of {job.maxAttempts} attempts / {new Date(job.updatedAt).toLocaleString()}
+                      {job.recipient ?? "Configured destination"} / {job.attemptCount} of {job.maxAttempts} attempts / {formatDateTime(job.updatedAt)}
                     </div>
                     {job.lastError ? <div className="mt-1 text-muted-foreground">{job.lastError}</div> : null}
                   </div>
@@ -4701,7 +4723,7 @@ function LogsSection({
           {logs.length ? (
             logs.map((log) => (
               <div key={log.id} className="grid gap-2 rounded-lg border bg-background p-3 text-sm lg:grid-cols-[150px_110px_1fr_120px] lg:items-start">
-                <div className="text-xs text-muted-foreground">{new Date(log.createdAt).toLocaleString()}</div>
+                <div className="text-xs text-muted-foreground">{formatDateTime(log.createdAt)}</div>
                 <Badge variant="outline" className="w-fit capitalize">{log.type}</Badge>
                 <div className="min-w-0">
                   <div className="font-medium">{log.title}</div>
@@ -4938,7 +4960,7 @@ function SettingsSection({
                     <div key={token.id} className="flex items-center justify-between gap-3 rounded-md border bg-background p-2 text-xs">
                       <div className="min-w-0">
                         <div className="truncate font-medium">{token.name}</div>
-                        <div className="mt-1 text-muted-foreground">{token.prefix}... / {token.revokedAt ? "Revoked" : token.lastUsedAt ? `Last used ${new Date(token.lastUsedAt).toLocaleString()}` : "Never used"}</div>
+                        <div className="mt-1 text-muted-foreground">{token.prefix}... / {token.revokedAt ? "Revoked" : token.lastUsedAt ? `Last used ${formatDateTime(token.lastUsedAt)}` : "Never used"}</div>
                       </div>
                       {token.revokedAt ? <Badge variant="secondary">Revoked</Badge> : <Button variant="ghost" size="sm" onClick={() => onRevokeWorkflowToken(token.id)} disabled={!canManageOrganization}>Revoke</Button>}
                     </div>
