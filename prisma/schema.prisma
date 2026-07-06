@@ -336,23 +336,25 @@ model ProjectSlackDestination {
 }
 
 model ReportShare {
-  id               String    @id @default(cuid())
-  token            String    @unique
-  title            String
-  clientName       String?
-  subtitle         String?
-  preparedBy       String?
-  executiveNote    String?
-  mapImageMimeType String?
-  mapImageData     Bytes?
-  projectId        String
-  createdById      String
-  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  createdBy        User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  expiresAt        DateTime?
-  revokedAt        DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  id                 String    @id @default(cuid())
+  token              String    @unique
+  title              String
+  clientName         String?
+  subtitle           String?
+  preparedBy         String?
+  executiveNote      String?
+  mapImageMimeType   String?
+  mapImageData       Bytes?
+  brandImageMimeType String?
+  brandImageData     Bytes?
+  projectId          String
+  createdById        String
+  project            Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy          User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  expiresAt          DateTime?
+  revokedAt          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@index([projectId, revokedAt])
   @@index([createdById])

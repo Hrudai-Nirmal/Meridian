@@ -92,6 +92,7 @@ import type { WorkspacePayload } from "@/lib/workspace"
 
 const nodeTypes = { endpoint: EndpointGraphNode }
 const GRAPH_GRID_SIZE = 22
+const REPORT_BRAND_IMAGE_MAX_BYTES = 256 * 1024
 
 const toneClasses = {
   good: "text-emerald-600 dark:text-emerald-300",
@@ -162,6 +163,15 @@ function formatSampledAt(timestamp: string) {
 function formatDateTime(timestamp: string | null | undefined) {
   if (!timestamp) return "Not available"
   return formatUtcTimestamp(timestamp, { includeYear: true })
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer) {
+  const bytes = new Uint8Array(buffer)
+  const chunks: string[] = []
+  for (let index = 0; index < bytes.length; index += 8192) {
+    chunks.push(String.fromCharCode(...bytes.subarray(index, index + 8192)))
+  }
+  return btoa(chunks.join(""))
 }
 
 function getLatestEmailDeliveryCopy(latestEmail: WorkspacePayload["diagnostics"]["latestEmail"]) {
@@ -363,10 +373,15 @@ type ReportShareRecord = {
   preparedBy: string | null
   executiveNote: string | null
   hasMapImage: boolean
+  hasBrandImage: boolean
   url: string
   expiresAt: string | null
   revokedAt: string | null
   createdAt: string
+}
+type ReportBrandImage = {
+  mimeType: "image/png" | "image/svg+xml"
+  dataUrl: string
 }
 
 type ProjectRunRecord = EndpointNodeData["runs"][number] & {
@@ -737,6 +752,7 @@ export function MeridianDashboard({
   const [reportPreparedBy, setReportPreparedBy] = useState(initialWorkspace.organization.name)
   const [reportExecutiveNote, setReportExecutiveNote] = useState("This report summarizes automation reliability, workflow volume, AI usage, cost, and open incidents for the selected project.")
   const [reportMapDataUrl, setReportMapDataUrl] = useState("")
+  const [reportBrandImage, setReportBrandImage] = useState<ReportBrandImage | null>(null)
   const [reportExpiryDays, setReportExpiryDays] = useState("90")
   const [reportMessage, setReportMessage] = useState("")
   const [nodes, setNodes, onNodesChange] = useNodesState(initialWorkspace.nodes.map(toFlowNode))
@@ -1656,6 +1672,7 @@ export function MeridianDashboard({
         executiveNote: reportExecutiveNote.trim() || undefined,
         expiresInDays: Number.isFinite(expiresInDays) ? expiresInDays : undefined,
         mapImage: reportMapDataUrl ? { mimeType: "image/png", dataUrl: reportMapDataUrl } : undefined,
+        brandImage: reportBrandImage ?? undefined,
       }),
     })
     const payload = await response.json().catch(() => null)
@@ -1834,6 +1851,26 @@ export function MeridianDashboard({
 
     setReportMapDataUrl(dataUrl)
     setReportMessage("Current map attached to the report preview.")
+  }
+
+  const uploadReportBrandImage = async (file: File | null) => {
+    if (!file) return
+    if (file.type !== "image/png" && file.type !== "image/svg+xml") {
+      setReportMessage("Brand image must be a PNG or SVG.")
+      return
+    }
+    if (file.size > REPORT_BRAND_IMAGE_MAX_BYTES) {
+      setReportMessage("Brand image must be 256KB or smaller.")
+      return
+    }
+
+    try {
+      const dataUrl = `data:${file.type};base64,${arrayBufferToBase64(await file.arrayBuffer())}`
+      setReportBrandImage({ mimeType: file.type, dataUrl })
+      setReportMessage("Brand image attached to the report preview.")
+    } catch {
+      setReportMessage("Brand image upload failed.")
+    }
   }
 
   const resolveAlert = async (alertId: string) => {
@@ -2632,6 +2669,7 @@ export function MeridianDashboard({
             reportPreparedBy={reportPreparedBy}
             reportExecutiveNote={reportExecutiveNote}
             reportMapDataUrl={reportMapDataUrl}
+            reportBrandImage={reportBrandImage}
             reportExpiryDays={reportExpiryDays}
             reportMessage={reportMessage}
             canManageOrganization={canManageOrganization}
@@ -2644,6 +2682,11 @@ export function MeridianDashboard({
             onClearReportMap={() => {
               setReportMapDataUrl("")
               setReportMessage("Report map attachment cleared.")
+            }}
+            onReportBrandImageChange={uploadReportBrandImage}
+            onClearReportBrandImage={() => {
+              setReportBrandImage(null)
+              setReportMessage("Report brand image cleared.")
             }}
             onReportExpiryDaysChange={setReportExpiryDays}
             onLoadReportShares={loadReportShares}
@@ -3568,6 +3611,7 @@ function ReportsSection({
   reportPreparedBy,
   reportExecutiveNote,
   reportMapDataUrl,
+  reportBrandImage,
   reportExpiryDays,
   reportMessage,
   canManageOrganization,
@@ -3578,6 +3622,8 @@ function ReportsSection({
   onReportExecutiveNoteChange,
   onAttachReportMap,
   onClearReportMap,
+  onReportBrandImageChange,
+  onClearReportBrandImage,
   onReportExpiryDaysChange,
   onLoadReportShares,
   onCreateReportShare,
@@ -3601,6 +3647,7 @@ function ReportsSection({
   reportPreparedBy: string
   reportExecutiveNote: string
   reportMapDataUrl: string
+  reportBrandImage: ReportBrandImage | null
   reportExpiryDays: string
   reportMessage: string
   canManageOrganization: boolean
@@ -3611,6 +3658,8 @@ function ReportsSection({
   onReportExecutiveNoteChange: (value: string) => void
   onAttachReportMap: () => void
   onClearReportMap: () => void
+  onReportBrandImageChange: (file: File | null) => Promise<void>
+  onClearReportBrandImage: () => void
   onReportExpiryDaysChange: (value: string) => void
   onLoadReportShares: () => Promise<void>
   onCreateReportShare: () => Promise<void>
@@ -3666,6 +3715,29 @@ function ReportsSection({
                   <Input value={reportExpiryDays} onChange={(event) => onReportExpiryDaysChange(event.target.value)} placeholder="Days, optional" disabled={!canManageOrganization} />
                 </label>
                 <div className="grid gap-2 rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
+                  <div className="font-medium text-foreground">Brand image</div>
+                  <div>Upload a small PNG or SVG logo for the next report link. Stored report assets are capped at 256KB.</div>
+                  <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
+                    <Input
+                      type="file"
+                      accept="image/png,image/svg+xml"
+                      disabled={!canManageOrganization}
+                      aria-label="Report brand image"
+                      onChange={(event) => {
+                        void onReportBrandImageChange(event.target.files?.[0] ?? null)
+                        event.target.value = ""
+                      }}
+                    />
+                    <Button variant="ghost" size="sm" onClick={onClearReportBrandImage} disabled={!canManageOrganization || !reportBrandImage}>
+                      Clear brand
+                    </Button>
+                  </div>
+                  {reportBrandImage ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- This previews a user-selected report brand image data URL.
+                    <img src={reportBrandImage.dataUrl} alt="Attached report brand preview" className="mt-2 max-h-16 max-w-56 rounded-md border bg-background object-contain p-2" />
+                  ) : null}
+                </div>
+                <div className="grid gap-2 rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
                   <div className="font-medium text-foreground">Automation map attachment</div>
                   <div>Attach the current Automation Map PNG to the next report link you create.</div>
                   <div className="flex flex-wrap gap-2">
@@ -3720,6 +3792,10 @@ function ReportsSection({
             </CardHeader>
             <CardContent className="grid gap-4">
               <div className="rounded-xl border bg-muted/20 p-4">
+                {reportBrandImage ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- This previews a user-selected report brand image data URL.
+                  <img src={reportBrandImage.dataUrl} alt="Report brand preview" className="mb-3 max-h-12 max-w-52 object-contain object-left" />
+                ) : null}
                 <div className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Client proof summary</div>
                 <div className="mt-2 text-xl font-semibold">{reportTitle || "Client automation report"}</div>
                 <div className="mt-1 text-sm text-muted-foreground">{reportSubtitle.trim() || "Report period optional"}</div>
@@ -3765,7 +3841,7 @@ function ReportsSection({
                         {share.clientName ?? "No client name"} / {share.revokedAt ? "Revoked" : share.expiresAt ? `Expires ${formatSampledAt(share.expiresAt)}` : "No expiry"}
                       </div>
                       <div className="mt-1 text-xs text-muted-foreground">
-                        {share.subtitle ?? "No subtitle"} / {share.preparedBy ?? "No prepared-by"} / {share.hasMapImage ? "Map attached" : "No map"}
+                        {share.subtitle ?? "No subtitle"} / {share.preparedBy ?? "No prepared-by"} / {share.hasBrandImage ? "Brand attached" : "No brand"} / {share.hasMapImage ? "Map attached" : "No map"}
                       </div>
                     </div>
                     <Badge variant={share.revokedAt ? "secondary" : "outline"}>{share.revokedAt ? "Revoked" : "Live"}</Badge>

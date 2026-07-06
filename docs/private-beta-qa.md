@@ -63,11 +63,14 @@ Use this checklist for production validation on `https://meridian.hrudainirmal.i
 ## Reports
 
 - Open Reports and fill title, client name, subtitle, prepared by, executive note, and expiry.
+- Upload a small PNG/SVG brand image and confirm the in-app preview shows it in the report header.
+- Try an oversized or unsafe SVG brand image and confirm it is rejected without creating a link.
 - Attach the current map and confirm the in-app preview includes the map and summary metrics.
 - Create a report link and open it in a signed-out/private browser.
+- Confirm the public report header shows the uploaded brand image when present.
 - Confirm the public report is read-only and does not expose secrets, tokens, credentials, or private team data.
 - Use Print / Save PDF and confirm print layout is clean.
-- Revoke the report link and confirm the public page and map image no longer open.
+- Revoke the report link and confirm the public page, brand image, and map image no longer open.
 - Download CSV exports for runs, metrics, and alerts as an owner/admin; confirm they are bounded, open cleanly, and contain no secrets.
 
 ## Integrations

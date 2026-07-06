@@ -61,6 +61,10 @@ export default async function ReportPage({ params }: { params: Promise<{ shareTo
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-6 py-8">
         <header className="flex flex-col gap-4 border-b pb-6 lg:flex-row lg:items-end lg:justify-between print:break-after-avoid">
           <div>
+            {report.brandImageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element -- Report brand images are uploaded report assets served from a protected report route.
+              <img src={report.brandImageUrl} alt="Report brand" className="mb-4 max-h-14 max-w-64 object-contain object-left" />
+            ) : null}
             <div className="text-sm font-medium text-muted-foreground">Meridian client report</div>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight">{report.title}</h1>
             {report.subtitle ? <div className="mt-2 text-base text-muted-foreground">{report.subtitle}</div> : null}

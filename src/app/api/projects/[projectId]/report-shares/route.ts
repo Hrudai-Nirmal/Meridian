@@ -4,9 +4,8 @@ import { z } from "zod"
 import { getApiUserId, requireProjectRole } from "@/lib/api-session"
 import { createAuditLog } from "@/lib/audit-log"
 import { getPrisma } from "@/lib/prisma"
+import { decodeReportAsset, MAX_BRAND_IMAGE_BYTES, MAX_MAP_IMAGE_BYTES } from "@/lib/report-assets.mjs"
 import { createReportToken, serializeReportShare } from "@/lib/reports"
-
-const maxMapImageBytes = 2 * 1024 * 1024
 
 const reportShareSchema = z.object({
   title: z.string().min(2).max(100).default("Client automation report"),
@@ -21,30 +20,16 @@ const reportShareSchema = z.object({
       dataUrl: z.string().min(1),
     })
     .optional(),
+  brandImage: z
+    .object({
+      mimeType: z.enum(["image/png", "image/svg+xml"]),
+      dataUrl: z.string().min(1),
+    })
+    .optional(),
 })
 
 function requestOrigin(request: Request) {
   return process.env.NEXTAUTH_URL ?? new URL(request.url).origin
-}
-
-function decodeMapImage(mapImage?: { mimeType: "image/png"; dataUrl: string }) {
-  if (!mapImage) return { data: null, error: null }
-
-  const match = mapImage.dataUrl.match(/^data:image\/png;base64,([a-zA-Z0-9+/=]+)$/)
-  if (!match) {
-    return { data: null, error: "Map attachment must be a PNG data URL." }
-  }
-
-  const data = Buffer.from(match[1], "base64")
-  const isPng = data.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
-  if (!isPng) {
-    return { data: null, error: "Map attachment must be a valid PNG image." }
-  }
-  if (data.byteLength > maxMapImageBytes) {
-    return { data: null, error: "Map attachment must be 2MB or smaller." }
-  }
-
-  return { data, error: null }
 }
 
 export async function GET(request: Request, context: { params: Promise<{ projectId: string }> }) {
@@ -69,6 +54,7 @@ export async function GET(request: Request, context: { params: Promise<{ project
       preparedBy: true,
       executiveNote: true,
       mapImageMimeType: true,
+      brandImageMimeType: true,
       expiresAt: true,
       revokedAt: true,
       createdAt: true,
@@ -92,9 +78,23 @@ export async function POST(request: Request, context: { params: Promise<{ projec
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid report share payload.", details: parsed.error.flatten() }, { status: 400 })
   }
-  const mapImage = decodeMapImage(parsed.data.mapImage)
+  const mapImage = decodeReportAsset({
+    asset: parsed.data.mapImage,
+    allowedMimeTypes: ["image/png"],
+    maxBytes: MAX_MAP_IMAGE_BYTES,
+    label: "Map attachment",
+  })
   if (mapImage.error) {
     return NextResponse.json({ error: mapImage.error }, { status: 400 })
+  }
+  const brandImage = decodeReportAsset({
+    asset: parsed.data.brandImage,
+    allowedMimeTypes: ["image/png", "image/svg+xml"],
+    maxBytes: MAX_BRAND_IMAGE_BYTES,
+    label: "Brand image",
+  })
+  if (brandImage.error) {
+    return NextResponse.json({ error: brandImage.error }, { status: 400 })
   }
 
   const prisma = getPrisma()
@@ -110,7 +110,9 @@ export async function POST(request: Request, context: { params: Promise<{ projec
       preparedBy: parsed.data.preparedBy?.trim() || null,
       executiveNote: parsed.data.executiveNote?.trim() || null,
       mapImageMimeType: mapImage.data ? "image/png" : null,
-      mapImageData: mapImage.data,
+      mapImageData: mapImage.data ? new Uint8Array(mapImage.data) : null,
+      brandImageMimeType: brandImage.mimeType,
+      brandImageData: brandImage.data ? new Uint8Array(brandImage.data) : null,
       expiresAt,
       projectId,
       createdById: userId,
@@ -122,7 +124,13 @@ export async function POST(request: Request, context: { params: Promise<{ projec
     entityId: share.id,
     projectId,
     userId,
-    metadata: { title: share.title, clientName: share.clientName, expiresAt: share.expiresAt, hasMapImage: Boolean(share.mapImageMimeType) },
+    metadata: {
+      title: share.title,
+      clientName: share.clientName,
+      expiresAt: share.expiresAt,
+      hasMapImage: Boolean(share.mapImageMimeType),
+      hasBrandImage: Boolean(share.brandImageMimeType),
+    },
   })
 
   return NextResponse.json({ share: serializeReportShare(share, requestOrigin(request)) }, { status: 201 })

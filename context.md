@@ -32,7 +32,7 @@ Meridian is a PC-first AI automation control room for agencies and teams. The pr
 - Replanned the product around the "AI automation control room" positioning: graph-first map, AI value monitoring, reliable alerts, agency client reports, and open-source SDK instrumentation as the growth loop.
 - Added secure client-facing report links with public read-only report pages, expiry/revocation support, agency-friendly summary metrics, and no secret exposure.
 - Added Client Proof reporting improvements: in-app report preview, owner/admin CSV exports for runs/metrics/alerts, and a more agency-facing signed-out report executive summary.
-- Added Client Proof v2 report customization: subtitle, prepared-by, executive note, optional stored map PNG attachments, `/reports/[shareToken]/map.png`, and browser print/save-as-PDF support for public reports.
+- Added Client Proof v2 report customization: subtitle, prepared-by, executive note, optional stored PNG/SVG brand images, optional stored map PNG attachments, `/reports/[shareToken]/brand-image`, `/reports/[shareToken]/map.png`, and browser print/save-as-PDF support for public reports.
 - Added client-side PNG export for the current project map so agencies can include visual automation maps in stakeholder reports.
 - Added Python and JavaScript SDK previews in `sdk/python` and `sdk/js`, plus `docs/sdk.md`, using the existing `/api/ingest/runs` telemetry contract.
 - Focused integration template breadth around Dify, n8n, GitHub Actions, and OpenAI/custom REST instead of broad generic template sprawl.
@@ -102,7 +102,7 @@ Meridian is a PC-first AI automation control room for agencies and teams. The pr
 - Browser-test workflow telemetry token creation/revocation and a valid `/api/ingest/runs` POST updating the selected node's Runs tab without sending alert email.
 - Browser-test Basic/Advanced integration templates: custom REST metric field prefill, telemetry snippets containing the selected node id, and no real token values in copied snippets.
 - Browser-test the Deployment readiness dialog and the API tab setup dialogs at desktop height: content should stay within the viewport, scroll internally, and keep the inspector compact.
-- Browser-test client report creation, signed-out report access, copy/open/revoke actions, and PNG map export.
+- Browser-test client report creation with optional PNG/SVG brand image upload, signed-out report access, copy/open/revoke actions, brand/map image route revocation, and PNG map export.
 - Browser-test the new Control Room IA: section switching, overview attention feed, project-level Runs/Alerts/Reports/Integrations/Team/Settings pages, and the cleaned-up node inspector tabs.
 - Browser-test Automation Map connection handles and labels: view mode should not create links, Edit mode should allow output-to-input drag linking, clicking a link should show the label editor, label changes should autosave and survive refresh, and self-links/duplicate same-direction links should be blocked.
 - Browser-test the Projects grid edit dialogs, dark-default/local theme persistence, alert timeline filtering, alert Resolve-to-node and Ignore flows, labelled report creation form, and expanded Integrations setup hub.

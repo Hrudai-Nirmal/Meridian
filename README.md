@@ -80,9 +80,9 @@ The dashboard information architecture keeps Settings configuration-only: notifi
 
 When a main dashboard section is selected, the sidebar switches to contextual mode: the active section heading acts as a back button and one-level subsection anchors appear below it. Back returns to the main section list without changing the active page.
 
-Owners/admins can create secure client-facing report links from the dashboard. Report links render a read-only project summary with uptime, run volume, success rate, cost, token usage, active alerts, quality score, node summaries, map imagery, and recent incidents. Links can expire and can be revoked.
+Owners/admins can create secure client-facing report links from the dashboard. Report links render a read-only project summary with uptime, run volume, success rate, cost, token usage, active alerts, quality score, node summaries, optional brand imagery, map imagery, and recent incidents. Links can expire and can be revoked.
 
-The Reports section includes an in-app report preview, minimal client/agency customization fields, manual map PNG attachment, browser print/save-as-PDF support, and owner/admin CSV exports for runs, metric samples, and alerts. CSV exports default to a bounded 30-day window with a 5,000-row default cap and 10,000-row hard cap; response headers report row count, row limit, and truncation. Exports and public reports never include API credentials, ingestion tokens, encrypted secrets, or private team/member details.
+The Reports section includes an in-app report preview, minimal client/agency customization fields, optional PNG/SVG brand image upload, manual map PNG attachment, browser print/save-as-PDF support, and owner/admin CSV exports for runs, metric samples, and alerts. Brand images are capped at 256KB and map images are capped at 2MB. CSV exports default to a bounded 30-day window with a 5,000-row default cap and 10,000-row hard cap; response headers report row count, row limit, and truncation. Exports and public reports never include API credentials, ingestion tokens, encrypted secrets, or private team/member details.
 
 Automation Map nodes include visible input and output connection handles. In view mode the handles are visible but locked; in `Edit mode`, drag from a node's right output handle to another node's left input handle to create an autosaved visual workflow link. Click a link to open its label editor, then rename the workflow handoff while Edit mode is on. Self-links and duplicate source-to-target links are blocked.
 
@@ -90,12 +90,13 @@ Client report flow:
 
 1. Open `Reports`.
 2. Fill report title, client name, subtitle/period, prepared-by, executive note, and expiry window.
-3. Click `Attach current map` to store the current Automation Map PNG with the next report link.
-4. Confirm the in-app preview shows summary metrics and the attached map.
-5. Click `Create link`, then open the public report link in a signed-out browser.
-6. Use `Print / Save PDF` on the public report page for a browser-generated PDF.
+3. Upload an optional PNG/SVG brand image for the report header.
+4. Click `Attach current map` to store the current Automation Map PNG with the next report link.
+5. Confirm the in-app preview shows the brand image, summary metrics, and attached map.
+6. Click `Create link`, then open the public report link in a signed-out browser.
+7. Use `Print / Save PDF` on the public report page for a browser-generated PDF.
 
-Attached maps are served through `/reports/[shareToken]/map.png`; expired or revoked report links return `404` for both the report page and map image.
+Attached maps are served through `/reports/[shareToken]/map.png`; attached brand images are served through `/reports/[shareToken]/brand-image`. Expired or revoked report links return `404` for the report page and attached image routes.
 
 Authenticated dashboards connect to `/api/projects/[projectId]/events` for lightweight live updates. The SSE stream only sends safe project-scoped metadata such as cursors and changed areas, checks for changes at a bounded interval, and closes while the browser tab is hidden. The client refreshes the existing project payload only after a change. If the stream disconnects, the dashboard shows a reconnecting/manual state and the existing refresh controls remain available.
 
@@ -235,7 +236,7 @@ Manual post-deploy checklist:
 - If live updates disconnect, the dashboard header and Control Room show a reconnecting/manual state, the latest changed areas remain visible, and manual refresh still works.
 - Basic and Advanced integration templates render in the API tab; custom REST metric applies fields without saving, and telemetry snippets include the selected node id but no real token.
 - Client report links can be created, opened in a signed-out browser, copied, and revoked without exposing secrets.
-- Client reports can include subtitle/prepared-by/executive note fields, attached map PNGs, and browser print/save-as-PDF output.
+- Client reports can include subtitle/prepared-by/executive note fields, optional PNG/SVG brand images, attached map PNGs, and browser print/save-as-PDF output.
 - Project maps can be exported as PNGs for stakeholder reports.
 - The demo metric shortcut can configure a node with `$.value > 90` for controlled alert QA.
 - After saving the demo metric and running poll now, the selected node shows a real `95 score` metric card, persisted sample trend, freshness label, and alert context after refresh.

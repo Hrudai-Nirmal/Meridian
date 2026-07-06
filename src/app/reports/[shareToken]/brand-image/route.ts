@@ -1,10 +1,10 @@
-import { getPublicReportMapImage } from "@/lib/reports"
+import { getPublicReportBrandImage } from "@/lib/reports"
 
 export const dynamic = "force-dynamic"
 
 export async function GET(_: Request, context: { params: Promise<{ shareToken: string }> }) {
   const { shareToken } = await context.params
-  const image = await getPublicReportMapImage(shareToken)
+  const image = await getPublicReportBrandImage(shareToken)
 
   if (!image) {
     return new Response(null, { status: 404 })
@@ -14,7 +14,7 @@ export async function GET(_: Request, context: { params: Promise<{ shareToken: s
     headers: {
       "Content-Type": image.mimeType,
       "Cache-Control": "private, no-store",
-      "Content-Security-Policy": "default-src 'none'; img-src 'self' data:",
+      "Content-Security-Policy": "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'",
       "X-Content-Type-Options": "nosniff",
     },
   })
