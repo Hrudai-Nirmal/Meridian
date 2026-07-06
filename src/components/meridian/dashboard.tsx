@@ -87,6 +87,7 @@ import {
   type NodeStatus,
 } from "@/lib/meridian-data"
 import { integrationTemplates, type IntegrationTemplate } from "@/lib/integration-templates"
+import { formatSafeMetadata } from "@/lib/safe-metadata-format.mjs"
 import { cn } from "@/lib/utils"
 import type { WorkspacePayload } from "@/lib/workspace"
 
@@ -4700,15 +4701,6 @@ function TestingSection({
   )
 }
 
-function formatLogMetadata(metadata: Record<string, unknown> | null | undefined) {
-  if (!metadata) return ""
-  return Object.entries(metadata)
-    .filter(([, value]) => value !== null && value !== undefined && value !== "")
-    .slice(0, 4)
-    .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : String(value)}`)
-    .join(" | ")
-}
-
 function LogsSection({
   logs,
   meta,
@@ -4808,7 +4800,7 @@ function LogsSection({
                     {log.nodeLabel ? `${log.nodeLabel} / ` : ""}{log.entity}{log.entityId ? ` ${log.entityId.slice(0, 8)}` : ""}
                     {log.actor ? ` / ${log.actor}` : ""}
                   </div>
-                  {formatLogMetadata(log.metadata) ? <div className="mt-1 text-xs text-muted-foreground">{formatLogMetadata(log.metadata)}</div> : null}
+                  {formatSafeMetadata(log.metadata) ? <div className="mt-1 text-xs text-muted-foreground">{formatSafeMetadata(log.metadata)}</div> : null}
                 </div>
                 <Badge variant={log.status === "failed" || log.status === "error" ? "destructive" : "secondary"} className="w-fit capitalize">
                   {log.status}
