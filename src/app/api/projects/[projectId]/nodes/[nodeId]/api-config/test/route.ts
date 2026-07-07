@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { getApiUserId, requireProjectRole } from "@/lib/api-session"
+import { buildApiAuthHeaderEntries } from "@/lib/api-auth-headers.mjs"
 
 type JsonDocument = string | number | boolean | object | unknown[] | null
 
@@ -10,6 +11,7 @@ const testSchema = z.object({
   url: z.string().url(),
   method: z.enum(["GET", "POST"]).default("GET"),
   authType: z.enum(["NONE", "API_KEY_HEADER", "BEARER_TOKEN", "BASIC", "CUSTOM_HEADERS"]).default("NONE"),
+  authHeaderName: z.string().max(120).optional(),
   secretValue: z.string().max(5000).optional(),
   mappings: z.array(
     z.object({
@@ -74,10 +76,12 @@ export async function POST(request: Request, context: { params: Promise<{ projec
     return NextResponse.json({ error: "Invalid endpoint test payload.", details: parsed.error.flatten() }, { status: 400 })
   }
 
-  const headers = new Headers()
-  if (parsed.data.secretValue && parsed.data.authType === "BEARER_TOKEN") headers.set("Authorization", `Bearer ${parsed.data.secretValue}`)
-  if (parsed.data.secretValue && parsed.data.authType === "API_KEY_HEADER") headers.set("X-API-Key", parsed.data.secretValue)
-  if (parsed.data.secretValue && parsed.data.authType === "BASIC") headers.set("Authorization", `Basic ${parsed.data.secretValue}`)
+  const authHeaders = buildApiAuthHeaderEntries(parsed.data)
+  if (!authHeaders.ok) {
+    return NextResponse.json({ ok: false, error: authHeaders.error }, { status: 400 })
+  }
+
+  const headers = new Headers(authHeaders.headers)
 
   try {
     const response = await fetch(parsed.data.url, {

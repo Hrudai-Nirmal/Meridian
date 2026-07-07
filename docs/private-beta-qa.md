@@ -106,6 +106,7 @@ Use this checklist for production validation on `https://meridian.hrudainirmal.i
 - Send generic webhook and Slack tests from Testing.
 - Run integration readiness/test-run shortcuts for the selected node.
 - Confirm endpoint/API setup shortcuts route back to the selected node workflow.
+- In API setup, confirm selecting an auth type reveals required auth header and secret fields, custom headers send the secret in the named header, and the right-side help panel updates as each field is focused.
 
 ## Logs
 

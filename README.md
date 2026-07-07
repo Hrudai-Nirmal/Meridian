@@ -226,8 +226,8 @@ Manual post-deploy checklist:
 - Team invitation save shows a visible result.
 - Pending invited users are attached to the organization on first matching GitHub login.
 - Owner/admin users can change roles, remove members, and cancel pending invitations.
-- API setup stores configuration without exposing secret values.
-- API setup test shows response status, JSON preview, JSONPath mapping, and threshold preview.
+- API setup stores configuration without exposing secret values; auth header and secret fields appear only after an auth type is selected and are required for authenticated endpoint tests/saves.
+- API setup test shows response status, JSON preview, JSONPath mapping, threshold preview, and right-panel guidance for the currently selected setup field.
 - Custom PNG/SVG node icon upload validates file type and size.
 - `/api/cron/poll` rejects a wrong bearer token.
 - Testing shows database, auth, encryption, cron, email provider readiness, latest poll status, and latest email delivery status.

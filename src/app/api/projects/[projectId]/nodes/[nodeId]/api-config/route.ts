@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { getApiUserId, requireProjectRole } from "@/lib/api-session"
+import { validateApiAuthConfig } from "@/lib/api-auth-headers.mjs"
 import { encryptSecret } from "@/lib/crypto"
 import { getPrisma } from "@/lib/prisma"
 
@@ -9,6 +10,7 @@ const apiConfigSchema = z.object({
   url: z.string().url(),
   method: z.enum(["GET", "POST"]).default("GET"),
   authType: z.enum(["NONE", "API_KEY_HEADER", "BEARER_TOKEN", "BASIC", "CUSTOM_HEADERS"]).default("NONE"),
+  authHeaderName: z.string().max(120).optional(),
   secretName: z.string().max(80).optional(),
   secretValue: z.string().max(5000).optional(),
   cadenceMin: z.coerce.number().int().min(1).max(1440).default(15),
@@ -35,6 +37,11 @@ export async function PUT(request: Request, context: { params: Promise<{ project
   const parsed = apiConfigSchema.safeParse(await request.json())
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid API config payload.", details: parsed.error.flatten() }, { status: 400 })
+  }
+
+  const authValidation = validateApiAuthConfig(parsed.data)
+  if (!authValidation.ok) {
+    return NextResponse.json({ error: authValidation.error }, { status: 400 })
   }
 
   const prisma = getPrisma()
@@ -64,6 +71,7 @@ export async function PUT(request: Request, context: { params: Promise<{ project
         url: parsed.data.url,
         method: parsed.data.method,
         authType: parsed.data.authType,
+        headersJson: parsed.data.authType === "NONE" ? undefined : { authHeaderName: parsed.data.authHeaderName?.trim() ?? "" },
         cadenceMin: parsed.data.cadenceMin,
         ...(secretId ? { secretId } : {}),
       },
@@ -72,6 +80,7 @@ export async function PUT(request: Request, context: { params: Promise<{ project
         url: parsed.data.url,
         method: parsed.data.method,
         authType: parsed.data.authType,
+        headersJson: parsed.data.authType === "NONE" ? undefined : { authHeaderName: parsed.data.authHeaderName?.trim() ?? "" },
         cadenceMin: parsed.data.cadenceMin,
         secretId,
       },

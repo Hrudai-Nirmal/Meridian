@@ -79,6 +79,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { CostQualityChart, IncidentHeatmap, LatencyChart } from "@/components/meridian/charts"
 import { EndpointGraphNode } from "@/components/meridian/endpoint-node"
 import { anomalyDefaults, type AlertRuleMode, type AnomalyDirection } from "@/lib/alert-rule-metadata"
+import { validateApiAuthConfig } from "@/lib/api-auth-headers.mjs"
+import { getApiSetupFieldHelp, getAuthHeaderPlaceholder } from "@/lib/api-setup-help.mjs"
 import {
   allEndpointNodes,
   iconRegistry,
@@ -100,6 +102,23 @@ import type { WorkspacePayload } from "@/lib/workspace"
 const nodeTypes = { endpoint: EndpointGraphNode }
 const GRAPH_GRID_SIZE = 22
 const REPORT_BRAND_IMAGE_MAX_BYTES = 256 * 1024
+
+type ApiSetupHelpField =
+  | "overview"
+  | "endpointUrl"
+  | "authType"
+  | "authHeaderName"
+  | "secretValue"
+  | "customHeaders"
+  | "cadenceMin"
+  | "mappingLabel"
+  | "unit"
+  | "jsonPath"
+  | "transform"
+  | "threshold"
+  | "visualization"
+  | "testEndpoint"
+  | "saveSetup"
 
 const toneClasses = {
   good: "text-emerald-600 dark:text-emerald-300",
@@ -5146,10 +5165,20 @@ function SettingsSection({
 
 function healthSourceCopy(node: EndpointNodeData) {
   if (node.override) return "Manual override"
+  if (node.hasPersistedRuns) return "Workflow telemetry"
   if (node.statusReason.toLowerCase().includes("threshold")) return "Threshold rule"
   if (node.statusReason.toLowerCase().includes("http") || node.statusReason.toLowerCase().includes("endpoint")) return "Endpoint check"
   if (node.statusReason.toLowerCase().includes("poll")) return "Latest poll"
   return "Seeded or manual status"
+}
+
+function inferApiAuthType(authLabel: string) {
+  const normalized = authLabel.toLowerCase()
+  if (normalized.includes("api key")) return "API_KEY_HEADER"
+  if (normalized.includes("bearer")) return "BEARER_TOKEN"
+  if (normalized.includes("basic")) return "BASIC"
+  if (normalized.includes("custom")) return "CUSTOM_HEADERS"
+  return "NONE"
 }
 
 type ApiTestResult = {
@@ -5202,20 +5231,24 @@ function NodeInspector({
 }) {
   const Icon = iconRegistry[selectedNode.icon] ?? iconRegistry.api
   const effectiveStatus = selectedNode.override ?? selectedNode.status
-  const [apiUrl, setApiUrl] = useState(selectedNode.apiUrl)
-  const [authType, setAuthType] = useState("NONE")
+  const persistedParameters = selectedNode.parameters.filter((parameter) => parameter.id)
+  const firstPersistedParameter = persistedParameters[0]
+  const hasSavedApiSetup = Boolean(persistedParameters.length) || !selectedNode.apiUrl.includes("api.example.com")
+  const [apiUrl, setApiUrl] = useState(hasSavedApiSetup ? selectedNode.apiUrl : "")
+  const [authType, setAuthType] = useState(hasSavedApiSetup ? inferApiAuthType(selectedNode.auth) : "NONE")
+  const [authHeaderName, setAuthHeaderName] = useState("")
   const [secretValue, setSecretValue] = useState("")
   const [cadenceMin, setCadenceMin] = useState("15")
-  const [mappingLabel, setMappingLabel] = useState("Primary metric")
-  const [jsonPath, setJsonPath] = useState("$.value")
-  const [transform, setTransform] = useState("none")
-  const [unit, setUnit] = useState("")
-  const [threshold, setThreshold] = useState("> 90")
+  const [mappingLabel, setMappingLabel] = useState(firstPersistedParameter?.label ?? "")
+  const [jsonPath, setJsonPath] = useState(firstPersistedParameter?.path ?? "")
+  const [transform, setTransform] = useState(firstPersistedParameter?.transform === "none" ? "" : firstPersistedParameter?.transform ?? "")
+  const [unit, setUnit] = useState(firstPersistedParameter?.unit ?? "")
+  const [threshold, setThreshold] = useState("")
   const [visualization, setVisualization] = useState("NUMBER")
+  const [activeApiHelpField, setActiveApiHelpField] = useState<ApiSetupHelpField>("overview")
   const [apiMessage, setApiMessage] = useState("")
   const [apiTestResult, setApiTestResult] = useState<ApiTestResult | null>(null)
   const nodeAlertRules = alertRules.filter((rule) => rule.nodeId === selectedNode.id)
-  const firstPersistedParameter = selectedNode.parameters.find((parameter) => parameter.id)
   const firstAlertRule = nodeAlertRules[0]
   const [ruleId, setRuleId] = useState(nodeAlertRules[0]?.id ?? "")
   const [ruleMappingId, setRuleMappingId] = useState(nodeAlertRules[0]?.mappingId ?? firstPersistedParameter?.id ?? "")
@@ -5236,6 +5269,13 @@ function NodeInspector({
     Boolean(selectedNode.realRollupSeries?.some((series) => series.points.length)) ||
     Boolean(selectedNode.realSampleSeries?.some((series) => series.points.length))
   const hasPersistedRuns = Boolean(selectedNode.hasPersistedRuns)
+  const hasSelectedAuthType = authType !== "NONE"
+  const activeApiHelp = getApiSetupFieldHelp(activeApiHelpField) as {
+    title: string
+    description: string
+    examples: string[]
+  }
+  const authHeaderPlaceholder = getAuthHeaderPlaceholder(authType)
   const telemetryPayload = JSON.stringify(
     {
       nodeId: selectedNode.id,
@@ -5294,6 +5334,7 @@ function NodeInspector({
     const demoUrl = `${window.location.origin}/api/demo/metric`
     setApiUrl(demoUrl)
     setAuthType("NONE")
+    setAuthHeaderName("")
     setSecretValue("")
     setCadenceMin("15")
     setMappingLabel("Demo metric")
@@ -5318,6 +5359,7 @@ function NodeInspector({
     if (template.preset) {
       setApiUrl(template.preset.apiUrl)
       setAuthType(template.preset.authType)
+      setAuthHeaderName("")
       setSecretValue("")
       setCadenceMin(template.preset.cadenceMin)
       setMappingLabel(template.preset.mappingLabel)
@@ -5347,6 +5389,12 @@ function NodeInspector({
     }
     setApiMessage("Testing endpoint...")
     setApiTestResult(null)
+    const authValidation = validateApiAuthConfig({ authType, authHeaderName, secretValue })
+    if (!authValidation.ok) {
+      setApiMessage(authValidation.error)
+      setActiveApiHelpField(authValidation.error.includes("header") ? "authHeaderName" : "secretValue")
+      return
+    }
     const response = await fetch(`/api/projects/${projectId}/nodes/${selectedNode.id}/api-config/test`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -5354,6 +5402,7 @@ function NodeInspector({
         url: apiUrl,
         method: "GET",
         authType,
+        authHeaderName,
         secretValue,
         mappings: [
           {
@@ -5377,6 +5426,12 @@ function NodeInspector({
       return
     }
     setApiMessage("Saving API configuration...")
+    const authValidation = validateApiAuthConfig({ authType, authHeaderName, secretValue })
+    if (!authValidation.ok) {
+      setApiMessage(authValidation.error)
+      setActiveApiHelpField(authValidation.error.includes("header") ? "authHeaderName" : "secretValue")
+      return
+    }
     const response = await fetch(`/api/projects/${projectId}/nodes/${selectedNode.id}/api-config`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -5384,6 +5439,7 @@ function NodeInspector({
         url: apiUrl,
         method: "GET",
         authType,
+        authHeaderName,
         secretName: `${selectedNode.label} credential`,
         secretValue,
         cadenceMin,
@@ -5883,49 +5939,190 @@ function NodeInspector({
                             <Wand2 data-icon="inline-start" />
                             Use demo metric
                           </Button>
-                          <Input value={apiUrl} onChange={(event) => setApiUrl(event.target.value)} aria-label="Endpoint URL" disabled={!canEditProject} />
+                          <label className="grid gap-1 text-sm font-medium">
+                            Endpoint URL
+                            <Input
+                              value={apiUrl}
+                              onChange={(event) => setApiUrl(event.target.value)}
+                              onFocus={() => setActiveApiHelpField("endpointUrl")}
+                              placeholder="https://your-service.com/api/health"
+                              aria-label="Endpoint URL"
+                              disabled={!canEditProject}
+                            />
+                          </label>
                           <div className="grid gap-2 sm:grid-cols-2">
-                            <select className="h-9 rounded-lg border bg-background px-2 text-sm disabled:opacity-50" value={authType} onChange={(event) => setAuthType(event.target.value)} disabled={!canEditProject}>
-                              <option value="NONE">No auth</option>
-                              <option value="API_KEY_HEADER">API key header</option>
-                              <option value="BEARER_TOKEN">Bearer token</option>
-                              <option value="BASIC">Basic auth</option>
-                              <option value="CUSTOM_HEADERS">Custom headers</option>
-                            </select>
-                            <Input value={cadenceMin} onChange={(event) => setCadenceMin(event.target.value)} aria-label="Cadence minutes" disabled={!canEditProject} />
+                            <label className="grid gap-1 text-sm font-medium">
+                              Auth type
+                              <select
+                                className="h-9 rounded-lg border bg-background px-2 text-sm disabled:opacity-50"
+                                value={authType}
+                                onChange={(event) => {
+                                  setAuthType(event.target.value)
+                                  setAuthHeaderName("")
+                                  setSecretValue("")
+                                  setActiveApiHelpField(event.target.value === "CUSTOM_HEADERS" ? "customHeaders" : "authType")
+                                }}
+                                onFocus={() => setActiveApiHelpField("authType")}
+                                disabled={!canEditProject}
+                              >
+                                <option value="NONE">No auth</option>
+                                <option value="API_KEY_HEADER">API key header</option>
+                                <option value="BEARER_TOKEN">Bearer token</option>
+                                <option value="BASIC">Basic auth</option>
+                                <option value="CUSTOM_HEADERS">Custom headers</option>
+                              </select>
+                            </label>
+                            <label className="grid gap-1 text-sm font-medium">
+                              Poll cadence
+                              <Input
+                                value={cadenceMin}
+                                onChange={(event) => setCadenceMin(event.target.value)}
+                                onFocus={() => setActiveApiHelpField("cadenceMin")}
+                                placeholder="15"
+                                aria-label="Cadence minutes"
+                                disabled={!canEditProject}
+                              />
+                            </label>
                           </div>
-                          <Input
-                            value={secretValue}
-                            onChange={(event) => setSecretValue(event.target.value)}
-                            placeholder="Secret value, encrypted before storage"
-                            type="password"
-                            disabled={!canEditProject}
-                          />
+                          {hasSelectedAuthType ? (
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              <label className="grid gap-1 text-sm font-medium">
+                                Auth header
+                                <Input
+                                  value={authHeaderName}
+                                  onChange={(event) => setAuthHeaderName(event.target.value)}
+                                  onFocus={() => setActiveApiHelpField(authType === "CUSTOM_HEADERS" ? "customHeaders" : "authHeaderName")}
+                                  placeholder={`Your auth header, e.g. ${authHeaderPlaceholder}`}
+                                  required
+                                  disabled={!canEditProject}
+                                />
+                              </label>
+                              <label className="grid gap-1 text-sm font-medium">
+                                Secret value
+                                <Input
+                                  value={secretValue}
+                                  onChange={(event) => setSecretValue(event.target.value)}
+                                  onFocus={() => setActiveApiHelpField("secretValue")}
+                                  placeholder="Your token, API key, or encoded credential"
+                                  type="password"
+                                  required
+                                  disabled={!canEditProject}
+                                />
+                              </label>
+                            </div>
+                          ) : null}
                           <Separator />
                           <div className="grid gap-2 sm:grid-cols-2">
-                            <Input value={mappingLabel} onChange={(event) => setMappingLabel(event.target.value)} aria-label="Mapping label" disabled={!canEditProject} />
-                            <Input value={unit} onChange={(event) => setUnit(event.target.value)} placeholder="Unit" disabled={!canEditProject} />
+                            <label className="grid gap-1 text-sm font-medium">
+                              Metric label
+                              <Input
+                                value={mappingLabel}
+                                onChange={(event) => setMappingLabel(event.target.value)}
+                                onFocus={() => setActiveApiHelpField("mappingLabel")}
+                                placeholder="Success rate"
+                                aria-label="Mapping label"
+                                disabled={!canEditProject}
+                              />
+                            </label>
+                            <label className="grid gap-1 text-sm font-medium">
+                              Unit
+                              <Input
+                                value={unit}
+                                onChange={(event) => setUnit(event.target.value)}
+                                onFocus={() => setActiveApiHelpField("unit")}
+                                placeholder="%, ms, tokens, score"
+                                disabled={!canEditProject}
+                              />
+                            </label>
                           </div>
-                          <Input value={jsonPath} onChange={(event) => setJsonPath(event.target.value)} aria-label="JSONPath" disabled={!canEditProject} />
-                          <Input value={transform} onChange={(event) => setTransform(event.target.value)} aria-label="Transform" placeholder="Transform, e.g. none, round:1, divide:1000" disabled={!canEditProject} />
+                          <label className="grid gap-1 text-sm font-medium">
+                            JSONPath
+                            <Input
+                              value={jsonPath}
+                              onChange={(event) => setJsonPath(event.target.value)}
+                              onFocus={() => setActiveApiHelpField("jsonPath")}
+                              placeholder="$.summary.success_rate"
+                              aria-label="JSONPath"
+                              disabled={!canEditProject}
+                            />
+                          </label>
+                          <label className="grid gap-1 text-sm font-medium">
+                            Transform
+                            <Input
+                              value={transform}
+                              onChange={(event) => setTransform(event.target.value)}
+                              onFocus={() => setActiveApiHelpField("transform")}
+                              aria-label="Transform"
+                              placeholder="none, percent, round:1, divide:1000"
+                              disabled={!canEditProject}
+                            />
+                          </label>
                           <div className="grid gap-2 sm:grid-cols-2">
-                            <Input value={threshold} onChange={(event) => setThreshold(event.target.value)} aria-label="Threshold" disabled={!canEditProject} />
-                            <select className="h-9 rounded-lg border bg-background px-2 text-sm disabled:opacity-50" value={visualization} onChange={(event) => setVisualization(event.target.value)} disabled={!canEditProject}>
-                              <option value="NUMBER">Number</option>
-                              <option value="LINE">Line</option>
-                              <option value="BAR">Bar</option>
-                              <option value="TABLE">Table</option>
-                              <option value="STATUS">Status</option>
-                              <option value="HEATMAP">Heatmap</option>
-                            </select>
+                            <label className="grid gap-1 text-sm font-medium">
+                              Threshold
+                              <Input
+                                value={threshold}
+                                onChange={(event) => setThreshold(event.target.value)}
+                                onFocus={() => setActiveApiHelpField("threshold")}
+                                placeholder="> 3000 or < 95"
+                                aria-label="Threshold"
+                                disabled={!canEditProject}
+                              />
+                            </label>
+                            <label className="grid gap-1 text-sm font-medium">
+                              Visualization
+                              <select
+                                className="h-9 rounded-lg border bg-background px-2 text-sm disabled:opacity-50"
+                                value={visualization}
+                                onChange={(event) => setVisualization(event.target.value)}
+                                onFocus={() => setActiveApiHelpField("visualization")}
+                                disabled={!canEditProject}
+                              >
+                                <option value="NUMBER">Number</option>
+                                <option value="LINE">Line</option>
+                                <option value="BAR">Bar</option>
+                                <option value="TABLE">Table</option>
+                                <option value="STATUS">Status</option>
+                                <option value="HEATMAP">Heatmap</option>
+                              </select>
+                            </label>
                           </div>
                           <div className="grid gap-2 sm:grid-cols-2">
-                            <Button variant="outline" onClick={testApiConfig} disabled={!canEditProject}>Test endpoint</Button>
-                            <Button onClick={saveApiConfig} disabled={!canEditProject}>Save API setup</Button>
+                            <Button
+                              variant="outline"
+                              onMouseEnter={() => setActiveApiHelpField("testEndpoint")}
+                              onFocus={() => setActiveApiHelpField("testEndpoint")}
+                              onClick={testApiConfig}
+                              disabled={!canEditProject}
+                            >
+                              Test endpoint
+                            </Button>
+                            <Button
+                              onMouseEnter={() => setActiveApiHelpField("saveSetup")}
+                              onFocus={() => setActiveApiHelpField("saveSetup")}
+                              onClick={saveApiConfig}
+                              disabled={!canEditProject}
+                            >
+                              Save API setup
+                            </Button>
                           </div>
                           {apiMessage ? <div className="text-xs text-muted-foreground">{apiMessage}</div> : null}
                         </div>
                         <div className="grid content-start gap-3">
+                          <div className="rounded-lg border border-dashed bg-muted/20 p-4 text-sm">
+                            <div className="text-sm font-semibold">{activeApiHelp.title}</div>
+                            <p className="mt-2 text-muted-foreground">{activeApiHelp.description}</p>
+                            {activeApiHelp.examples.length ? (
+                              <div className="mt-3">
+                                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Examples</div>
+                                <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
+                                  {activeApiHelp.examples.map((example) => (
+                                    <li key={example}>{example}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ) : null}
+                          </div>
                           {apiTestResult ? (
                             <div className="rounded-lg border bg-muted/20 p-3 text-xs">
                               <div className="flex flex-wrap items-center gap-2">

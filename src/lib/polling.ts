@@ -2,6 +2,7 @@ import "server-only"
 
 import { JSONPath } from "jsonpath-plus"
 
+import { buildApiAuthHeaderEntries, getStoredAuthHeaderName } from "@/lib/api-auth-headers.mjs"
 import { normalizeAlertRuleMetadata, type AnomalyDirection } from "@/lib/alert-rule-metadata"
 import { decryptSecret } from "@/lib/crypto"
 import { dispatchNotificationJobs, queueAlertNotificationJobs } from "@/lib/notification-jobs"
@@ -21,6 +22,12 @@ export type PollingResult = {
 }
 
 const MAX_NODES_PER_POLL = 100
+
+function defaultAuthHeaderName(authType: string) {
+  if (authType === "BEARER_TOKEN" || authType === "BASIC") return "Authorization"
+  if (authType === "API_KEY_HEADER") return "X-API-Key"
+  return ""
+}
 
 function getNextPollAt(checkedAt: Date, cadenceMin: number) {
   return new Date(checkedAt.getTime() + cadenceMin * 60 * 1000)
@@ -269,9 +276,14 @@ export async function runProjectPolling(options: { projectId?: string; force?: b
       const headers = new Headers()
       if (config.secret) {
         const secret = decryptSecret(config.secret.encrypted)
-        if (config.authType === "BEARER_TOKEN") headers.set("Authorization", `Bearer ${secret}`)
-        if (config.authType === "API_KEY_HEADER") headers.set("X-API-Key", secret)
-        if (config.authType === "BASIC") headers.set("Authorization", `Basic ${secret}`)
+        const authHeaders = buildApiAuthHeaderEntries({
+          authType: config.authType,
+          authHeaderName: getStoredAuthHeaderName(config.headersJson) || defaultAuthHeaderName(config.authType),
+          secretValue: secret,
+        })
+        if (authHeaders.ok) {
+          for (const [name, value] of authHeaders.headers) headers.set(name, value)
+        }
       }
 
       const response = await fetch(config.url, {
