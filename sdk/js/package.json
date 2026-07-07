@@ -5,10 +5,34 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "files": ["dist", "examples"],
+  "license": "MIT",
+  "homepage": "https://github.com/Hrudai-Nirmal/Meridian#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Hrudai-Nirmal/Meridian.git",
+    "directory": "sdk/js"
+  },
+  "bugs": {
+    "url": "https://github.com/Hrudai-Nirmal/Meridian/issues"
+  },
+  "keywords": [
+    "meridian",
+    "ai-ops",
+    "automation",
+    "telemetry",
+    "tracing"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "packcheck": "npm run build && npm test && npm pack --dry-run --json"
   },
   "devDependencies": {
     "typescript": "^5"

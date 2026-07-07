@@ -169,11 +169,11 @@ Slack setup flow:
 5. Use `Send test` in `Integrations` or `Testing` and confirm Slack receives the message.
 6. Trigger and resolve a demo alert, then confirm alert details and Logs show Slack delivery status without exposing the URL.
 
-SDK previews live in `sdk/python` and `sdk/js`. See `docs/sdk.md` for one-minute `@meridian.trace` examples, direct run ingestion, runnable disposable-token test scripts, timeout/error-hook setup, and the JavaScript `flush()` helper for short-lived scripts and serverless handlers.
+SDK previews live in `sdk/python` and `sdk/js`. See `docs/sdk.md` for one-minute `@meridian.trace` examples, direct run ingestion, runnable disposable-token test scripts, timeout/error-hook setup, and the JavaScript `flush()` helper for short-lived scripts and serverless handlers. Each SDK has package-level setup docs in `sdk/js/README.md` and `sdk/python/README.md`; packages are publish-ready for dry runs but are not published to npm or PyPI yet.
 
 ## Release And CI
 
-Meridian uses GitHub Actions as the first enterprise-readiness gate. CI runs on pull requests and pushes to `main` with dependency install, Prisma client generation, typecheck, lint, and production build. A separate `Production smoke` workflow is manual so it can be dispatched after Vercel finishes deploying `main`.
+Meridian uses GitHub Actions as the first enterprise-readiness gate. CI runs on pull requests and pushes to `main` with dependency install, Prisma client generation, typecheck, lint, production build, and `npm run sdk:verify` for JavaScript/Python SDK package checks. A separate `Production smoke` workflow is manual so it can be dispatched after Vercel finishes deploying `main`.
 
 `/api/health` includes safe build metadata: app version, commit SHA, optional build time, and environment. Testing -> Deployment readiness renders the same metadata for operators. These fields must never include database URLs, OAuth secrets, encryption keys, cron secrets, email provider keys, Slack webhook URLs, webhook signing secrets, raw ingestion tokens, or encrypted payloads.
 

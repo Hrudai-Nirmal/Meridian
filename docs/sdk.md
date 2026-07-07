@@ -138,3 +138,19 @@ npm test
 cd ../..
 PYTHONPATH=sdk/python python3 -m unittest discover -s sdk/python/tests
 ```
+
+## Package Readiness
+
+The SDK packages are ready for dry-run validation but are not published to npm or PyPI yet.
+
+```bash
+npm run sdk:verify
+```
+
+This root command verifies:
+
+- JavaScript SDK install, build, tests, and `npm pack --dry-run --json` contents.
+- Python SDK tests, wheel build, and wheel contents.
+- Package metadata and per-SDK README coverage through repository tests.
+
+Use `sdk/js/README.md` and `sdk/python/README.md` as the package-level onboarding docs when preparing a private beta handoff. Public publishing should happen only after the npm organization/package and PyPI project ownership are intentionally set up.

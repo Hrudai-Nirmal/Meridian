@@ -40,3 +40,6 @@ jobs:
 
       - name: Build
         run: node scripts/build.mjs
+
+      - name: Verify SDK packages
+        run: npm run sdk:verify
