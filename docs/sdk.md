@@ -78,6 +78,38 @@ await meridian.ingestRun({
 })
 ```
 
+## Runnable Test Examples
+
+Use these scripts with a disposable ingestion token and a selected node id from Meridian. They send one safe synthetic run with status, cost, token, and step details so you can confirm the Runs tab updates.
+
+JavaScript:
+
+```bash
+cd sdk/js
+npm run build
+MERIDIAN_INGESTION_TOKEN="<ingestion-token>" \
+MERIDIAN_NODE_ID="<endpoint-node-id>" \
+node examples/send-test-run.mjs
+```
+
+Python:
+
+```bash
+PYTHONPATH=sdk/python \
+MERIDIAN_INGESTION_TOKEN="<ingestion-token>" \
+MERIDIAN_NODE_ID="<endpoint-node-id>" \
+python3 sdk/python/examples/send_test_run.py
+```
+
+Optional environment values:
+
+- `MERIDIAN_BASE_URL`: defaults to `https://meridian.hrudainirmal.in`.
+- `MERIDIAN_EXTERNAL_ID`: overrides the generated example run id.
+- `MERIDIAN_TIMEOUT_MS`: JavaScript delivery timeout in milliseconds.
+- `MERIDIAN_TIMEOUT`: Python delivery timeout in seconds.
+
+The scripts print node id and generated external id only; they never print the ingestion token.
+
 ## Contract
 
 Both SDKs post provider-neutral workflow run telemetry:
