@@ -7,6 +7,7 @@
 - Added Postgres-backed durable notification jobs with Inngest retries/recovery, queue diagnostics, job-status Logs filters, and owner/admin retry/cancel controls.
 - Added SDK package publish-readiness checks, package-level READMEs, npm/Python metadata, JavaScript pack dry-run verification, and Python wheel verification.
 - Published the JavaScript SDK as `@meridian-workflows/sdk` and added in-app node-specific SDK onboarding snippets in Integrations.
+- Added a reusable live workflow demo that sends success, degraded, and failed Support Triage Agent runs through the published JavaScript SDK.
 
 ## 0.1.0
 

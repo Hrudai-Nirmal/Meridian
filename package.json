@@ -7,6 +7,7 @@
     "build": "node scripts/build.mjs",
     "start": "next start",
     "lint": "node ./node_modules/eslint/bin/eslint.js .",
+    "demo:verify": "npm --prefix examples/live-workflow ci && npm --prefix examples/live-workflow test",
     "sdk:verify": "node scripts/verify-sdk-packages.mjs",
     "test:smoke": "node scripts/smoke.mjs",
     "prisma:generate": "prisma generate",

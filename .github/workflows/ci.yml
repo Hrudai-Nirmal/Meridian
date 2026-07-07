@@ -43,3 +43,6 @@ jobs:
 
       - name: Verify SDK packages
         run: npm run sdk:verify
+
+      - name: Verify live workflow demo
+        run: npm run demo:verify

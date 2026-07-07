@@ -125,6 +125,8 @@ curl -X POST "https://meridian.hrudainirmal.in/api/ingest/runs" \
 
 The node inspector includes Basic and Advanced integration templates for Dify, n8n, GitHub Actions, and OpenAI/custom REST metrics. Basic templates explain the setup path and Advanced templates provide copyable snippets that use the selected node id and `<ingestion-token>` placeholders. The Integrations section also provides a guided setup hub: select a node and provider, create a one-time provider-named ingestion token, send a harmless synthetic test run for telemetry integrations, and refresh readiness from existing runs, samples, mappings, and alert rules.
 
+The reusable live workflow demo in `examples/live-workflow` installs the published `@meridian-workflows/sdk` package and simulates a Support Triage Agent with success, degraded, and failed modes. Use it with a disposable Meridian ingestion token to validate the full live telemetry loop from a local Node.js workflow into Runs, Logs, and the live dashboard refresh path.
+
 Alert rules support static thresholds and anomaly baselines. Anomaly rules learn from the previous 7 days of metric samples, require at least 8 prior samples, and fire when the next value is more than 2 standard deviations outside the selected direction. The node inspector's alert-rule dialog previews the selected mapping's sample count, baseline mean, standard deviation, watch band, and whether more samples are needed before anomaly alerts can fire.
 
 Project editors can create outbound webhook destinations from `Integrations`; owners/admins test them from `Testing`. Meridian queues `alert.opened`, `alert.resolved`, and `webhook.test` JSON payloads for enabled destinations, retries through durable jobs, and records delivery status in alert details and Logs. Signing secrets are shown once at creation and are not exposed again.
@@ -173,7 +175,7 @@ SDK previews live in `sdk/python` and `sdk/js`. See `docs/sdk.md` for one-minute
 
 ## Release And CI
 
-Meridian uses GitHub Actions as the first enterprise-readiness gate. CI runs on pull requests and pushes to `main` with dependency install, Prisma client generation, typecheck, lint, production build, and `npm run sdk:verify` for JavaScript/Python SDK package checks. A separate `Production smoke` workflow is manual so it can be dispatched after Vercel finishes deploying `main`.
+Meridian uses GitHub Actions as the first enterprise-readiness gate. CI runs on pull requests and pushes to `main` with dependency install, Prisma client generation, typecheck, lint, production build, `npm run sdk:verify` for JavaScript/Python SDK package checks, and `npm run demo:verify` for the live workflow demo. A separate `Production smoke` workflow is manual so it can be dispatched after Vercel finishes deploying `main`.
 
 `/api/health` includes safe build metadata: app version, commit SHA, optional build time, and environment. Testing -> Deployment readiness renders the same metadata for operators. These fields must never include database URLs, OAuth secrets, encryption keys, cron secrets, email provider keys, Slack webhook URLs, webhook signing secrets, raw ingestion tokens, or encrypted payloads.
 
