@@ -14,13 +14,13 @@ npm run build
 Future public install path:
 
 ```bash
-npm install @meridian/sdk
+npm install @meridian-workflows/sdk
 ```
 
 ## Quick Start
 
 ```ts
-import { createMeridian } from "@meridian/sdk"
+import { createMeridian } from "@meridian-workflows/sdk"
 
 const meridian = createMeridian({
   token: process.env.MERIDIAN_INGESTION_TOKEN!,

@@ -30,7 +30,7 @@ The Python trace decorator sends telemetry synchronously after the wrapped funct
 ## JavaScript
 
 ```ts
-import { createMeridian } from "@meridian/sdk"
+import { createMeridian } from "@meridian-workflows/sdk"
 
 const meridian = createMeridian({
   token: "<ingestion-token>",
@@ -127,7 +127,7 @@ SDK-side validation catches missing tokens, invalid base URLs, missing `nodeId`,
 
 Telemetry failures are intentionally non-blocking in tracing helpers so monitoring never breaks the customer automation. Use `on_error`/`onError` for secret-safe local observability during setup.
 
-The preview SDKs retain deprecated `ArgusGrid`/`createArgusGrid` aliases for existing callers. New code should import `Meridian` from `meridian` or `createMeridian` from `@meridian/sdk`.
+The preview SDKs retain deprecated `ArgusGrid`/`createArgusGrid` aliases for existing callers. New code should import `Meridian` from `meridian` or `createMeridian` from `@meridian-workflows/sdk`.
 
 ## Local SDK Tests
 

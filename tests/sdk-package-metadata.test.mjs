@@ -12,7 +12,7 @@ test("JavaScript SDK package metadata is publish-ready", async () => {
   const packageJson = await readJsonFile("sdk/js/package.json")
   const readme = await readFile("sdk/js/README.md", "utf8")
 
-  assert.equal(packageJson.name, "@meridian/sdk")
+  assert.equal(packageJson.name, "@meridian-workflows/sdk")
   assert.equal(packageJson.private, undefined)
   assert.equal(packageJson.license, "MIT")
   assert.equal(packageJson.repository.url, `git+${repositoryUrl}.git`)
@@ -23,7 +23,7 @@ test("JavaScript SDK package metadata is publish-ready", async () => {
   assert.equal(packageJson.exports["."].import, "./dist/index.js")
   assert.equal(packageJson.exports["."].types, "./dist/index.d.ts")
   assert.equal(packageJson.scripts.packcheck, "npm run build && npm test && npm pack --dry-run --json")
-  assert.match(readme, /npm install @meridian\/sdk/)
+  assert.match(readme, /npm install @meridian-workflows\/sdk/)
   assert.match(readme, /MERIDIAN_INGESTION_TOKEN/)
 })
 
