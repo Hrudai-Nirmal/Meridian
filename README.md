@@ -169,7 +169,7 @@ Slack setup flow:
 5. Use `Send test` in `Integrations` or `Testing` and confirm Slack receives the message.
 6. Trigger and resolve a demo alert, then confirm alert details and Logs show Slack delivery status without exposing the URL.
 
-SDK previews live in `sdk/python` and `sdk/js`. See `docs/sdk.md` for one-minute `@meridian.trace` examples.
+SDK previews live in `sdk/python` and `sdk/js`. See `docs/sdk.md` for one-minute `@meridian.trace` examples, direct run ingestion, timeout/error-hook setup, and the JavaScript `flush()` helper for short-lived scripts and serverless handlers.
 
 ## Release And CI
 

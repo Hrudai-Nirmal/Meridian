@@ -46,6 +46,7 @@ Use this checklist for production validation on `https://meridian.hrudainirmal.i
 - Confirm the raw token is shown once and later lists only safe prefix metadata.
 - Revoke a disposable token and confirm future ingestion with it is rejected.
 - Post a valid `/api/ingest/runs` payload for a selected node.
+- Run the JavaScript SDK preview with `await meridian.flush()` or the Python SDK preview with an `on_error` hook against a disposable token.
 - Confirm Runs updates with status, timestamps, cost/tokens when supplied, and step details.
 - Confirm live indicator updates or manual refresh brings the new run into view.
 - Background the dashboard tab, return to it, and confirm the live indicator reconnects without a page reload.
