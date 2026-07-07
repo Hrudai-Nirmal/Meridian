@@ -1,0 +1,41 @@
+{
+  "nodeId": "{{node_id}}",
+  "externalId": "{{external_id}}",
+  "status": "{{status}}",
+  "startedAt": "{{started_at}}",
+  "finishedAt": "{{finished_at}}",
+  "costUsd": "{{cost_usd}}",
+  "tokens": "{{tokens}}",
+  "steps": [
+    {
+      "name": "Receive customer request",
+      "status": "success",
+      "latencyMs": 250,
+      "toolName": "dify-user-input"
+    },
+    {
+      "name": "Classify intent",
+      "status": "success",
+      "latencyMs": 900,
+      "toolName": "dify-llm-classifier"
+    },
+    {
+      "name": "Retrieve account context",
+      "status": "{{context_status}}",
+      "latencyMs": 1400,
+      "toolName": "dify-context-lookup"
+    },
+    {
+      "name": "Draft support response",
+      "status": "{{draft_status}}",
+      "latencyMs": 1800,
+      "toolName": "dify-support-agent"
+    },
+    {
+      "name": "Report to Meridian",
+      "status": "success",
+      "latencyMs": 300,
+      "toolName": "dify-http-request"
+    }
+  ]
+}

@@ -36,6 +36,7 @@ Meridian is a PC-first AI automation control room for agencies and teams. The pr
 - Added client-side PNG export for the current project map so agencies can include visual automation maps in stakeholder reports.
 - Added Python and JavaScript SDK previews in `sdk/python` and `sdk/js`, plus `docs/sdk.md`, using the existing `/api/ingest/runs` telemetry contract. SDK onboarding now includes local validation, configurable delivery timeouts, Python `on_error`, JavaScript `onError`, JavaScript `flush()` for short-lived scripts/serverless handlers, runnable disposable-token example scripts, package-level READMEs, publish metadata, CI-backed package dry-run verification, the published `@meridian-workflows/sdk` npm package, and in-app node-specific SDK onboarding snippets in Integrations.
 - Added a reusable live workflow demo in `examples/live-workflow` that installs the published JavaScript SDK from npm and emits deterministic Support Triage Agent runs in success, degraded, and failed modes for end-to-end telemetry QA.
+- Added a Dify support-triage workflow recipe in `examples/dify-support-triage` with a copyable Dify Code-node payload builder, HTTP Request JSON body, and secret-safety tests for posting Dify runs into Meridian.
 - Focused integration template breadth around Dify, n8n, GitHub Actions, and OpenAI/custom REST instead of broad generic template sprawl.
 - Added visual polish for the deployed dashboard: neutral black/grey dark mode tokens, clearer React Flow dot grid visibility, and edit-mode node snapping to the nearest 22px grid point on drag release.
 - Added visible Automation Map connection handles and link label editing: each node has a left input and right output connector; in Edit mode, editors can drag output-to-input wires to create autosaved visual links, click a link to rename its label, and self-links/duplicate source-target links are blocked.
@@ -115,4 +116,5 @@ Meridian is a PC-first AI automation control room for agencies and teams. The pr
 - Validate the Prisma report-share migration with `prisma migrate deploy` before production use.
 - Test the in-app published SDK onboarding snippets and package READMEs against a disposable ingestion token and confirm runs appear in the selected node.
 - Test `examples/live-workflow` against a disposable ingestion token and confirm success/degraded/failed runs appear with step details.
+- Build `examples/dify-support-triage` inside Dify with a disposable ingestion token and confirm success/degraded/failed runs appear with step details.
 - Browser-test invited-user acceptance, role management, guided API setup, icon upload, alert center filtering, cron polling, deployment diagnostics, and alert resolution on the deployed site.

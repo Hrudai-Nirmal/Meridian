@@ -8,6 +8,7 @@
 - Added SDK package publish-readiness checks, package-level READMEs, npm/Python metadata, JavaScript pack dry-run verification, and Python wheel verification.
 - Published the JavaScript SDK as `@meridian-workflows/sdk` and added in-app node-specific SDK onboarding snippets in Integrations.
 - Added a reusable live workflow demo that sends success, degraded, and failed Support Triage Agent runs through the published JavaScript SDK.
+- Added a Dify support-triage workflow recipe for posting Dify workflow runs into Meridian with secret-safe setup docs and tests.
 
 ## 0.1.0
 

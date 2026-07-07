@@ -49,6 +49,7 @@ Use this checklist for production validation on `https://meridian.hrudainirmal.i
 - In Integrations, confirm telemetry templates show the `npm install @meridian-workflows/sdk` onboarding block with the selected node id and no real token value.
 - Run the JavaScript or Python SDK example script from `docs/sdk.md` against a disposable token.
 - Run `examples/live-workflow` in success, degraded, and failed modes against a disposable token.
+- Build the Dify workflow from `examples/dify-support-triage`, run it in success, degraded, and failed modes, and confirm each run appears in Meridian.
 - Confirm the example output does not print the ingestion token.
 - Run `npm run sdk:verify` locally or in CI before handing SDK instructions to a beta user.
 - Confirm Runs updates with status, timestamps, cost/tokens when supplied, and step details.

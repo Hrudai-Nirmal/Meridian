@@ -127,6 +127,8 @@ The node inspector includes Basic and Advanced integration templates for Dify, n
 
 The reusable live workflow demo in `examples/live-workflow` installs the published `@meridian-workflows/sdk` package and simulates a Support Triage Agent with success, degraded, and failed modes. Use it with a disposable Meridian ingestion token to validate the full live telemetry loop from a local Node.js workflow into Runs, Logs, and the live dashboard refresh path.
 
+The Dify demo recipe in `examples/dify-support-triage` builds the same support-triage loop inside Dify with a User Input node, LLM node, Code node, and HTTP Request node that posts to `/api/ingest/runs`. Use the guide with a disposable Meridian ingestion token and selected node id when validating Dify onboarding.
+
 Alert rules support static thresholds and anomaly baselines. Anomaly rules learn from the previous 7 days of metric samples, require at least 8 prior samples, and fire when the next value is more than 2 standard deviations outside the selected direction. The node inspector's alert-rule dialog previews the selected mapping's sample count, baseline mean, standard deviation, watch band, and whether more samples are needed before anomaly alerts can fire.
 
 Project editors can create outbound webhook destinations from `Integrations`; owners/admins test them from `Testing`. Meridian queues `alert.opened`, `alert.resolved`, and `webhook.test` JSON payloads for enabled destinations, retries through durable jobs, and records delivery status in alert details and Logs. Signing secrets are shown once at creation and are not exposed again.
