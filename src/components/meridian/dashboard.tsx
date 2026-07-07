@@ -88,6 +88,12 @@ import {
 } from "@/lib/meridian-data"
 import { integrationTemplates, type IntegrationTemplate } from "@/lib/integration-templates"
 import { formatSafeMetadata } from "@/lib/safe-metadata-format.mjs"
+import {
+  buildJavascriptSdkSnippet,
+  buildSdkEnvironmentBlock,
+  buildSdkInstallCommand,
+  buildSdkTestRunCommand,
+} from "@/lib/sdk-onboarding.mjs"
 import { cn } from "@/lib/utils"
 import type { WorkspacePayload } from "@/lib/workspace"
 
@@ -3939,6 +3945,13 @@ function IntegrationsSection({
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? nodes[0]
   const selectedTemplate = integrationTemplates.find((template) => template.id === selectedTemplateId) ?? integrationTemplates[0]
   const snippet = selectedNode ? buildIntegrationSnippet(selectedTemplate, selectedNode.id) : "Select a node on the Automation Map first."
+  const sdkInstallCommand = buildSdkInstallCommand()
+  const sdkEnvironmentBlock = buildSdkEnvironmentBlock(selectedNode?.id ?? "")
+  const sdkSnippet = buildJavascriptSdkSnippet({
+    nodeId: selectedNode?.id ?? "",
+    operationName: selectedTemplate.testRun.name,
+  })
+  const sdkTestRunCommand = buildSdkTestRunCommand()
   const envBlock = selectedTemplate.setupKind === "telemetry"
     ? `MERIDIAN_INGESTION_TOKEN=<ingestion-token>\nMERIDIAN_NODE_ID=${selectedNode?.id ?? "<node-id>"}\nMERIDIAN_INGEST_URL=https://meridian.hrudainirmal.in/api/ingest/runs`
     : `MERIDIAN_ENDPOINT_URL=https://api.example.com/automation/health\nMERIDIAN_JSONPATH=${selectedTemplate.preset?.jsonPath ?? "$.value"}\nMERIDIAN_THRESHOLD=${selectedTemplate.preset?.threshold ?? "> 90"}`
@@ -3966,6 +3979,21 @@ function IntegrationsSection({
   const copyEnvBlock = async () => {
     await navigator.clipboard.writeText(envBlock)
     setMessage(`${selectedTemplate.name} environment block copied.`)
+  }
+
+  const copySdkInstallCommand = async () => {
+    await navigator.clipboard.writeText(sdkInstallCommand)
+    setMessage("Published SDK install command copied.")
+  }
+
+  const copySdkEnvironmentBlock = async () => {
+    await navigator.clipboard.writeText(sdkEnvironmentBlock)
+    setMessage("Published SDK environment block copied.")
+  }
+
+  const copySdkSnippet = async () => {
+    await navigator.clipboard.writeText(sdkSnippet)
+    setMessage("Published SDK trace snippet copied.")
   }
 
   const createProviderToken = async () => {
@@ -4278,6 +4306,52 @@ function IntegrationsSection({
                 </div>
               </div>
             )}
+            {telemetryReady ? (
+              <div className="grid gap-3 rounded-lg border bg-background p-3 text-xs">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="font-medium">Published JavaScript SDK</div>
+                    <div className="mt-1 text-muted-foreground">
+                      Best for Node.js apps, jobs, and serverless handlers. The snippet uses placeholders and environment variables only.
+                    </div>
+                  </div>
+                  <Badge variant="secondary">npm</Badge>
+                </div>
+                <div className="grid gap-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-muted-foreground">Install</span>
+                    <Button variant="outline" size="sm" onClick={copySdkInstallCommand}>
+                      <Copy data-icon="inline-start" />
+                      Copy
+                    </Button>
+                  </div>
+                  <pre className="overflow-auto rounded-md bg-muted p-3 font-mono text-[11px] text-muted-foreground">{sdkInstallCommand}</pre>
+                </div>
+                <div className="grid gap-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-muted-foreground">Environment</span>
+                    <Button variant="outline" size="sm" onClick={copySdkEnvironmentBlock} disabled={!selectedNode}>
+                      <Copy data-icon="inline-start" />
+                      Copy env
+                    </Button>
+                  </div>
+                  <pre className="max-h-32 overflow-auto rounded-md bg-muted p-3 font-mono text-[11px] text-muted-foreground">{sdkEnvironmentBlock}</pre>
+                </div>
+                <div className="grid gap-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-muted-foreground">Trace snippet</span>
+                    <Button variant="outline" size="sm" onClick={copySdkSnippet} disabled={!selectedNode}>
+                      <Copy data-icon="inline-start" />
+                      Copy snippet
+                    </Button>
+                  </div>
+                  <pre className="max-h-[34vh] overflow-auto rounded-md bg-muted p-3 font-mono text-[11px] text-muted-foreground">{sdkSnippet}</pre>
+                </div>
+                <div className="rounded-md border border-dashed p-3 text-muted-foreground">
+                  After installing the package, run <code className="rounded bg-muted px-1 font-mono text-[11px]">{sdkTestRunCommand}</code> with the environment above to send one synthetic run.
+                </div>
+              </div>
+            ) : null}
             <div className="rounded-lg border bg-background p-3 text-xs">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <span className="font-medium">Environment block</span>

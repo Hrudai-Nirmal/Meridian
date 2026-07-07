@@ -169,7 +169,7 @@ Slack setup flow:
 5. Use `Send test` in `Integrations` or `Testing` and confirm Slack receives the message.
 6. Trigger and resolve a demo alert, then confirm alert details and Logs show Slack delivery status without exposing the URL.
 
-SDK previews live in `sdk/python` and `sdk/js`. See `docs/sdk.md` for one-minute `@meridian.trace` examples, direct run ingestion, runnable disposable-token test scripts, timeout/error-hook setup, and the JavaScript `flush()` helper for short-lived scripts and serverless handlers. Each SDK has package-level setup docs in `sdk/js/README.md` and `sdk/python/README.md`; packages are publish-ready for dry runs but are not published to npm or PyPI yet.
+SDK previews live in `sdk/python` and `sdk/js`. See `docs/sdk.md` for one-minute `@meridian.trace` examples, direct run ingestion, runnable disposable-token test scripts, timeout/error-hook setup, and the JavaScript `flush()` helper for short-lived scripts and serverless handlers. The JavaScript SDK is published as `@meridian-workflows/sdk`; Python remains package-ready for wheel dry runs but is not published to PyPI yet. Integrations shows a node-specific published SDK onboarding block for telemetry templates.
 
 ## Release And CI
 

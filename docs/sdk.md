@@ -141,7 +141,7 @@ PYTHONPATH=sdk/python python3 -m unittest discover -s sdk/python/tests
 
 ## Package Readiness
 
-The SDK packages are ready for dry-run validation but are not published to npm or PyPI yet.
+The JavaScript SDK is published to npm as `@meridian-workflows/sdk`. The Python SDK is ready for wheel dry-run validation but is not published to PyPI yet.
 
 ```bash
 npm run sdk:verify
