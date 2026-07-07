@@ -15,6 +15,7 @@ import {
 import { normalizeAlertRuleMetadata, type AlertRuleMode, type AnomalyDirection } from "@/lib/alert-rule-metadata"
 import { getReadinessStatus, type ReadinessStatus } from "@/lib/health"
 import { getPrisma } from "@/lib/prisma"
+import { buildRunDerivedMetricCards } from "@/lib/run-metrics.mjs"
 
 type DbNode = EndpointNode & {
   override: { status: string; reason: string; expiresAt: Date | null } | null
@@ -437,6 +438,7 @@ function dbNodeToEndpointNode(node: DbNode, rollups: DbRollup[] = []): EndpointN
     auth: toAuthLabel(node.endpointConfig?.authType),
     position: { x: node.x, y: node.y },
     customIconUrl: node.icon ? `/api/projects/${node.projectId}/nodes/${node.id}/icon?v=${node.updatedAt.getTime()}` : undefined,
+    metrics: persistedRuns.length ? buildRunDerivedMetricCards(persistedRuns) : seed.metrics,
     parameters: mappedParameters.length ? mappedParameters : seed.parameters,
     runs: persistedRuns.length ? persistedRuns : seed.runs,
     hasPersistedRuns: Boolean(persistedRuns.length),

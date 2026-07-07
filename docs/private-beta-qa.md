@@ -53,6 +53,7 @@ Use this checklist for production validation on `https://meridian.hrudainirmal.i
 - Confirm the example output does not print the ingestion token.
 - Run `npm run sdk:verify` locally or in CI before handing SDK instructions to a beta user.
 - Confirm Runs updates with status, timestamps, cost/tokens when supplied, and step details.
+- Confirm the selected node's summary cards switch from seeded defaults to run-derived success rate, average latency, daily cost, and eval score after telemetry arrives.
 - Confirm live indicator updates or manual refresh brings the new run into view.
 - Background the dashboard tab, return to it, and confirm the live indicator reconnects without a page reload.
 

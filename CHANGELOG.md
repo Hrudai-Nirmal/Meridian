@@ -9,6 +9,7 @@
 - Published the JavaScript SDK as `@meridian-workflows/sdk` and added in-app node-specific SDK onboarding snippets in Integrations.
 - Added a reusable live workflow demo that sends success, degraded, and failed Support Triage Agent runs through the published JavaScript SDK.
 - Added a Dify support-triage workflow recipe for posting Dify workflow runs into Meridian with secret-safe setup docs and tests.
+- Updated node summary cards to derive success rate, average latency, daily cost, and eval score from persisted workflow runs before falling back to seeded demo metrics.
 
 ## 0.1.0
 
