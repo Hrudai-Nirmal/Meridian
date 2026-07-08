@@ -89,6 +89,7 @@ import {
   type NodeStatus,
 } from "@/lib/meridian-data"
 import { integrationTemplates, type IntegrationTemplate } from "@/lib/integration-templates"
+import { buildIntegrationWizardSteps, buildProviderSetupCopy } from "@/lib/integration-wizard.mjs"
 import { formatSafeMetadata } from "@/lib/safe-metadata-format.mjs"
 import {
   buildJavascriptSdkSnippet,
@@ -119,6 +120,13 @@ type ApiSetupHelpField =
   | "visualization"
   | "testEndpoint"
   | "saveSetup"
+
+type IntegrationWizardStep = {
+  id: string
+  title: string
+  body: string
+  status: "done" | "current" | "waiting"
+}
 
 const toneClasses = {
   good: "text-emerald-600 dark:text-emerald-300",
@@ -212,6 +220,16 @@ function runBadgeVariant(status: string): "destructive" | "secondary" | "outline
   if (status === "failed") return "destructive"
   if (status === "degraded") return "secondary"
   return "outline"
+}
+
+function wizardStepBadgeVariant(status: IntegrationWizardStep["status"]): "secondary" | "outline" {
+  return status === "done" || status === "current" ? "secondary" : "outline"
+}
+
+function wizardStepBadgeLabel(status: IntegrationWizardStep["status"]) {
+  if (status === "done") return "Done"
+  if (status === "current") return "Current"
+  return "Waiting"
 }
 
 function buildIntegrationSnippet(template: IntegrationTemplate, nodeId: string) {
@@ -3989,6 +4007,20 @@ function IntegrationsSection({
   const setupSummary = telemetryReady
     ? "Create a one-time token, send a synthetic test run, then paste the provider-specific snippet into the external workflow."
     : "Apply the metric preset on the selected node, test the endpoint, save mappings, then run polling."
+  const hasCreatedToken = Boolean(integrationToken)
+  const hasMetricSetup = selectedNode ? selectedNode.parameters.some((parameter) => parameter.id) || Boolean(selectedNode.latestSampledAt) : false
+  const wizardSteps = buildIntegrationWizardSteps({
+    setupKind: selectedTemplate.setupKind,
+    providerId: selectedTemplate.id,
+    hasSelectedNode: Boolean(selectedNode),
+    hasCreatedToken,
+    hasRecentRun: Boolean(selectedNode?.hasPersistedRuns),
+    hasMetricSetup,
+  }) as IntegrationWizardStep[]
+  const providerSetupCopy = buildProviderSetupCopy({
+    providerId: selectedTemplate.id,
+    nodeId: selectedNode?.id ?? "",
+  }) as { codeNode: string; httpRequest: string }
 
   const copySnippet = async () => {
     await navigator.clipboard.writeText(snippet)
@@ -4234,8 +4266,8 @@ function IntegrationsSection({
         </div>
         <Card>
           <CardHeader>
-            <CardTitle>{selectedTemplate.name}</CardTitle>
-            <CardDescription>{selectedNode ? `Prepared for ${selectedNode.label}. Tokens remain placeholders.` : "Select a graph node to generate a node-specific snippet."}</CardDescription>
+            <CardTitle>{selectedTemplate.name} setup wizard</CardTitle>
+            <CardDescription>{selectedNode ? `Prepared for ${selectedNode.label}. The wizard checks Meridian evidence as you connect.` : "Select a graph node to generate a node-specific setup path."}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
             <div className="rounded-lg border bg-muted/20 p-3 text-sm">
@@ -4249,20 +4281,60 @@ function IntegrationsSection({
                 </Badge>
               ))}
             </div>
-            <div className="rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
-              {selectedTemplate.basicSteps.map((step, index) => (
-                <div key={step}>{index + 1}. {step}</div>
-              ))}
-            </div>
             <div className="grid gap-2 rounded-lg border bg-background p-3 text-xs">
-              <div className="font-medium">Setup checklist</div>
-              <div className="grid gap-1 text-muted-foreground">
-                <div>1. Select or create the target node.</div>
-                <div>2. Create an ingestion token in Settings if this template sends workflow telemetry.</div>
-                <div>3. Copy the environment block and snippet.</div>
-                <div>4. Send a test run or save the metric API setup.</div>
-                <div>5. Refresh Runs or Metrics to confirm data arrived.</div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="font-medium">Guided setup</div>
+                <Badge variant={selectedTemplate.setupKind === "telemetry" ? "secondary" : "outline"}>
+                  {selectedTemplate.setupKind === "telemetry" ? "Workflow telemetry" : "Metric polling"}
+                </Badge>
               </div>
+              <div className="grid gap-2">
+                {wizardSteps.map((step, index) => (
+                  <div
+                    key={step.id}
+                    className={cn(
+                      "grid gap-1 rounded-md border p-3",
+                      step.status === "current" && "border-primary/60 bg-primary/5",
+                      step.status === "done" && "bg-muted/30"
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium">{index + 1}. {step.title}</span>
+                      <Badge variant={wizardStepBadgeVariant(step.status)}>{wizardStepBadgeLabel(step.status)}</Badge>
+                    </div>
+                    <div className="text-muted-foreground">{step.body}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="grid gap-3 rounded-lg border bg-background p-3 text-xs">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-medium">Provider configuration</div>
+                  <div className="mt-1 text-muted-foreground">
+                    {selectedTemplate.id === "dify"
+                      ? "Paste this into Dify's Code and HTTP Request nodes. Keep the token only in the HTTP header."
+                      : selectedTemplate.setupKind === "telemetry"
+                        ? "Use the provider-specific request settings below to post completed runs to Meridian."
+                        : "Metric polling is configured from the selected node's API setup modal."}
+                  </div>
+                </div>
+                <Button variant="outline" size="sm" onClick={copySnippet} disabled={!selectedNode}>
+                  <Copy data-icon="inline-start" />
+                  Copy snippet
+                </Button>
+              </div>
+              <div className="grid gap-2 lg:grid-cols-2">
+                <div className="grid gap-2">
+                  <div className="font-medium text-muted-foreground">{selectedTemplate.id === "dify" ? "Dify Code node" : "Provider step"}</div>
+                  <pre className="max-h-72 overflow-auto rounded-md bg-muted p-3 font-mono text-[11px] text-muted-foreground">{providerSetupCopy.codeNode}</pre>
+                </div>
+                <div className="grid gap-2">
+                  <div className="font-medium text-muted-foreground">{selectedTemplate.id === "dify" ? "Dify HTTP Request node" : "Meridian request"}</div>
+                  <pre className="max-h-72 overflow-auto rounded-md bg-muted p-3 font-mono text-[11px] text-muted-foreground">{providerSetupCopy.httpRequest}</pre>
+                </div>
+              </div>
+              {message ? <div className="text-xs text-muted-foreground">{message}</div> : null}
             </div>
             {telemetryReady ? (
               <div className="grid gap-3 rounded-lg border bg-background p-3 text-xs">
@@ -4283,6 +4355,19 @@ function IntegrationsSection({
                   <Button variant="outline" size="sm" onClick={sendTestRun} disabled={!integrationToken || isSendingTestRun}>
                     <Send data-icon="inline-start" />
                     {isSendingTestRun ? "Sending..." : "Send test run"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      setTestMessage("Checking for latest Meridian run evidence...")
+                      await onRefreshProject()
+                      setTestMessage("Project refreshed. Check the wizard badges and Runs section for the latest connection evidence.")
+                    }}
+                    disabled={!selectedNode}
+                  >
+                    <ClipboardCheck data-icon="inline-start" />
+                    Check connection
                   </Button>
                   <Button variant="outline" size="sm" onClick={onOpenRuns}>
                     <Activity data-icon="inline-start" />

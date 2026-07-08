@@ -123,11 +123,13 @@ curl -X POST "https://meridian.hrudainirmal.in/api/ingest/runs" \
   }'
 ```
 
-The node inspector includes Basic and Advanced integration templates for Dify, n8n, GitHub Actions, and OpenAI/custom REST metrics. Basic templates explain the setup path and Advanced templates provide copyable snippets that use the selected node id and `<ingestion-token>` placeholders. The Integrations section also provides a guided setup hub: select a node and provider, create a one-time provider-named ingestion token, send a harmless synthetic test run for telemetry integrations, and refresh readiness from existing runs, samples, mappings, and alert rules.
+The node inspector includes Basic and Advanced integration templates for Dify, n8n, GitHub Actions, and OpenAI/custom REST metrics. Basic templates explain the setup path and Advanced templates provide copyable snippets that use the selected node id and `<ingestion-token>` placeholders. The Integrations section also provides a guided setup wizard: select a node and provider, create a one-time provider-named ingestion token, copy provider-specific setup blocks, send a harmless synthetic test run for telemetry integrations, check connection evidence, and refresh readiness from existing runs, samples, mappings, and alert rules.
 
 The reusable live workflow demo in `examples/live-workflow` installs the published `@meridian-workflows/sdk` package and simulates a Support Triage Agent with success, degraded, and failed modes. Use it with a disposable Meridian ingestion token to validate the full live telemetry loop from a local Node.js workflow into Runs, Logs, and the live dashboard refresh path.
 
 The Dify demo recipe in `examples/dify-support-triage` builds the same support-triage loop inside Dify with a User Input node, LLM node, Code node, and HTTP Request node that posts to `/api/ingest/runs`. Use the guide with a disposable Meridian ingestion token and selected node id when validating Dify onboarding.
+
+The in-app Dify wizard shows the Code node Python, HTTP Request settings, node id input guidance, token-safety reminders, and connection verification flow directly inside Integrations so beta users do not need external instructions for the first successful run.
 
 Alert rules support static thresholds and anomaly baselines. Anomaly rules learn from the previous 7 days of metric samples, require at least 8 prior samples, and fire when the next value is more than 2 standard deviations outside the selected direction. The node inspector's alert-rule dialog previews the selected mapping's sample count, baseline mean, standard deviation, watch band, and whether more samples are needed before anomaly alerts can fire.
 
