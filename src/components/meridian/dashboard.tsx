@@ -103,6 +103,7 @@ import type { WorkspacePayload } from "@/lib/workspace"
 const nodeTypes = { endpoint: EndpointGraphNode }
 const GRAPH_GRID_SIZE = 22
 const REPORT_BRAND_IMAGE_MAX_BYTES = 256 * 1024
+const SIDEBAR_FADE_MS = 140
 
 type ApiSetupHelpField =
   | "overview"
@@ -729,6 +730,7 @@ export function MeridianDashboard({
 }) {
   const [activeSection, setActiveSection] = useState<DashboardSection>("control-room")
   const [isSectionSidebarOpen, setIsSectionSidebarOpen] = useState(false)
+  const [isSidebarContentVisible, setIsSidebarContentVisible] = useState(true)
   const [selectedId, setSelectedId] = useState(initialWorkspace.nodes[0]?.id ?? "")
   const [selectedEdgeId, setSelectedEdgeId] = useState("")
   const [editMode, setEditMode] = useState(false)
@@ -804,6 +806,7 @@ export function MeridianDashboard({
   const didMountRef = useRef(false)
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const liveReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const sidebarTransitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const liveEventSourceRef = useRef<EventSource | null>(null)
   const liveRefreshInFlightRef = useRef(false)
   const iconInputRef = useRef<HTMLInputElement | null>(null)
@@ -815,6 +818,14 @@ export function MeridianDashboard({
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark")
   }, [theme])
+
+  useEffect(() => {
+    return () => {
+      if (sidebarTransitionTimerRef.current) {
+        clearTimeout(sidebarTransitionTimerRef.current)
+      }
+    }
+  }, [])
 
   const selectedNode = useMemo<EndpointNodeData | undefined>(
     () => (nodes.find((node) => node.id === selectedId)?.data as unknown as EndpointNodeData | undefined) ?? initialWorkspace.nodes[0],
@@ -1978,10 +1989,28 @@ export function MeridianDashboard({
     window.localStorage.setItem("meridian-theme", next)
   }
 
+  const transitionSectionSidebar = (nextOpen: boolean) => {
+    if (nextOpen === isSectionSidebarOpen) {
+      setIsSidebarContentVisible(true)
+      return
+    }
+
+    if (sidebarTransitionTimerRef.current) {
+      clearTimeout(sidebarTransitionTimerRef.current)
+    }
+
+    setIsSidebarContentVisible(false)
+    sidebarTransitionTimerRef.current = setTimeout(() => {
+      setIsSectionSidebarOpen(nextOpen)
+      setIsSidebarContentVisible(true)
+      sidebarTransitionTimerRef.current = null
+    }, SIDEBAR_FADE_MS)
+  }
+
   const openDashboardSection = (section: DashboardSection) => {
     setActiveSection(section)
     setActionMessage("")
-    setIsSectionSidebarOpen(true)
+    transitionSectionSidebar(true)
     if (section === "reports" && canManageOrganization && !reportShares.length) {
       void loadReportShares()
     }
@@ -2029,13 +2058,18 @@ export function MeridianDashboard({
           <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{initialWorkspace.project.slug}</div>
         </div>
 
-        <nav className="mt-5 grid grid-cols-2 gap-1 sm:grid-cols-4 lg:flex lg:flex-1 lg:flex-col">
+        <nav
+          className={cn(
+            "mt-5 grid grid-cols-2 gap-1 opacity-100 transition-opacity duration-150 ease-out sm:grid-cols-4 lg:flex lg:flex-1 lg:flex-col",
+            !isSidebarContentVisible && "opacity-0"
+          )}
+        >
           {isSectionSidebarOpen ? (
             <>
               <button
                 type="button"
                 className="col-span-2 mb-2 flex items-center justify-between rounded-xl border bg-background/80 px-3 py-2 text-left text-sm font-semibold sm:col-span-4 lg:col-span-1"
-                onClick={() => setIsSectionSidebarOpen(false)}
+                onClick={() => transitionSectionSidebar(false)}
               >
                 <span>{activeSectionMeta.label}</span>
                 <span className="text-xs font-normal text-muted-foreground">Back</span>
