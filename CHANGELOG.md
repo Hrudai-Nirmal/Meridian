@@ -12,6 +12,7 @@
 - Updated node summary cards to derive success rate, average latency, daily cost, and eval score from persisted workflow runs before falling back to seeded demo metrics.
 - Improved API setup with contextual right-panel field guidance, conditional required auth fields, user-named auth headers, and functional custom-header endpoint polling.
 - Added an evidence-backed Integrations setup wizard with provider steps, Dify Code/HTTP guidance, create-token/send-test/check-connection actions, and metric polling handoff.
+- Smoothed live-update stream rollover so planned SSE reconnects do not flicker the badge from Live to Reconnecting unless the stream becomes stale.
 
 ## 0.1.0
 

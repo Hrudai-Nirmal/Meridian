@@ -104,6 +104,7 @@ const nodeTypes = { endpoint: EndpointGraphNode }
 const GRAPH_GRID_SIZE = 22
 const REPORT_BRAND_IMAGE_MAX_BYTES = 256 * 1024
 const SIDEBAR_FADE_MS = 140
+const LIVE_STALE_AFTER_MS = 60_000
 
 type ApiSetupHelpField =
   | "overview"
@@ -806,6 +807,7 @@ export function MeridianDashboard({
   const didMountRef = useRef(false)
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const liveReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const liveStaleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const sidebarTransitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const liveEventSourceRef = useRef<EventSource | null>(null)
   const liveRefreshInFlightRef = useRef(false)
@@ -1033,17 +1035,34 @@ export function MeridianDashboard({
       liveEventSourceRef.current = null
     }
 
+    const clearStaleTimer = () => {
+      if (liveStaleTimerRef.current) {
+        clearTimeout(liveStaleTimerRef.current)
+        liveStaleTimerRef.current = null
+      }
+    }
+
+    const scheduleStaleState = () => {
+      clearStaleTimer()
+      liveStaleTimerRef.current = setTimeout(() => {
+        if (!closed && document.visibilityState !== "hidden") {
+          setLiveConnectionState("reconnecting")
+        }
+      }, LIVE_STALE_AFTER_MS)
+    }
+
     const scheduleReconnect = () => {
       if (closed) return
-      setLiveConnectionState("reconnecting")
       closeCurrentSource()
       if (liveReconnectTimerRef.current) clearTimeout(liveReconnectTimerRef.current)
+      scheduleStaleState()
       liveReconnectTimerRef.current = setTimeout(connect, 2_000)
     }
 
     const handleLiveEvent = (event: MessageEvent<string>, shouldRefresh: boolean) => {
       const payload = parseProjectLiveEvent(event)
       if (!payload || payload.projectId !== initialWorkspace.project.id) return
+      clearStaleTimer()
       setLiveConnectionState("live")
       setLiveCheckedAt(payload.checkedAt)
       if (payload.changed.length) setLiveChangedAreas(payload.changed)
@@ -1059,7 +1078,7 @@ export function MeridianDashboard({
 
     function connect() {
       if (closed || document.visibilityState === "hidden") return
-      setLiveConnectionState((state) => (state === "live" ? "reconnecting" : "connecting"))
+      setLiveConnectionState((state) => (state === "live" ? "live" : "connecting"))
       const source = new EventSource(`/api/projects/${initialWorkspace.project.id}/events`)
       liveEventSourceRef.current = source
       source.addEventListener("connected", (event) => handleLiveEvent(event as MessageEvent<string>, false))
@@ -1072,6 +1091,7 @@ export function MeridianDashboard({
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
         closeCurrentSource()
+        clearStaleTimer()
         setLiveConnectionState("manual")
         return
       }
@@ -1083,6 +1103,7 @@ export function MeridianDashboard({
       closed = true
       document.removeEventListener("visibilitychange", handleVisibilityChange)
       if (liveReconnectTimerRef.current) clearTimeout(liveReconnectTimerRef.current)
+      if (liveStaleTimerRef.current) clearTimeout(liveStaleTimerRef.current)
       closeCurrentSource()
     }
   }, [initialWorkspace.project.id, refreshProjectData])
