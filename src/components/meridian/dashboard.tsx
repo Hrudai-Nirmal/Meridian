@@ -5,7 +5,7 @@
  * node setup, alert rules, reports, and team/project controls share this client UI.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react"
 import {
   addEdge,
   Background,
@@ -81,6 +81,7 @@ import { EndpointGraphNode } from "@/components/meridian/endpoint-node"
 import { anomalyDefaults, type AlertRuleMode, type AnomalyDirection } from "@/lib/alert-rule-metadata"
 import { validateApiAuthConfig } from "@/lib/api-auth-headers.mjs"
 import { getApiSetupFieldHelp, getAuthHeaderPlaceholder } from "@/lib/api-setup-help.mjs"
+import { buildGlobalSearchIndex, searchGlobalIndex, type GlobalSearchResult } from "@/lib/global-search.mjs"
 import {
   allEndpointNodes,
   iconRegistry,
@@ -654,6 +655,23 @@ function parseCurrencyValue(value?: string | null) {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+function isTextEntryTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false
+  const tagName = target.tagName.toLowerCase()
+  return tagName === "input" || tagName === "textarea" || tagName === "select" || target.isContentEditable
+}
+
+function getGlobalSearchTypeLabel(type: GlobalSearchResult["type"]) {
+  if (type === "node") return "Node"
+  if (type === "alert") return "Alert"
+  if (type === "run") return "Run"
+  if (type === "report") return "Report"
+  if (type === "job") return "Job"
+  if (type === "integration") return "Setup"
+  if (type === "action") return "Action"
+  return "Section"
+}
+
 function getLiveConnectionLabel(state: LiveConnectionState) {
   if (state === "live") return "Live"
   if (state === "manual") return "Manual"
@@ -789,6 +807,9 @@ export function MeridianDashboard({
   const [logQuery, setLogQuery] = useState("")
   const [logMessage, setLogMessage] = useState("")
   const [isLoadingLogs, setIsLoadingLogs] = useState(false)
+  const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false)
+  const [globalSearchQuery, setGlobalSearchQuery] = useState("")
+  const [globalSearchActiveIndex, setGlobalSearchActiveIndex] = useState(0)
   const [notificationJobs, setNotificationJobs] = useState<NotificationJobRecord[]>([])
   const [notificationJobCounts, setNotificationJobCounts] = useState<Record<string, number>>({})
   const [notificationJobMessage, setNotificationJobMessage] = useState("")
@@ -921,6 +942,28 @@ export function MeridianDashboard({
       staleNodes: endpointNodes.filter((node) => node.freshnessLabel?.toLowerCase().includes("stale")),
     }
   }, [endpointNodes, projectMetrics, projectRuns])
+  const globalSearchIndex = useMemo(
+    () =>
+      buildGlobalSearchIndex({
+        sections: dashboardSections.map((section) => ({
+          id: section.id,
+          label: section.label,
+          description: section.description,
+        })),
+        nodes: endpointNodes as unknown as Record<string, unknown>[],
+        alerts: alerts as unknown as Record<string, unknown>[],
+        runs: projectRuns as unknown as Record<string, unknown>[],
+        reports: reportShares as unknown as Record<string, unknown>[],
+        jobs: notificationJobs as unknown as Record<string, unknown>[],
+        canEditProject,
+        canManageOrganization,
+      }),
+    [alerts, canEditProject, canManageOrganization, endpointNodes, notificationJobs, projectRuns, reportShares]
+  )
+  const globalSearchResults = useMemo(
+    () => searchGlobalIndex(globalSearchIndex, globalSearchQuery, 12),
+    [globalSearchIndex, globalSearchQuery]
+  )
   const filteredAlerts = useMemo(
     () => {
       const cutoff =
@@ -2052,8 +2095,181 @@ export function MeridianDashboard({
     }
   }
 
+  const scrollToDashboardAnchor = (anchorId: string) => {
+    window.setTimeout(() => {
+      document.getElementById(anchorId)?.scrollIntoView({ behavior: "smooth", block: "start" })
+    }, 80)
+  }
+
+  const openGlobalSearch = (query = "") => {
+    setGlobalSearchQuery(query)
+    setGlobalSearchActiveIndex(0)
+    setIsGlobalSearchOpen(true)
+  }
+
+  const openGlobalSearchResult = (result: GlobalSearchResult) => {
+    const nextSection = dashboardSections.some((section) => section.id === result.section)
+      ? (result.section as DashboardSection)
+      : "control-room"
+
+    setIsGlobalSearchOpen(false)
+    setGlobalSearchQuery("")
+    setGlobalSearchActiveIndex(0)
+
+    if (result.nodeId) {
+      setSelectedId(result.nodeId)
+    }
+
+    if (result.type === "alert" && result.entityId) {
+      const matchedAlert = alerts.find((alert) => alert.id === result.entityId)
+      if (matchedAlert) {
+        setSelectedAlertDetail(matchedAlert)
+      }
+    }
+
+    if (nextSection === "logs") {
+      const nextLogType = (result.logType ?? "") as ProjectLogType | ""
+      const nextJobStatus = (result.jobStatus ?? "") as Lowercase<NotificationJobStatus> | ""
+      setLogTypeFilter(nextLogType)
+      setLogJobStatusFilter(nextJobStatus)
+      void loadProjectLogs({ type: nextLogType, jobStatus: nextJobStatus, q: "" })
+    }
+
+    openDashboardSection(nextSection)
+
+    if (result.action === "create-token") {
+      scrollToDashboardAnchor("integrations-telemetry")
+      return
+    }
+    if (result.action === "open-dify") {
+      scrollToDashboardAnchor("integrations-templates")
+      return
+    }
+    if (result.action === "manual-poll") {
+      scrollToDashboardAnchor("testing-polling")
+      return
+    }
+    if (result.action === "test-slack") {
+      scrollToDashboardAnchor("testing-notifications")
+      return
+    }
+    if (result.action === "create-report") {
+      scrollToDashboardAnchor("reports-preview")
+      return
+    }
+    if (result.action === "open-api-setup") {
+      scrollToDashboardAnchor("map-inspector")
+      return
+    }
+
+    if (result.type === "run") {
+      scrollToDashboardAnchor("runs-table")
+      return
+    }
+    if (result.type === "job") {
+      scrollToDashboardAnchor("testing-jobs")
+      return
+    }
+    if (result.type === "report") {
+      scrollToDashboardAnchor("reports-links")
+      return
+    }
+    if (result.type === "node") {
+      scrollToDashboardAnchor("map-inspector")
+    }
+  }
+
+  const handleGlobalSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault()
+      setGlobalSearchActiveIndex((currentIndex) => Math.min(currentIndex + 1, Math.max(globalSearchResults.length - 1, 0)))
+      return
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault()
+      setGlobalSearchActiveIndex((currentIndex) => Math.max(currentIndex - 1, 0))
+      return
+    }
+
+    if (event.key === "Enter" && globalSearchResults[globalSearchActiveIndex]) {
+      event.preventDefault()
+      openGlobalSearchResult(globalSearchResults[globalSearchActiveIndex])
+    }
+  }
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      const isCommandSearch = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k"
+      const isSlashSearch = event.key === "/" && !isGlobalSearchOpen && !isTextEntryTarget(event.target)
+      if (!isCommandSearch && !isSlashSearch) return
+
+      event.preventDefault()
+      openGlobalSearch()
+    }
+
+    window.addEventListener("keydown", handleShortcut)
+    return () => window.removeEventListener("keydown", handleShortcut)
+  }, [isGlobalSearchOpen])
+
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground lg:h-screen lg:min-h-[760px] lg:flex-row">
+      <Dialog open={isGlobalSearchOpen} onOpenChange={setIsGlobalSearchOpen}>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-hidden p-0 sm:max-w-2xl">
+          <DialogHeader className="border-b px-4 pb-3 pt-4">
+            <DialogTitle>Search Meridian</DialogTitle>
+            <DialogDescription>Jump to nodes, runs, alerts, reports, integrations, jobs, and common actions.</DialogDescription>
+          </DialogHeader>
+          <div className="px-4">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+              <Input
+                autoFocus
+                className="h-10 pl-8"
+                value={globalSearchQuery}
+                onChange={(event) => {
+                  setGlobalSearchQuery(event.target.value)
+                  setGlobalSearchActiveIndex(0)
+                }}
+                onKeyDown={handleGlobalSearchKeyDown}
+                placeholder="Search nodes, alerts, runs, reports, jobs..."
+              />
+            </div>
+          </div>
+          <div className="max-h-[55dvh] overflow-y-auto px-2 pb-3">
+            {globalSearchResults.length ? (
+              globalSearchResults.map((result, index) => (
+                <button
+                  key={result.id}
+                  type="button"
+                  className={cn(
+                    "flex w-full items-start gap-3 rounded-lg px-3 py-2 text-left transition hover:bg-accent hover:text-accent-foreground",
+                    index === globalSearchActiveIndex && "bg-accent text-accent-foreground"
+                  )}
+                  onClick={() => openGlobalSearchResult(result)}
+                  onMouseEnter={() => setGlobalSearchActiveIndex(index)}
+                >
+                  <Badge variant="outline" className="mt-0.5 shrink-0">
+                    {getGlobalSearchTypeLabel(result.type)}
+                  </Badge>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">{result.title}</span>
+                    <span className="mt-0.5 block truncate text-xs text-muted-foreground">{result.description}</span>
+                  </span>
+                </button>
+              ))
+            ) : (
+              <div className="px-3 py-8 text-center text-sm text-muted-foreground">
+                No project results match “{globalSearchQuery}”.
+              </div>
+            )}
+          </div>
+          <div className="flex items-center justify-between border-t bg-muted/40 px-4 py-2 text-[11px] text-muted-foreground">
+            <span>Use ↑ ↓ and Enter to jump.</span>
+            <span>Press Esc to close.</span>
+          </div>
+        </DialogContent>
+      </Dialog>
       <aside className="flex w-full shrink-0 flex-col border-b bg-sidebar px-4 py-4 text-sidebar-foreground lg:w-72 lg:border-b-0 lg:border-r">
         <div className="flex items-center gap-3 px-1">
           <div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
@@ -2500,8 +2716,16 @@ export function MeridianDashboard({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative hidden lg:block">
-              <Search className="absolute left-2.5 top-2 size-4 text-muted-foreground" />
-              <Input className="w-64 pl-8" placeholder="Search nodes, alerts, parameters" />
+              <button
+                type="button"
+                className="flex h-8 w-72 items-center gap-2 rounded-lg border border-input bg-background px-2.5 text-left text-sm text-muted-foreground transition hover:border-ring hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                onClick={() => openGlobalSearch()}
+                aria-label="Search Meridian"
+              >
+                <Search className="size-4" />
+                <span className="min-w-0 flex-1 truncate">Search nodes, alerts, runs...</span>
+                <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">⌘K</kbd>
+              </button>
             </div>
             <Tooltip>
               <TooltipTrigger render={<Button variant="outline" size="icon" aria-label="Toggle theme" onClick={toggleTheme} />}>

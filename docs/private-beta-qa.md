@@ -28,6 +28,15 @@ Use this checklist for production validation on `https://meridian.hrudainirmal.i
 - Switch between projects from the Projects section.
 - Archive only the disposable project and confirm it leaves the active list.
 
+## Global Search
+
+- Click the header search and confirm the command palette opens.
+- Press `Cmd/Ctrl+K` and confirm it opens from any main dashboard section.
+- Press `/` outside an input field and confirm it opens without typing into the page.
+- Search for a node name, alert title, run external id, report title, integration provider, and notification job status.
+- Confirm selecting results navigates to the right section, selects the node/alert where applicable, and can open Logs filtered to failed jobs.
+- Confirm result rows never show raw ingestion tokens, webhook URLs, Slack URLs, signing secrets, encrypted payloads, env values, or private credential bodies.
+
 ## Automation Map
 
 - Open Automation Map and confirm there is no React Flow attribution watermark.
