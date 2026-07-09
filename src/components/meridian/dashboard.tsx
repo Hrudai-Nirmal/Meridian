@@ -81,6 +81,7 @@ import { EndpointGraphNode } from "@/components/meridian/endpoint-node"
 import { anomalyDefaults, type AlertRuleMode, type AnomalyDirection } from "@/lib/alert-rule-metadata"
 import { validateApiAuthConfig } from "@/lib/api-auth-headers.mjs"
 import { getApiSetupFieldHelp, getAuthHeaderPlaceholder } from "@/lib/api-setup-help.mjs"
+import { buildFirstWorkflowLaunchpad, type LaunchpadStep } from "@/lib/first-workflow-launchpad.mjs"
 import { buildGlobalSearchIndex, searchGlobalIndex, type GlobalSearchResult } from "@/lib/global-search.mjs"
 import {
   allEndpointNodes,
@@ -233,6 +234,12 @@ function wizardStepBadgeLabel(status: IntegrationWizardStep["status"]) {
   if (status === "done") return "Done"
   if (status === "current") return "Current"
   return "Waiting"
+}
+
+function launchpadStepDotClass(status: LaunchpadStep["status"]) {
+  if (status === "done") return "bg-emerald-500"
+  if (status === "current") return "bg-sky-500"
+  return "bg-zinc-400"
 }
 
 function buildIntegrationSnippet(template: IntegrationTemplate, nodeId: string) {
@@ -2937,6 +2944,7 @@ export function MeridianDashboard({
             nodes={endpointNodes}
             statusCounts={statusCounts}
             activeAlerts={activeAlerts}
+            activeReportCount={reportShares.filter((share) => !share.revokedAt).length}
             latestPoll={latestPoll}
             latestEmail={latestEmail}
             projectRuns={projectRuns}
@@ -3561,6 +3569,7 @@ function ControlRoomSection({
   nodes,
   statusCounts,
   activeAlerts,
+  activeReportCount,
   latestPoll,
   latestEmail,
   projectRuns,
@@ -3577,6 +3586,7 @@ function ControlRoomSection({
   nodes: EndpointNodeData[]
   statusCounts: { active: number; degraded: number; down: number }
   activeAlerts: ProjectAlert[]
+  activeReportCount: number
   latestPoll: WorkspacePayload["diagnostics"]["latestPoll"]
   latestEmail: WorkspacePayload["diagnostics"]["latestEmail"]
   projectRuns: ProjectRunRecord[]
@@ -3619,6 +3629,13 @@ function ControlRoomSection({
       nodeId: node.id,
     })),
   ] as const
+  const launchpadSteps = buildFirstWorkflowLaunchpad({
+    nodeCount: nodes.length,
+    runCount: projectRuns.length,
+    metricCount: projectMetrics.length,
+    activeReportCount,
+    activeAlertCount: activeAlerts.length,
+  })
 
   return (
     <SectionShell>
@@ -3693,6 +3710,37 @@ function ControlRoomSection({
           <MetricTile label="Failed/degraded runs" value={String(projectSummary.failedRuns.length)} detail="Shown in the runs section" tone={projectSummary.failedRuns.length ? "warn" : "good"} />
           <MetricTile label="Client proof" value="Ready" detail="Share reports and export map PNGs" tone="good" />
         </div>
+
+        <Card>
+          <CardHeader className="flex flex-row items-start justify-between gap-3">
+            <div>
+              <CardTitle>First Workflow Launchpad</CardTitle>
+              <CardDescription>Evidence-backed next steps for getting one live automation monitored end to end.</CardDescription>
+            </div>
+            <Badge variant={launchpadSteps.every((step) => step.status === "done") ? "secondary" : "outline"}>
+              {launchpadSteps.filter((step) => step.status === "done").length}/{launchpadSteps.length} complete
+            </Badge>
+          </CardHeader>
+          <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {launchpadSteps.map((step, index) => (
+              <div key={step.id} className={cn("grid content-between gap-4 rounded-lg border bg-background p-4", step.status === "current" && "border-primary/60 shadow-sm")}>
+                <div className="grid gap-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <Badge variant={wizardStepBadgeVariant(step.status)}>{wizardStepBadgeLabel(step.status)}</Badge>
+                    <span className={cn("size-2.5 rounded-full", launchpadStepDotClass(step.status))} />
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold">{index + 1}. {step.title}</div>
+                    <div className="mt-1 text-xs leading-5 text-muted-foreground">{step.body}</div>
+                  </div>
+                </div>
+                <Button variant={step.status === "current" ? "default" : "outline"} size="sm" onClick={() => onOpenSection(step.section as DashboardSection)}>
+                  {step.actionLabel}
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
 
         <div className="grid gap-5 lg:grid-cols-[1fr_0.9fr]">
           <Card>
