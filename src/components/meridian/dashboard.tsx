@@ -81,7 +81,6 @@ import { EndpointGraphNode } from "@/components/meridian/endpoint-node"
 import { anomalyDefaults, type AlertRuleMode, type AnomalyDirection } from "@/lib/alert-rule-metadata"
 import { validateApiAuthConfig } from "@/lib/api-auth-headers.mjs"
 import { getApiSetupFieldHelp, getAuthHeaderPlaceholder } from "@/lib/api-setup-help.mjs"
-import { buildFirstWorkflowLaunchpad, type LaunchpadStep } from "@/lib/first-workflow-launchpad.mjs"
 import { buildGlobalSearchIndex, searchGlobalIndex, type GlobalSearchResult } from "@/lib/global-search.mjs"
 import {
   allEndpointNodes,
@@ -99,6 +98,13 @@ import {
   buildSdkInstallCommand,
   buildSdkTestRunCommand,
 } from "@/lib/sdk-onboarding.mjs"
+import {
+  FIRST_WORKFLOW_TUTORIAL_STORAGE_KEY,
+  firstWorkflowTutorialSteps,
+  getFirstWorkflowTutorialStartIndex,
+  shouldAutoStartFirstWorkflowTutorial,
+  type TutorialStep,
+} from "@/lib/tutorial.mjs"
 import { cn } from "@/lib/utils"
 import type { WorkspacePayload } from "@/lib/workspace"
 
@@ -234,12 +240,6 @@ function wizardStepBadgeLabel(status: IntegrationWizardStep["status"]) {
   if (status === "done") return "Done"
   if (status === "current") return "Current"
   return "Waiting"
-}
-
-function launchpadStepDotClass(status: LaunchpadStep["status"]) {
-  if (status === "done") return "bg-emerald-500"
-  if (status === "current") return "bg-sky-500"
-  return "bg-zinc-400"
 }
 
 function buildIntegrationSnippet(template: IntegrationTemplate, nodeId: string) {
@@ -455,6 +455,12 @@ type ProjectLiveEvent = {
   changed: string[]
   checkedAt: string
 }
+type TutorialTargetRect = {
+  top: number
+  left: number
+  width: number
+  height: number
+} | null
 
 type ProjectLogRecord = {
   id: string
@@ -648,6 +654,54 @@ function getInitialLiveConnectionState(): LiveConnectionState {
   return typeof window.EventSource === "undefined" ? "manual" : "connecting"
 }
 
+function getInitialFirstWorkflowTutorialEvidence(workspace: WorkspacePayload) {
+  const runCount = workspace.nodes.reduce((sum, node) => sum + node.runs.length, 0)
+  const metricCount = workspace.nodes.reduce((sum, node) => sum + (node.realMetrics?.length ?? 0), 0)
+
+  return {
+    nodeCount: workspace.nodes.length,
+    runCount,
+    metricCount,
+    activeReportCount: 0,
+  }
+}
+
+function getStoredFirstWorkflowTutorialState() {
+  if (typeof window === "undefined") return null
+
+  try {
+    return window.localStorage.getItem(FIRST_WORKFLOW_TUTORIAL_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
+function writeFirstWorkflowTutorialState(value: "completed" | "skipped") {
+  if (typeof window === "undefined") return
+
+  try {
+    window.localStorage.setItem(FIRST_WORKFLOW_TUTORIAL_STORAGE_KEY, value)
+  } catch {
+    // Local storage can be unavailable in restrictive browser modes; the tutorial still works for the current session.
+  }
+}
+
+function getInitialFirstWorkflowTutorialState(workspace: WorkspacePayload) {
+  const evidence = getInitialFirstWorkflowTutorialEvidence(workspace)
+  const stepIndex = getFirstWorkflowTutorialStartIndex(evidence)
+  const shouldOpen = shouldAutoStartFirstWorkflowTutorial({
+    storageValue: getStoredFirstWorkflowTutorialState(),
+    runCount: evidence.runCount,
+    metricCount: evidence.metricCount,
+  })
+
+  return {
+    shouldOpen,
+    stepIndex,
+    section: shouldOpen ? (firstWorkflowTutorialSteps[stepIndex]?.section as DashboardSection) : "control-room",
+  }
+}
+
 function parseProjectLiveEvent(event: MessageEvent<string>) {
   try {
     return JSON.parse(event.data) as ProjectLiveEvent
@@ -754,9 +808,12 @@ export function MeridianDashboard({
   initialWorkspace: WorkspacePayload
   currentUser: NonNullable<Session["user"]>
 }) {
-  const [activeSection, setActiveSection] = useState<DashboardSection>("control-room")
+  const [activeSection, setActiveSection] = useState<DashboardSection>(() => getInitialFirstWorkflowTutorialState(initialWorkspace).section)
   const [isSectionSidebarOpen, setIsSectionSidebarOpen] = useState(false)
   const [isSidebarContentVisible, setIsSidebarContentVisible] = useState(true)
+  const [isFirstWorkflowTutorialOpen, setIsFirstWorkflowTutorialOpen] = useState(() => getInitialFirstWorkflowTutorialState(initialWorkspace).shouldOpen)
+  const [firstWorkflowTutorialStepIndex, setFirstWorkflowTutorialStepIndex] = useState(() => getInitialFirstWorkflowTutorialState(initialWorkspace).stepIndex)
+  const [tutorialTargetRect, setTutorialTargetRect] = useState<TutorialTargetRect>(null)
   const [selectedId, setSelectedId] = useState(initialWorkspace.nodes[0]?.id ?? "")
   const [selectedEdgeId, setSelectedEdgeId] = useState("")
   const [editMode, setEditMode] = useState(false)
@@ -949,6 +1006,10 @@ export function MeridianDashboard({
       staleNodes: endpointNodes.filter((node) => node.freshnessLabel?.toLowerCase().includes("stale")),
     }
   }, [endpointNodes, projectMetrics, projectRuns])
+  const activeReportCount = useMemo(
+    () => reportShares.filter((share) => !share.revokedAt).length,
+    [reportShares]
+  )
   const globalSearchIndex = useMemo(
     () =>
       buildGlobalSearchIndex({
@@ -971,6 +1032,7 @@ export function MeridianDashboard({
     () => searchGlobalIndex(globalSearchIndex, globalSearchQuery, 12),
     [globalSearchIndex, globalSearchQuery]
   )
+  const activeTutorialStep = firstWorkflowTutorialSteps[firstWorkflowTutorialStepIndex] ?? firstWorkflowTutorialSteps[0]
   const filteredAlerts = useMemo(
     () => {
       const cutoff =
@@ -2186,6 +2248,36 @@ export function MeridianDashboard({
     }
   }
 
+  const openFirstWorkflowTutorial = () => {
+    const nextIndex = getFirstWorkflowTutorialStartIndex({
+      nodeCount: endpointNodes.length,
+      runCount: projectRuns.length,
+      metricCount: projectMetrics.length,
+      activeReportCount,
+    })
+    const nextStep = firstWorkflowTutorialSteps[nextIndex] ?? firstWorkflowTutorialSteps[0]
+
+    setFirstWorkflowTutorialStepIndex(nextIndex)
+    setTutorialTargetRect(null)
+    setIsFirstWorkflowTutorialOpen(true)
+    openDashboardSection(nextStep.section as DashboardSection)
+  }
+
+  const moveFirstWorkflowTutorial = (nextIndex: number) => {
+    const boundedIndex = Math.min(Math.max(nextIndex, 0), firstWorkflowTutorialSteps.length - 1)
+    const nextStep = firstWorkflowTutorialSteps[boundedIndex] ?? firstWorkflowTutorialSteps[0]
+
+    setFirstWorkflowTutorialStepIndex(boundedIndex)
+    setTutorialTargetRect(null)
+    openDashboardSection(nextStep.section as DashboardSection)
+  }
+
+  const closeFirstWorkflowTutorial = (state: "completed" | "skipped") => {
+    writeFirstWorkflowTutorialState(state)
+    setIsFirstWorkflowTutorialOpen(false)
+    setTutorialTargetRect(null)
+  }
+
   const handleGlobalSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (event.key === "ArrowDown") {
       event.preventDefault()
@@ -2219,8 +2311,49 @@ export function MeridianDashboard({
     return () => window.removeEventListener("keydown", handleShortcut)
   }, [isGlobalSearchOpen])
 
+  useEffect(() => {
+    if (!isFirstWorkflowTutorialOpen) return
+
+    let scrollTimer: number | null = null
+    const measureTimer = window.setTimeout(() => {
+      const target = document.querySelector(`[data-tutorial-id="${activeTutorialStep.targetId}"]`) as HTMLElement | null
+      if (!target) {
+        setTutorialTargetRect(null)
+        return
+      }
+
+      target.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" })
+      scrollTimer = window.setTimeout(() => {
+        const rect = target.getBoundingClientRect()
+        setTutorialTargetRect({
+          top: rect.top,
+          left: rect.left,
+          width: rect.width,
+          height: rect.height,
+        })
+      }, 220)
+    }, 100)
+
+    return () => {
+      window.clearTimeout(measureTimer)
+      if (scrollTimer) window.clearTimeout(scrollTimer)
+    }
+  }, [activeSection, activeTutorialStep, isFirstWorkflowTutorialOpen])
+
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground lg:h-screen lg:min-h-[760px] lg:flex-row">
+      {isFirstWorkflowTutorialOpen ? (
+        <TutorialOverlay
+          step={activeTutorialStep}
+          stepIndex={firstWorkflowTutorialStepIndex}
+          totalSteps={firstWorkflowTutorialSteps.length}
+          targetRect={tutorialTargetRect}
+          onBack={() => moveFirstWorkflowTutorial(firstWorkflowTutorialStepIndex - 1)}
+          onNext={() => moveFirstWorkflowTutorial(firstWorkflowTutorialStepIndex + 1)}
+          onSkip={() => closeFirstWorkflowTutorial("skipped")}
+          onFinish={() => closeFirstWorkflowTutorial("completed")}
+        />
+      ) : null}
       <Dialog open={isGlobalSearchOpen} onOpenChange={setIsGlobalSearchOpen}>
         <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-hidden p-0 sm:max-w-2xl">
           <DialogHeader className="border-b px-4 pb-3 pt-4">
@@ -2826,7 +2959,7 @@ export function MeridianDashboard({
               </div>
             </div>
 
-            <div className="relative h-[620px] shrink-0 lg:min-h-0 lg:flex-1 lg:h-[calc(100vh-8rem)] xl:h-auto">
+            <div data-tutorial-id="map-canvas" className="relative h-[620px] shrink-0 lg:min-h-0 lg:flex-1 lg:h-[calc(100vh-8rem)] xl:h-auto">
               <ReactFlow
                 nodes={nodes}
                 edges={renderedEdges}
@@ -2944,7 +3077,6 @@ export function MeridianDashboard({
             nodes={endpointNodes}
             statusCounts={statusCounts}
             activeAlerts={activeAlerts}
-            activeReportCount={reportShares.filter((share) => !share.revokedAt).length}
             latestPoll={latestPoll}
             latestEmail={latestEmail}
             projectRuns={projectRuns}
@@ -2956,6 +3088,7 @@ export function MeridianDashboard({
             isRefreshingProject={isRefreshingProject}
             onRefreshProject={refreshProjectData}
             onOpenSection={openDashboardSection}
+            onStartTutorial={openFirstWorkflowTutorial}
             onSelectNode={(nodeId) => {
               setSelectedId(nodeId)
               openDashboardSection("map")
@@ -3351,6 +3484,90 @@ function SidebarItem({
   )
 }
 
+function TutorialOverlay({
+  step,
+  stepIndex,
+  totalSteps,
+  targetRect,
+  onBack,
+  onNext,
+  onSkip,
+  onFinish,
+}: {
+  step: TutorialStep
+  stepIndex: number
+  totalSteps: number
+  targetRect: TutorialTargetRect
+  onBack: () => void
+  onNext: () => void
+  onSkip: () => void
+  onFinish: () => void
+}) {
+  const isFirstStep = stepIndex === 0
+  const isLastStep = stepIndex >= totalSteps - 1
+  const hasTarget = Boolean(targetRect)
+  const highlightStyle = targetRect
+    ? {
+        top: Math.max(targetRect.top - 8, 8),
+        left: Math.max(targetRect.left - 8, 8),
+        width: targetRect.width + 16,
+        height: targetRect.height + 16,
+      }
+    : undefined
+
+  return (
+    <div className="fixed inset-0 z-[60]">
+      {targetRect ? (
+        <div
+          className="pointer-events-none fixed rounded-2xl ring-2 ring-primary ring-offset-2 ring-offset-background"
+          style={{
+            ...highlightStyle,
+            boxShadow: "0 0 0 9999px rgba(0,0,0,0.48)",
+          }}
+        />
+      ) : (
+        <div className="fixed inset-0 bg-black/50" />
+      )}
+      <div className={cn("fixed z-[61] w-[min(24rem,calc(100vw-2rem))] rounded-xl border bg-popover p-4 text-popover-foreground shadow-2xl", hasTarget ? "bottom-5 right-5" : "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2")}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <Badge variant="secondary">Step {stepIndex + 1} of {totalSteps}</Badge>
+            <h2 className="mt-3 text-base font-semibold">{step.title}</h2>
+          </div>
+          <Button variant="ghost" size="sm" onClick={onSkip}>
+            Skip
+          </Button>
+        </div>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">{hasTarget ? step.body : step.fallbackBody}</p>
+        {!hasTarget ? (
+          <div className="mt-3 rounded-md border border-dashed p-2 text-xs text-muted-foreground">
+            This step target is not visible yet, so Meridian is showing the instruction here instead.
+          </div>
+        ) : null}
+        <div className="mt-4 flex items-center justify-between gap-2">
+          <Button variant="outline" size="sm" onClick={onBack} disabled={isFirstStep}>
+            Back
+          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={onSkip}>
+              Skip tutorial
+            </Button>
+            {isLastStep ? (
+              <Button size="sm" onClick={onFinish}>
+                Finish
+              </Button>
+            ) : (
+              <Button size="sm" onClick={onNext}>
+                Next
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ReadinessItem({ label, ready }: { label: string; ready: boolean }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border p-3 text-sm">
@@ -3569,7 +3786,6 @@ function ControlRoomSection({
   nodes,
   statusCounts,
   activeAlerts,
-  activeReportCount,
   latestPoll,
   latestEmail,
   projectRuns,
@@ -3581,12 +3797,12 @@ function ControlRoomSection({
   isRefreshingProject,
   onRefreshProject,
   onOpenSection,
+  onStartTutorial,
   onSelectNode,
 }: {
   nodes: EndpointNodeData[]
   statusCounts: { active: number; degraded: number; down: number }
   activeAlerts: ProjectAlert[]
-  activeReportCount: number
   latestPoll: WorkspacePayload["diagnostics"]["latestPoll"]
   latestEmail: WorkspacePayload["diagnostics"]["latestEmail"]
   projectRuns: ProjectRunRecord[]
@@ -3604,6 +3820,7 @@ function ControlRoomSection({
   isRefreshingProject: boolean
   onRefreshProject: () => Promise<void>
   onOpenSection: (section: DashboardSection) => void
+  onStartTutorial: () => void
   onSelectNode: (nodeId: string) => void
 }) {
   const attentionItems = [
@@ -3629,13 +3846,6 @@ function ControlRoomSection({
       nodeId: node.id,
     })),
   ] as const
-  const launchpadSteps = buildFirstWorkflowLaunchpad({
-    nodeCount: nodes.length,
-    runCount: projectRuns.length,
-    metricCount: projectMetrics.length,
-    activeReportCount,
-    activeAlertCount: activeAlerts.length,
-  })
 
   return (
     <SectionShell>
@@ -3649,10 +3859,16 @@ function ControlRoomSection({
                   One operating picture for automation health, workflow runs, cost, quality, alerts, and client proof.
                 </p>
               </div>
-              <Button onClick={() => onOpenSection("map")}>
-                <Network data-icon="inline-start" />
-                Open automation map
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={() => onOpenSection("map")}>
+                  <Network data-icon="inline-start" />
+                  Open automation map
+                </Button>
+                <Button variant="outline" onClick={onStartTutorial}>
+                  <Sparkles data-icon="inline-start" />
+                  Start tutorial
+                </Button>
+              </div>
             </div>
             <div className="mt-5 grid gap-3 sm:grid-cols-3">
               <MetricTile label="Nodes monitored" value={String(nodes.length)} detail={`${statusCounts.active} active / ${statusCounts.degraded} degraded / ${statusCounts.down} down`} />
@@ -3710,37 +3926,6 @@ function ControlRoomSection({
           <MetricTile label="Failed/degraded runs" value={String(projectSummary.failedRuns.length)} detail="Shown in the runs section" tone={projectSummary.failedRuns.length ? "warn" : "good"} />
           <MetricTile label="Client proof" value="Ready" detail="Share reports and export map PNGs" tone="good" />
         </div>
-
-        <Card>
-          <CardHeader className="flex flex-row items-start justify-between gap-3">
-            <div>
-              <CardTitle>First Workflow Launchpad</CardTitle>
-              <CardDescription>Evidence-backed next steps for getting one live automation monitored end to end.</CardDescription>
-            </div>
-            <Badge variant={launchpadSteps.every((step) => step.status === "done") ? "secondary" : "outline"}>
-              {launchpadSteps.filter((step) => step.status === "done").length}/{launchpadSteps.length} complete
-            </Badge>
-          </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {launchpadSteps.map((step, index) => (
-              <div key={step.id} className={cn("grid content-between gap-4 rounded-lg border bg-background p-4", step.status === "current" && "border-primary/60 shadow-sm")}>
-                <div className="grid gap-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <Badge variant={wizardStepBadgeVariant(step.status)}>{wizardStepBadgeLabel(step.status)}</Badge>
-                    <span className={cn("size-2.5 rounded-full", launchpadStepDotClass(step.status))} />
-                  </div>
-                  <div>
-                    <div className="text-sm font-semibold">{index + 1}. {step.title}</div>
-                    <div className="mt-1 text-xs leading-5 text-muted-foreground">{step.body}</div>
-                  </div>
-                </div>
-                <Button variant={step.status === "current" ? "default" : "outline"} size="sm" onClick={() => onOpenSection(step.section as DashboardSection)}>
-                  {step.actionLabel}
-                </Button>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
 
         <div className="grid gap-5 lg:grid-cols-[1fr_0.9fr]">
           <Card>
@@ -3854,7 +4039,7 @@ function RunsSection({
             {isRefreshingProject ? "Refreshing" : "Refresh runs"}
           </Button>
         </div>
-        <div className="rounded-xl border bg-background">
+        <div data-tutorial-id="runs-table" className="rounded-xl border bg-background">
           {runs.length ? (
             <div className="divide-y">
               {runs.slice(0, 30).map((run) => (
@@ -4156,7 +4341,7 @@ function ReportsSection({
             </Card>
           </div>
 
-          <Card>
+          <Card data-tutorial-id="reports-preview">
             <CardHeader>
               <CardTitle>Report Preview</CardTitle>
               <CardDescription>What a client sees before you create or share a report link.</CardDescription>
@@ -4462,7 +4647,7 @@ function IntegrationsSection({
   return (
     <SectionShell>
       <div className="mx-auto grid max-w-7xl gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-        <div className="grid content-start gap-3">
+        <div data-tutorial-id="integrations-templates" className="grid content-start gap-3">
           <div>
             <h2 className="text-xl font-semibold">Integration Templates</h2>
             <p className="mt-1 text-sm text-muted-foreground">Focused setup accelerators for the core private-beta sources.</p>
@@ -4664,7 +4849,7 @@ function IntegrationsSection({
               {message ? <div className="text-xs text-muted-foreground">{message}</div> : null}
             </div>
             {telemetryReady ? (
-              <div className="grid gap-3 rounded-lg border bg-background p-3 text-xs">
+              <div data-tutorial-id="integrations-telemetry-test" className="grid gap-3 rounded-lg border bg-background p-3 text-xs">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <div className="font-medium">One-time telemetry test</div>

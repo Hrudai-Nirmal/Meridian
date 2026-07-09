@@ -104,7 +104,7 @@ Authenticated dashboards connect to `/api/projects/[projectId]/events` for light
 
 The dashboard header and Control Room show the live stream state, last checked time, latest changed areas, and a manual `Refresh telemetry now` fallback. Use this to verify whether new runs, polling changes, and alert updates are arriving through the live signal path or need manual refresh.
 
-Control Room also includes the First Workflow Launchpad: a four-step, evidence-backed checklist for creating/selecting a node, connecting workflow telemetry or metric polling, verifying Runs/Logs/node cards, and creating client proof. The checklist uses safe project counts only, so it adapts as the first node, run/sample, and report link appear without exposing tokens or integration credentials.
+Control Room also includes Interactive Tutorial v1 for the first workflow path. It auto-starts once per browser for projects with no runs or metric samples, guides users across Automation Map, Integrations, telemetry testing, Runs, and Reports, and can be restarted from Control Room. Tutorial completion is stored locally as `meridian-tutorial:first-workflow:v1` with `completed` or `skipped`; no database migration is required.
 
 Owners/admins can create project-scoped workflow telemetry tokens from Deployment diagnostics. The raw token is shown once, then only its prefix/hash metadata is retained. External automations can post run telemetry with:
 
@@ -244,7 +244,7 @@ Manual post-deploy checklist:
 - Posting valid workflow run telemetry updates the selected node's Runs tab after refresh and records step details without sending alert email.
 - While signed in, the dashboard live indicator reaches `Live`; posting valid workflow run telemetry or running a manual poll updates Runs, node health, alerts, metrics, and latest poll status without a full page reload.
 - If live updates disconnect, the dashboard header and Control Room show a reconnecting/manual state, the latest changed areas remain visible, and manual refresh still works.
-- Control Room First Workflow Launchpad moves from create/select node, to connect telemetry, to verify ops, to create client proof as project evidence appears.
+- Interactive Tutorial v1 auto-starts for no-telemetry projects, can be skipped/finished, can be restarted from Control Room, and navigates through Map, Integrations, Runs, and Reports without exposing secrets.
 - Basic and Advanced integration templates render in the API tab; custom REST metric applies fields without saving, and telemetry snippets include the selected node id but no real token.
 - Client report links can be created, opened in a signed-out browser, copied, and revoked without exposing secrets.
 - Client reports can include subtitle/prepared-by/executive note fields, optional PNG/SVG brand images, attached map PNGs, and browser print/save-as-PDF output.

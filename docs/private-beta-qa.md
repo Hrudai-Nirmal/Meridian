@@ -37,13 +37,15 @@ Use this checklist for production validation on `https://meridian.hrudainirmal.i
 - Confirm selecting results navigates to the right section, selects the node/alert where applicable, and can open Logs filtered to failed jobs.
 - Confirm result rows never show raw ingestion tokens, webhook URLs, Slack URLs, signing secrets, encrypted payloads, env values, or private credential bodies.
 
-## Control Room Launchpad
+## Interactive Tutorial
 
-- On a blank disposable project, confirm First Workflow Launchpad marks create/select node as the current step.
-- After creating a node, confirm the launchpad marks node setup done and points to Integrations.
-- After sending a test run or receiving a metric sample, confirm it marks telemetry/ops verification done and points to Reports.
-- After creating an active report link, confirm the launchpad shows all steps complete.
-- Confirm launchpad copy never exposes raw tokens, webhook URLs, Slack URLs, signing secrets, encrypted payloads, env values, or credential bodies.
+- Clear `meridian-tutorial:first-workflow:v1` from localStorage and open a no-telemetry disposable project; confirm the tutorial auto-starts.
+- Confirm tutorial steps navigate through Automation Map, Integrations, telemetry test, Runs, and Reports.
+- Confirm `Back`, `Next`, `Skip`, and `Finish` work.
+- Confirm Skip/Finish prevents auto-start after refresh.
+- Click `Start tutorial` in Control Room and confirm the tutorial restarts from the evidence-appropriate step.
+- Confirm missing targets show fallback copy instead of breaking the dashboard.
+- Confirm tutorial copy never exposes raw tokens, webhook URLs, Slack URLs, signing secrets, encrypted payloads, env values, or credential bodies.
 
 ## Automation Map
 
