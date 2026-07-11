@@ -3564,14 +3564,8 @@ function TutorialOverlay({
     : undefined
 
   return (
-    <div className="fixed inset-0 z-[60]">
-      <div
-        className="fixed inset-0 bg-black/50"
-        onPointerDown={(event) => {
-          event.preventDefault()
-          event.stopPropagation()
-        }}
-      />
+    <div className="pointer-events-none fixed inset-0 z-[60]">
+      <div className="pointer-events-none fixed inset-0 bg-black/50" />
       {targetRect ? (
         <div
           className="pointer-events-none fixed z-[61] rounded-2xl ring-2 ring-primary ring-offset-2 ring-offset-background"
@@ -3580,7 +3574,7 @@ function TutorialOverlay({
           }}
         />
       ) : null}
-      <div className={cn("fixed z-[62] w-[min(26rem,calc(100vw-2rem))] rounded-xl border bg-popover p-4 text-popover-foreground shadow-2xl", hasTarget ? "bottom-5 right-5" : "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2")}>
+      <div className={cn("pointer-events-auto fixed z-[62] w-[min(26rem,calc(100vw-2rem))] rounded-xl border bg-popover p-4 text-popover-foreground shadow-2xl", hasTarget ? "bottom-5 right-5" : "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2")}>
         <div className="flex items-start justify-between gap-3">
           <div>
             <Badge variant="secondary">Step {stepIndex + 1} of {totalSteps}</Badge>

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { readFileSync } from "node:fs"
 import { test } from "node:test"
 
 import {
@@ -77,4 +78,13 @@ test("tutorial copy stays secret-safe", () => {
   assert.equal(serialized.includes("signing secret"), false)
   assert.equal(serialized.includes("ENCRYPTION_KEY"), false)
   assert.equal(serialized.includes("DATABASE_URL"), false)
+})
+
+test("tutorial overlay keeps the underlying app interactive", () => {
+  const dashboardSource = readFileSync(new URL("../src/components/meridian/dashboard.tsx", import.meta.url), "utf8")
+
+  assert.match(dashboardSource, /<div className="pointer-events-none fixed inset-0 z-\[60\]">/)
+  assert.match(dashboardSource, /className="pointer-events-none fixed inset-0 bg-black\/50"/)
+  assert.match(dashboardSource, /pointer-events-auto fixed z-\[62\]/)
+  assert.doesNotMatch(dashboardSource, /onPointerDown=\{\(event\)/)
 })
