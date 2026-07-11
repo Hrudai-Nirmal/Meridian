@@ -9,6 +9,7 @@ export const FIRST_WORKFLOW_TUTORIAL_STORAGE_KEY = "meridian-tutorial:first-work
 /**
  * @typedef {"map-node" | "integration-template" | "telemetry-test" | "verify-runs" | "client-proof"} TutorialStepId
  * @typedef {"control-room" | "projects" | "map" | "runs" | "alerts" | "reports" | "integrations" | "testing" | "logs" | "team" | "settings"} TutorialSection
+ * @typedef {{ nodeCount: number, runCount: number, metricCount: number, activeReportCount: number }} TutorialEvidence
  * @typedef {object} TutorialStep
  * @property {TutorialStepId} id
  * @property {TutorialSection} section
@@ -105,4 +106,46 @@ export function isTutorialDismissed(value) {
 export function shouldAutoStartFirstWorkflowTutorial(input) {
   if (isTutorialDismissed(input?.storageValue)) return false
   return safeCount(input?.runCount) === 0 && safeCount(input?.metricCount) === 0
+}
+
+/**
+ * Builds evidence-backed progress for the first-workflow tutorial.
+ *
+ * Meridian can prove durable milestones such as nodes, run/sample telemetry, and
+ * report links. Provider selection is treated as ready once a target node exists
+ * because that UI-only choice is not stored as durable project evidence.
+ *
+ * @param {{ startEvidence: TutorialEvidence, currentEvidence: TutorialEvidence }} input
+ * @returns {{ completedStepIds: TutorialStepId[], completedCount: number, totalCount: number, percent: number }}
+ */
+export function buildFirstWorkflowTutorialProgress(input) {
+  const startEvidence = input?.startEvidence ?? {}
+  const currentEvidence = input?.currentEvidence ?? {}
+  const currentNodeCount = safeCount(currentEvidence.nodeCount)
+  const currentRunCount = safeCount(currentEvidence.runCount)
+  const currentMetricCount = safeCount(currentEvidence.metricCount)
+  const currentReportCount = safeCount(currentEvidence.activeReportCount)
+  const hasNode = currentNodeCount > 0
+  const hasTelemetry = currentRunCount > safeCount(startEvidence.runCount) || currentMetricCount > safeCount(startEvidence.metricCount)
+  const hasReport = currentReportCount > safeCount(startEvidence.activeReportCount)
+  const completedStepIds = []
+
+  if (hasNode) {
+    completedStepIds.push("map-node", "integration-template")
+  }
+  if (hasTelemetry) {
+    completedStepIds.push("telemetry-test", "verify-runs")
+  }
+  if (hasReport) {
+    completedStepIds.push("client-proof")
+  }
+
+  const totalCount = firstWorkflowTutorialSteps.length
+
+  return {
+    completedStepIds,
+    completedCount: completedStepIds.length,
+    totalCount,
+    percent: Math.round((completedStepIds.length / totalCount) * 100),
+  }
 }

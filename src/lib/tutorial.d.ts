@@ -24,6 +24,13 @@ export type TutorialStep = {
   fallbackBody: string
 }
 
+export type TutorialEvidence = {
+  nodeCount: number
+  runCount: number
+  metricCount: number
+  activeReportCount: number
+}
+
 export const firstWorkflowTutorialSteps: TutorialStep[]
 
 export function getFirstWorkflowTutorialStartIndex(input: {
@@ -40,3 +47,13 @@ export function shouldAutoStartFirstWorkflowTutorial(input: {
   runCount: number
   metricCount: number
 }): boolean
+
+export function buildFirstWorkflowTutorialProgress(input: {
+  startEvidence: TutorialEvidence
+  currentEvidence: TutorialEvidence
+}): {
+  completedStepIds: TutorialStepId[]
+  completedCount: number
+  totalCount: number
+  percent: number
+}

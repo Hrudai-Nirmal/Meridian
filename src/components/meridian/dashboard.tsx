@@ -100,9 +100,11 @@ import {
 } from "@/lib/sdk-onboarding.mjs"
 import {
   FIRST_WORKFLOW_TUTORIAL_STORAGE_KEY,
+  buildFirstWorkflowTutorialProgress,
   firstWorkflowTutorialSteps,
   getFirstWorkflowTutorialStartIndex,
   shouldAutoStartFirstWorkflowTutorial,
+  type TutorialEvidence,
   type TutorialStep,
 } from "@/lib/tutorial.mjs"
 import { cn } from "@/lib/utils"
@@ -813,6 +815,8 @@ export function MeridianDashboard({
   const [isSidebarContentVisible, setIsSidebarContentVisible] = useState(true)
   const [isFirstWorkflowTutorialOpen, setIsFirstWorkflowTutorialOpen] = useState(() => getInitialFirstWorkflowTutorialState(initialWorkspace).shouldOpen)
   const [firstWorkflowTutorialStepIndex, setFirstWorkflowTutorialStepIndex] = useState(() => getInitialFirstWorkflowTutorialState(initialWorkspace).stepIndex)
+  const [firstWorkflowTutorialStartEvidence, setFirstWorkflowTutorialStartEvidence] = useState<TutorialEvidence>(() => getInitialFirstWorkflowTutorialEvidence(initialWorkspace))
+  const [tutorialProgressMessage, setTutorialProgressMessage] = useState("")
   const [tutorialTargetRect, setTutorialTargetRect] = useState<TutorialTargetRect>(null)
   const [selectedId, setSelectedId] = useState(initialWorkspace.nodes[0]?.id ?? "")
   const [selectedEdgeId, setSelectedEdgeId] = useState("")
@@ -1009,6 +1013,23 @@ export function MeridianDashboard({
   const activeReportCount = useMemo(
     () => reportShares.filter((share) => !share.revokedAt).length,
     [reportShares]
+  )
+  const firstWorkflowTutorialEvidence = useMemo<TutorialEvidence>(
+    () => ({
+      nodeCount: endpointNodes.length,
+      runCount: projectRuns.length,
+      metricCount: projectMetrics.length,
+      activeReportCount,
+    }),
+    [activeReportCount, endpointNodes.length, projectMetrics.length, projectRuns.length]
+  )
+  const firstWorkflowTutorialProgress = useMemo(
+    () =>
+      buildFirstWorkflowTutorialProgress({
+        startEvidence: firstWorkflowTutorialStartEvidence,
+        currentEvidence: firstWorkflowTutorialEvidence,
+      }),
+    [firstWorkflowTutorialEvidence, firstWorkflowTutorialStartEvidence]
   )
   const globalSearchIndex = useMemo(
     () =>
@@ -2257,6 +2278,8 @@ export function MeridianDashboard({
     })
     const nextStep = firstWorkflowTutorialSteps[nextIndex] ?? firstWorkflowTutorialSteps[0]
 
+    setFirstWorkflowTutorialStartEvidence(firstWorkflowTutorialEvidence)
+    setTutorialProgressMessage("")
     setFirstWorkflowTutorialStepIndex(nextIndex)
     setTutorialTargetRect(null)
     setIsFirstWorkflowTutorialOpen(true)
@@ -2276,6 +2299,17 @@ export function MeridianDashboard({
     writeFirstWorkflowTutorialState(state)
     setIsFirstWorkflowTutorialOpen(false)
     setTutorialTargetRect(null)
+    setTutorialProgressMessage("")
+  }
+
+  const checkFirstWorkflowTutorialProgress = async () => {
+    setTutorialProgressMessage("Checking project evidence...")
+    try {
+      await refreshProjectData({ silent: true })
+      setTutorialProgressMessage("Progress checked. New runs, samples, and alerts are reflected when Meridian receives them.")
+    } catch {
+      setTutorialProgressMessage("Progress check failed. Try the normal refresh control or reload the dashboard.")
+    }
   }
 
   const handleGlobalSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
@@ -2348,8 +2382,11 @@ export function MeridianDashboard({
           stepIndex={firstWorkflowTutorialStepIndex}
           totalSteps={firstWorkflowTutorialSteps.length}
           targetRect={tutorialTargetRect}
+          progress={firstWorkflowTutorialProgress}
+          progressMessage={tutorialProgressMessage}
           onBack={() => moveFirstWorkflowTutorial(firstWorkflowTutorialStepIndex - 1)}
           onNext={() => moveFirstWorkflowTutorial(firstWorkflowTutorialStepIndex + 1)}
+          onCheckProgress={checkFirstWorkflowTutorialProgress}
           onSkip={() => closeFirstWorkflowTutorial("skipped")}
           onFinish={() => closeFirstWorkflowTutorial("completed")}
         />
@@ -3489,8 +3526,11 @@ function TutorialOverlay({
   stepIndex,
   totalSteps,
   targetRect,
+  progress,
+  progressMessage,
   onBack,
   onNext,
+  onCheckProgress,
   onSkip,
   onFinish,
 }: {
@@ -3498,8 +3538,16 @@ function TutorialOverlay({
   stepIndex: number
   totalSteps: number
   targetRect: TutorialTargetRect
+  progress: {
+    completedStepIds: TutorialStep["id"][]
+    completedCount: number
+    totalCount: number
+    percent: number
+  }
+  progressMessage: string
   onBack: () => void
   onNext: () => void
+  onCheckProgress: () => Promise<void>
   onSkip: () => void
   onFinish: () => void
 }) {
@@ -3517,18 +3565,22 @@ function TutorialOverlay({
 
   return (
     <div className="fixed inset-0 z-[60]">
+      <div
+        className="fixed inset-0 bg-black/50"
+        onPointerDown={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+        }}
+      />
       {targetRect ? (
         <div
-          className="pointer-events-none fixed rounded-2xl ring-2 ring-primary ring-offset-2 ring-offset-background"
+          className="pointer-events-none fixed z-[61] rounded-2xl ring-2 ring-primary ring-offset-2 ring-offset-background"
           style={{
             ...highlightStyle,
-            boxShadow: "0 0 0 9999px rgba(0,0,0,0.48)",
           }}
         />
-      ) : (
-        <div className="fixed inset-0 bg-black/50" />
-      )}
-      <div className={cn("fixed z-[61] w-[min(24rem,calc(100vw-2rem))] rounded-xl border bg-popover p-4 text-popover-foreground shadow-2xl", hasTarget ? "bottom-5 right-5" : "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2")}>
+      ) : null}
+      <div className={cn("fixed z-[62] w-[min(26rem,calc(100vw-2rem))] rounded-xl border bg-popover p-4 text-popover-foreground shadow-2xl", hasTarget ? "bottom-5 right-5" : "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2")}>
         <div className="flex items-start justify-between gap-3">
           <div>
             <Badge variant="secondary">Step {stepIndex + 1} of {totalSteps}</Badge>
@@ -3539,6 +3591,25 @@ function TutorialOverlay({
           </Button>
         </div>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">{hasTarget ? step.body : step.fallbackBody}</p>
+        <div className="mt-4 grid gap-2 rounded-lg border bg-muted/30 p-3">
+          <div className="flex items-center justify-between gap-3 text-xs">
+            <span className="font-medium">Verified progress</span>
+            <span className="text-muted-foreground">{progress.completedCount}/{progress.totalCount} steps proven</span>
+          </div>
+          <Progress value={progress.percent} />
+          <div className="grid gap-1">
+            {firstWorkflowTutorialSteps.map((tutorialStep) => {
+              const isComplete = progress.completedStepIds.includes(tutorialStep.id)
+              return (
+                <div key={tutorialStep.id} className="flex items-center gap-2 text-xs text-muted-foreground">
+                  {isComplete ? <CheckCircle2 className="size-3.5 text-emerald-500" /> : <span className="size-3.5 rounded-full border" />}
+                  <span className={cn(isComplete && "text-foreground")}>{tutorialStep.title}</span>
+                </div>
+              )
+            })}
+          </div>
+          {progressMessage ? <div className="text-xs text-muted-foreground">{progressMessage}</div> : null}
+        </div>
         {!hasTarget ? (
           <div className="mt-3 rounded-md border border-dashed p-2 text-xs text-muted-foreground">
             This step target is not visible yet, so Meridian is showing the instruction here instead.
@@ -3549,8 +3620,8 @@ function TutorialOverlay({
             Back
           </Button>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={onSkip}>
-              Skip tutorial
+            <Button variant="outline" size="sm" onClick={() => void onCheckProgress()}>
+              Check progress
             </Button>
             {isLastStep ? (
               <Button size="sm" onClick={onFinish}>

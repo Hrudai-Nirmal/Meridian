@@ -3,6 +3,7 @@ import { test } from "node:test"
 
 import {
   FIRST_WORKFLOW_TUTORIAL_STORAGE_KEY,
+  buildFirstWorkflowTutorialProgress,
   firstWorkflowTutorialSteps,
   getFirstWorkflowTutorialStartIndex,
   isTutorialDismissed,
@@ -43,6 +44,29 @@ test("shouldAutoStartFirstWorkflowTutorial only starts for undismissed projects 
   assert.equal(shouldAutoStartFirstWorkflowTutorial({ storageValue: "skipped", runCount: 0, metricCount: 0 }), false)
   assert.equal(shouldAutoStartFirstWorkflowTutorial({ storageValue: null, runCount: 1, metricCount: 0 }), false)
   assert.equal(shouldAutoStartFirstWorkflowTutorial({ storageValue: null, runCount: 0, metricCount: 1 }), false)
+})
+
+test("buildFirstWorkflowTutorialProgress advances from observable evidence", () => {
+  const progress = buildFirstWorkflowTutorialProgress({
+    startEvidence: { nodeCount: 0, runCount: 0, metricCount: 0, activeReportCount: 0 },
+    currentEvidence: { nodeCount: 1, runCount: 1, metricCount: 0, activeReportCount: 1 },
+  })
+
+  assert.deepEqual(progress.completedStepIds, ["map-node", "integration-template", "telemetry-test", "verify-runs", "client-proof"])
+  assert.equal(progress.completedCount, 5)
+  assert.equal(progress.totalCount, 5)
+  assert.equal(progress.percent, 100)
+})
+
+test("buildFirstWorkflowTutorialProgress waits for new signal evidence after tutorial start", () => {
+  const progress = buildFirstWorkflowTutorialProgress({
+    startEvidence: { nodeCount: 1, runCount: 0, metricCount: 0, activeReportCount: 0 },
+    currentEvidence: { nodeCount: 1, runCount: 0, metricCount: 0, activeReportCount: 0 },
+  })
+
+  assert.deepEqual(progress.completedStepIds, ["map-node", "integration-template"])
+  assert.equal(progress.completedCount, 2)
+  assert.equal(progress.percent, 40)
 })
 
 test("tutorial copy stays secret-safe", () => {
