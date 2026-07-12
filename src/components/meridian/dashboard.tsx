@@ -98,6 +98,7 @@ import {
   buildSdkInstallCommand,
   buildSdkTestRunCommand,
 } from "@/lib/sdk-onboarding.mjs"
+import { getRealMetricSummaries, getRealWorkflowRuns } from "@/lib/telemetry-evidence.mjs"
 import {
   FIRST_WORKFLOW_TUTORIAL_STORAGE_KEY,
   buildFirstWorkflowTutorialProgress,
@@ -657,8 +658,8 @@ function getInitialLiveConnectionState(): LiveConnectionState {
 }
 
 function getInitialFirstWorkflowTutorialEvidence(workspace: WorkspacePayload) {
-  const runCount = workspace.nodes.reduce((sum, node) => sum + node.runs.length, 0)
-  const metricCount = workspace.nodes.reduce((sum, node) => sum + (node.realMetrics?.length ?? 0), 0)
+  const runCount = getRealWorkflowRuns(workspace.nodes).length
+  const metricCount = getRealMetricSummaries(workspace.nodes).length
 
   return {
     nodeCount: workspace.nodes.length,
@@ -963,31 +964,11 @@ export function MeridianDashboard({
   )
   const activeAlerts = useMemo(() => alerts.filter((alert) => !alert.resolvedAt), [alerts])
   const projectRuns = useMemo<ProjectRunRecord[]>(
-    () =>
-      endpointNodes
-        .flatMap((node) =>
-          node.runs.map((run) => ({
-            ...run,
-            nodeId: node.id,
-            nodeLabel: node.label,
-          }))
-        )
-        .sort((a, b) => {
-          const aTime = a.startedAt ? new Date(a.startedAt).getTime() : 0
-          const bTime = b.startedAt ? new Date(b.startedAt).getTime() : 0
-          return bTime - aTime
-        }),
+    () => getRealWorkflowRuns(endpointNodes) as ProjectRunRecord[],
     [endpointNodes]
   )
   const projectMetrics = useMemo<ProjectMetricRecord[]>(
-    () =>
-      endpointNodes.flatMap((node) =>
-        (node.realMetrics ?? []).map((metric) => ({
-          ...metric,
-          nodeId: node.id,
-          nodeLabel: node.label,
-        }))
-      ),
+    () => getRealMetricSummaries(endpointNodes) as ProjectMetricRecord[],
     [endpointNodes]
   )
   const projectSummary = useMemo(() => {
@@ -3940,7 +3921,7 @@ function ControlRoomSection({
               <MetricTile
                 label="Run success"
                 value={projectSummary.successRate === null ? "No runs" : `${projectSummary.successRate}%`}
-                detail={`${projectRuns.length} recent runs captured`}
+                detail={`${projectRuns.length} real runs captured`}
                 tone={projectSummary.failedRuns.length ? "warn" : "good"}
               />
               <MetricTile
@@ -4434,7 +4415,7 @@ function ReportsSection({
               ) : null}
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <MetricTile label="Uptime" value={`${uptimePercent}%`} detail={`${activeNodeCount}/${nodes.length} nodes active`} tone={uptimePercent >= 80 ? "good" : "warn"} />
-                <MetricTile label="Run success" value={projectSummary.successRate === null ? "n/a" : `${projectSummary.successRate}%`} detail={`${projectRuns.length} recent runs`} tone={(projectSummary.successRate ?? 100) >= 90 ? "good" : "warn"} />
+                <MetricTile label="Run success" value={projectSummary.successRate === null ? "n/a" : `${projectSummary.successRate}%`} detail={`${projectRuns.length} submitted runs`} tone={(projectSummary.successRate ?? 100) >= 90 ? "good" : "warn"} />
                 <MetricTile label="Active alerts" value={String(activeAlerts.length)} detail="Open incidents" tone={activeAlerts.length ? "bad" : "good"} />
                 <MetricTile label="Latest sample" value={projectSummary.latestSampledAt ? formatSampledAt(projectSummary.latestSampledAt) : "No samples"} detail={`${projectMetrics.length} metric streams`} tone={projectSummary.latestSampledAt ? "good" : "neutral"} />
               </div>
@@ -4921,7 +4902,7 @@ function IntegrationsSection({
                     <div className="mt-1 text-muted-foreground">Creates a project token named {selectedTemplate.tokenName} and posts a harmless run to the selected node.</div>
                   </div>
                   <Badge variant={selectedNode?.hasPersistedRuns ? "secondary" : "outline"}>
-                    {selectedNode?.hasPersistedRuns ? "Runs detected" : "Awaiting run"}
+                    {selectedNode?.hasPersistedRuns ? "Real runs detected" : "Awaiting real run"}
                   </Badge>
                 </div>
                 <div className="flex flex-wrap gap-2">

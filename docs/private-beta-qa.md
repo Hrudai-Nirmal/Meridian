@@ -42,7 +42,7 @@ Use this checklist for production validation on `https://meridian.hrudainirmal.i
 - Clear `meridian-tutorial:first-workflow:v1` from localStorage and open a no-telemetry disposable project; confirm the tutorial auto-starts.
 - Confirm the underlying app remains clickable while the tutorial is active.
 - Confirm tutorial steps navigate through Automation Map, Integrations, telemetry test, Runs, and Reports.
-- Confirm the evidence progress bar starts from the tutorial-start baseline and advances after a node exists, a new run/sample arrives, and a report link is created.
+- Confirm the evidence progress bar starts from the tutorial-start baseline, ignores sample fallback rows, and advances after a node exists, a real run/sample arrives, and a report link is created.
 - Click `Check progress` and confirm it refreshes evidence without exposing secrets.
 - Confirm `Back`, `Next`, `Skip`, and `Finish` work.
 - Confirm Skip/Finish prevents auto-start after refresh.
