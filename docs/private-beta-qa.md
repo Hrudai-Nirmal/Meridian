@@ -40,9 +40,10 @@ Use this checklist for production validation on `https://meridian.hrudainirmal.i
 ## Interactive Tutorial
 
 - Clear `meridian-tutorial:first-workflow:v1` from localStorage and open a no-telemetry disposable project; confirm the tutorial auto-starts.
-- Confirm the underlying app remains clickable while the tutorial is active.
-- Confirm tutorial steps navigate through Automation Map, Integrations, telemetry test, Runs, and Reports.
-- Confirm the evidence progress bar starts from the tutorial-start baseline, ignores sample fallback rows, and advances after a node exists, a real run/sample arrives, and a report link is created.
+- Confirm the page is not dimmed and the underlying app remains clickable while the tutorial is active.
+- Confirm the widget starts bottom-center, can be dragged to snap to an edge/corner, and can hide/show through the compact `Show tutorial ^` tab.
+- Confirm tutorial steps highlight actual REST metric setup components across Automation Map, Integrations, Testing, and Reports.
+- Confirm the evidence progress bar starts from the tutorial-start baseline, ignores sample fallback rows, and advances after a node exists, a real metric sample arrives, and a report link is created.
 - Click `Check progress` and confirm it refreshes evidence without exposing secrets.
 - Confirm `Back`, `Next`, `Skip`, and `Finish` work.
 - Confirm Skip/Finish prevents auto-start after refresh.

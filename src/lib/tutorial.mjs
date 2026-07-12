@@ -5,11 +5,17 @@
  */
 
 export const FIRST_WORKFLOW_TUTORIAL_STORAGE_KEY = "meridian-tutorial:first-workflow:v1"
+export const TUTORIAL_WIDGET_PLACEMENT_STORAGE_KEY = "meridian-tutorial:first-workflow:widget-placement:v1"
+export const TUTORIAL_WIDGET_COLLAPSED_STORAGE_KEY = "meridian-tutorial:first-workflow:widget-collapsed:v1"
+
+export const tutorialWidgetPlacements = ["bottom-center", "bottom-left", "bottom-right", "top-left", "top-right", "left-center", "right-center"]
 
 /**
- * @typedef {"map-node" | "integration-template" | "telemetry-test" | "verify-runs" | "client-proof"} TutorialStepId
+ * @typedef {"open-map" | "add-node" | "select-node" | "open-integrations" | "choose-rest-template" | "open-api-setup" | "configure-endpoint" | "configure-jsonpath" | "test-endpoint" | "save-api-setup" | "run-poll" | "verify-metric" | "create-report"} TutorialStepId
  * @typedef {"control-room" | "projects" | "map" | "runs" | "alerts" | "reports" | "integrations" | "testing" | "logs" | "team" | "settings"} TutorialSection
- * @typedef {{ nodeCount: number, runCount: number, metricCount: number, activeReportCount: number }} TutorialEvidence
+ * @typedef {"node-exists" | "selected-node" | "rest-setup-saved" | "real-metric-sample" | "report-link"} TutorialCompletionKind
+ * @typedef {"bottom-center" | "bottom-left" | "bottom-right" | "top-left" | "top-right" | "left-center" | "right-center"} TutorialWidgetPlacement
+ * @typedef {{ nodeCount: number, runCount: number, metricCount: number, activeReportCount: number, selectedNodeId?: string | null, restSetupCount?: number }} TutorialEvidence
  * @typedef {object} TutorialStep
  * @property {TutorialStepId} id
  * @property {TutorialSection} section
@@ -17,49 +23,125 @@ export const FIRST_WORKFLOW_TUTORIAL_STORAGE_KEY = "meridian-tutorial:first-work
  * @property {string} title
  * @property {string} body
  * @property {string} fallbackBody
+ * @property {TutorialCompletionKind=} completionKind
  */
 
 /** @type {TutorialStep[]} */
 export const firstWorkflowTutorialSteps = [
   {
-    id: "map-node",
+    id: "open-map",
     section: "map",
     targetId: "map-canvas",
-    title: "Start with the workflow map",
-    body: "Pick or create the node that represents the first bot, workflow, API, or automation you want Meridian to monitor.",
-    fallbackBody: "Open Automation Map and select the workflow node you want to connect first.",
+    title: "Open the automation map",
+    body: "This is where Meridian keeps the monitored workflow nodes. Start here so the REST metric has a node to attach to.",
+    fallbackBody: "Open Automation Map so Meridian can guide the REST metric setup on the workflow canvas.",
   },
   {
-    id: "integration-template",
+    id: "add-node",
+    section: "map",
+    targetId: "map-add-node",
+    title: "Create a node",
+    body: "Add a node for the API, workflow, or automation health endpoint you want Meridian to poll.",
+    fallbackBody: "Use Automation Map to add the node that will receive this REST metric.",
+    completionKind: "node-exists",
+  },
+  {
+    id: "select-node",
+    section: "map",
+    targetId: "map-inspector",
+    title: "Select the node",
+    body: "With a node selected, the inspector shows setup actions, metrics, runs, and API configuration for that exact workflow.",
+    fallbackBody: "Select the node you just created so Meridian can show its setup controls.",
+    completionKind: "selected-node",
+  },
+  {
+    id: "open-integrations",
     section: "integrations",
     targetId: "integrations-templates",
-    title: "Choose the setup path",
-    body: "Select Dify, n8n, GitHub Actions, or REST metric setup so Meridian can show provider-specific instructions.",
-    fallbackBody: "Open Integrations and choose the provider that matches your workflow.",
+    title: "Open integration templates",
+    body: "Templates explain the setup path before you copy or apply anything. For this tutorial, use REST metric polling.",
+    fallbackBody: "Open Integrations and find the REST metric template.",
   },
   {
-    id: "telemetry-test",
+    id: "choose-rest-template",
     section: "integrations",
-    targetId: "integrations-telemetry-test",
-    title: "Send the first safe signal",
-    body: "Create a one-time telemetry token or configure metric polling, then send a harmless test run or sample.",
-    fallbackBody: "Use Integrations to create a token, send a test run, or configure metric polling for the selected node.",
+    targetId: "integrations-template-custom-rest-metric",
+    title: "Choose REST metric setup",
+    body: "The REST metric template is for endpoints Meridian polls on a schedule, such as health, latency, queue depth, or success score.",
+    fallbackBody: "Choose the Custom REST metric template in Integrations.",
+    completionKind: "selected-node",
   },
   {
-    id: "verify-runs",
-    section: "runs",
-    targetId: "runs-table",
-    title: "Verify Meridian received data",
-    body: "Check the Runs view for status, timestamps, latency, cost, tokens, and step details from the workflow.",
-    fallbackBody: "Open Runs and verify the first workflow signal appears with safe operational metadata.",
+    id: "open-api-setup",
+    section: "map",
+    targetId: "node-api-setup-action",
+    title: "Open API setup",
+    body: "API setup stores the endpoint URL, auth shape, JSONPath mapping, and threshold Meridian should use while polling.",
+    fallbackBody: "Open the selected node's API setup controls from Automation Map.",
+    completionKind: "selected-node",
   },
   {
-    id: "client-proof",
+    id: "configure-endpoint",
+    section: "map",
+    targetId: "api-setup-endpoint-url",
+    title: "Enter the endpoint URL",
+    body: "Use a safe endpoint that returns JSON. For testing, the demo metric endpoint can populate a known JSON shape.",
+    fallbackBody: "Open API setup and fill in the endpoint URL.",
+    completionKind: "rest-setup-saved",
+  },
+  {
+    id: "configure-jsonpath",
+    section: "map",
+    targetId: "api-setup-jsonpath",
+    title: "Map the JSON value",
+    body: "The JSONPath tells Meridian which response value becomes the metric, for example a score, latency, or count.",
+    fallbackBody: "Add the JSONPath mapping in API setup.",
+    completionKind: "rest-setup-saved",
+  },
+  {
+    id: "test-endpoint",
+    section: "map",
+    targetId: "api-setup-test-endpoint",
+    title: "Test the endpoint",
+    body: "Testing previews the JSON response and confirms whether the mapped value can be read before saving.",
+    fallbackBody: "Run Test endpoint from API setup.",
+    completionKind: "rest-setup-saved",
+  },
+  {
+    id: "save-api-setup",
+    section: "map",
+    targetId: "api-setup-save",
+    title: "Save API setup",
+    body: "Saving turns the tested mapping into real project configuration that polling can use.",
+    fallbackBody: "Save the API setup after the endpoint test looks correct.",
+    completionKind: "rest-setup-saved",
+  },
+  {
+    id: "run-poll",
+    section: "testing",
+    targetId: "testing-manual-poll",
+    title: "Run a manual poll",
+    body: "Manual poll asks Meridian to fetch configured endpoint metrics now, instead of waiting for scheduled polling.",
+    fallbackBody: "Open Testing and run a manual poll for this project.",
+    completionKind: "real-metric-sample",
+  },
+  {
+    id: "verify-metric",
+    section: "map",
+    targetId: "node-metric-evidence",
+    title: "Verify real metric evidence",
+    body: "A real sample proves Meridian can read the endpoint. Sample fallback rows do not count as proof.",
+    fallbackBody: "Return to the node and confirm a real metric sample is visible.",
+    completionKind: "real-metric-sample",
+  },
+  {
+    id: "create-report",
     section: "reports",
-    targetId: "reports-preview",
-    title: "Turn evidence into client proof",
-    body: "Create a branded report link once data is flowing so stakeholders can review reliability, cost, incidents, and the map.",
-    fallbackBody: "Open Reports to preview and share read-only client proof after telemetry arrives.",
+    targetId: "reports-create-link",
+    title: "Create client proof",
+    body: "Once a real signal exists, create a report link so a client can review uptime, evidence, costs, incidents, and the map.",
+    fallbackBody: "Open Reports and create a read-only report link after real metric evidence exists.",
+    completionKind: "report-link",
   },
 ]
 
@@ -86,9 +168,9 @@ export function getFirstWorkflowTutorialStartIndex(input) {
   const hasTelemetry = runCount > 0 || metricCount > 0
 
   if (nodeCount === 0) return 0
-  if (!hasTelemetry) return 1
-  if (activeReportCount > 0) return 4
-  return 3
+  if (!hasTelemetry) return 3
+  if (activeReportCount > 0) return firstWorkflowTutorialSteps.findIndex((step) => step.id === "create-report")
+  return firstWorkflowTutorialSteps.findIndex((step) => step.id === "verify-metric")
 }
 
 /**
@@ -126,18 +208,26 @@ export function buildFirstWorkflowTutorialProgress(input) {
   const currentMetricCount = safeCount(currentEvidence.metricCount)
   const currentReportCount = safeCount(currentEvidence.activeReportCount)
   const hasNode = currentNodeCount > 0
+  const hasSelectedNode = Boolean(currentEvidence.selectedNodeId) || hasNode
+  const hasRestSetup = safeCount(currentEvidence.restSetupCount) > 0
   const hasTelemetry = currentRunCount > safeCount(startEvidence.runCount) || currentMetricCount > safeCount(startEvidence.metricCount)
   const hasReport = currentReportCount > safeCount(startEvidence.activeReportCount)
   const completedStepIds = []
 
   if (hasNode) {
-    completedStepIds.push("map-node", "integration-template")
+    completedStepIds.push("add-node")
+  }
+  if (hasSelectedNode) {
+    completedStepIds.push("select-node", "choose-rest-template", "open-api-setup")
+  }
+  if (hasRestSetup) {
+    completedStepIds.push("configure-endpoint", "configure-jsonpath", "test-endpoint", "save-api-setup")
   }
   if (hasTelemetry) {
-    completedStepIds.push("telemetry-test", "verify-runs")
+    completedStepIds.push("run-poll", "verify-metric")
   }
   if (hasReport) {
-    completedStepIds.push("client-proof")
+    completedStepIds.push("create-report")
   }
 
   const totalCount = firstWorkflowTutorialSteps.length
@@ -148,4 +238,51 @@ export function buildFirstWorkflowTutorialProgress(input) {
     totalCount,
     percent: Math.round((completedStepIds.length / totalCount) * 100),
   }
+}
+
+/**
+ * @param {unknown} value
+ * @returns {TutorialWidgetPlacement}
+ */
+export function normalizeTutorialWidgetPlacement(value) {
+  return tutorialWidgetPlacements.includes(value) ? /** @type {TutorialWidgetPlacement} */ (value) : "bottom-center"
+}
+
+/**
+ * Chooses a stable edge/corner placement from a drag release point.
+ *
+ * @param {{ x: number, y: number }} point
+ * @param {{ width: number, height: number }} viewport
+ * @param {{ width: number, height: number }} widget
+ * @returns {TutorialWidgetPlacement}
+ */
+export function snapTutorialWidgetPlacement(point, viewport, widget) {
+  const safeViewport = {
+    width: Math.max(1, Number(viewport?.width) || 1),
+    height: Math.max(1, Number(viewport?.height) || 1),
+  }
+  const safeWidget = {
+    width: Math.max(1, Number(widget?.width) || 1),
+    height: Math.max(1, Number(widget?.height) || 1),
+  }
+  const margin = 20
+  const candidates = [
+    { placement: "bottom-center", x: safeViewport.width / 2, y: safeViewport.height - margin },
+    { placement: "bottom-left", x: margin + safeWidget.width / 2, y: safeViewport.height - margin },
+    { placement: "bottom-right", x: safeViewport.width - margin - safeWidget.width / 2, y: safeViewport.height - margin },
+    { placement: "top-left", x: margin + safeWidget.width / 2, y: margin + safeWidget.height / 2 },
+    { placement: "top-right", x: safeViewport.width - margin - safeWidget.width / 2, y: margin + safeWidget.height / 2 },
+    { placement: "left-center", x: margin + safeWidget.width / 2, y: safeViewport.height / 2 },
+    { placement: "right-center", x: safeViewport.width - margin - safeWidget.width / 2, y: safeViewport.height / 2 },
+  ]
+  const release = {
+    x: Number(point?.x) || 0,
+    y: Number(point?.y) || 0,
+  }
+  const nearest = candidates.reduce((best, candidate) => {
+    const distance = Math.hypot(release.x - candidate.x, release.y - candidate.y)
+    return distance < best.distance ? { placement: candidate.placement, distance } : best
+  }, { placement: "bottom-center", distance: Number.POSITIVE_INFINITY })
+
+  return /** @type {TutorialWidgetPlacement} */ (nearest.placement)
 }

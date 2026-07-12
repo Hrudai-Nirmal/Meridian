@@ -5,7 +5,7 @@
  * node setup, alert rules, reports, and team/project controls share this client UI.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react"
 import {
   addEdge,
   Background,
@@ -101,12 +101,17 @@ import {
 import { getRealMetricSummaries, getRealWorkflowRuns } from "@/lib/telemetry-evidence.mjs"
 import {
   FIRST_WORKFLOW_TUTORIAL_STORAGE_KEY,
+  TUTORIAL_WIDGET_COLLAPSED_STORAGE_KEY,
+  TUTORIAL_WIDGET_PLACEMENT_STORAGE_KEY,
   buildFirstWorkflowTutorialProgress,
   firstWorkflowTutorialSteps,
   getFirstWorkflowTutorialStartIndex,
+  normalizeTutorialWidgetPlacement,
+  snapTutorialWidgetPlacement,
   shouldAutoStartFirstWorkflowTutorial,
   type TutorialEvidence,
   type TutorialStep,
+  type TutorialWidgetPlacement,
 } from "@/lib/tutorial.mjs"
 import { cn } from "@/lib/utils"
 import type { WorkspacePayload } from "@/lib/workspace"
@@ -660,12 +665,15 @@ function getInitialLiveConnectionState(): LiveConnectionState {
 function getInitialFirstWorkflowTutorialEvidence(workspace: WorkspacePayload) {
   const runCount = getRealWorkflowRuns(workspace.nodes).length
   const metricCount = getRealMetricSummaries(workspace.nodes).length
+  const restSetupCount = workspace.nodes.filter((node) => node.parameters.some((parameter) => parameter.id)).length
 
   return {
     nodeCount: workspace.nodes.length,
     runCount,
     metricCount,
     activeReportCount: 0,
+    selectedNodeId: workspace.nodes[0]?.id ?? null,
+    restSetupCount,
   }
 }
 
@@ -686,6 +694,46 @@ function writeFirstWorkflowTutorialState(value: "completed" | "skipped") {
     window.localStorage.setItem(FIRST_WORKFLOW_TUTORIAL_STORAGE_KEY, value)
   } catch {
     // Local storage can be unavailable in restrictive browser modes; the tutorial still works for the current session.
+  }
+}
+
+function getInitialTutorialWidgetPlacement(): TutorialWidgetPlacement {
+  if (typeof window === "undefined") return "bottom-center"
+
+  try {
+    return normalizeTutorialWidgetPlacement(window.localStorage.getItem(TUTORIAL_WIDGET_PLACEMENT_STORAGE_KEY))
+  } catch {
+    return "bottom-center"
+  }
+}
+
+function writeTutorialWidgetPlacement(value: TutorialWidgetPlacement) {
+  if (typeof window === "undefined") return
+
+  try {
+    window.localStorage.setItem(TUTORIAL_WIDGET_PLACEMENT_STORAGE_KEY, value)
+  } catch {
+    // Widget placement is a convenience preference; the tutorial remains usable without storage.
+  }
+}
+
+function getInitialTutorialWidgetCollapsed() {
+  if (typeof window === "undefined") return false
+
+  try {
+    return window.localStorage.getItem(TUTORIAL_WIDGET_COLLAPSED_STORAGE_KEY) === "true"
+  } catch {
+    return false
+  }
+}
+
+function writeTutorialWidgetCollapsed(value: boolean) {
+  if (typeof window === "undefined") return
+
+  try {
+    window.localStorage.setItem(TUTORIAL_WIDGET_COLLAPSED_STORAGE_KEY, value ? "true" : "false")
+  } catch {
+    // Widget collapse state is browser-local polish; failures should not block tutorial use.
   }
 }
 
@@ -819,6 +867,8 @@ export function MeridianDashboard({
   const [firstWorkflowTutorialStartEvidence, setFirstWorkflowTutorialStartEvidence] = useState<TutorialEvidence>(() => getInitialFirstWorkflowTutorialEvidence(initialWorkspace))
   const [tutorialProgressMessage, setTutorialProgressMessage] = useState("")
   const [tutorialTargetRect, setTutorialTargetRect] = useState<TutorialTargetRect>(null)
+  const [tutorialWidgetPlacement, setTutorialWidgetPlacement] = useState<TutorialWidgetPlacement>(getInitialTutorialWidgetPlacement)
+  const [isTutorialWidgetCollapsed, setIsTutorialWidgetCollapsed] = useState(getInitialTutorialWidgetCollapsed)
   const [selectedId, setSelectedId] = useState(initialWorkspace.nodes[0]?.id ?? "")
   const [selectedEdgeId, setSelectedEdgeId] = useState("")
   const [editMode, setEditMode] = useState(false)
@@ -1001,8 +1051,10 @@ export function MeridianDashboard({
       runCount: projectRuns.length,
       metricCount: projectMetrics.length,
       activeReportCount,
+      selectedNodeId: selectedNode?.id ?? null,
+      restSetupCount: endpointNodes.filter((node) => node.parameters.some((parameter) => parameter.id)).length,
     }),
-    [activeReportCount, endpointNodes.length, projectMetrics.length, projectRuns.length]
+    [activeReportCount, endpointNodes, projectMetrics.length, projectRuns.length, selectedNode?.id]
   )
   const firstWorkflowTutorialProgress = useMemo(
     () =>
@@ -2264,6 +2316,7 @@ export function MeridianDashboard({
     setFirstWorkflowTutorialStepIndex(nextIndex)
     setTutorialTargetRect(null)
     setIsFirstWorkflowTutorialOpen(true)
+    updateTutorialWidgetCollapsed(false)
     openDashboardSection(nextStep.section as DashboardSection)
   }
 
@@ -2285,12 +2338,33 @@ export function MeridianDashboard({
 
   const checkFirstWorkflowTutorialProgress = async () => {
     setTutorialProgressMessage("Checking project evidence...")
+    const shouldMoveToNextStep = firstWorkflowTutorialProgress.completedStepIds.includes(activeTutorialStep.id)
     try {
       await refreshProjectData({ silent: true })
+      if (shouldMoveToNextStep) {
+        const nextIncompleteIndex = firstWorkflowTutorialSteps.findIndex(
+          (step, index) => index > firstWorkflowTutorialStepIndex && !firstWorkflowTutorialProgress.completedStepIds.includes(step.id)
+        )
+        if (nextIncompleteIndex >= 0) {
+          moveFirstWorkflowTutorial(nextIncompleteIndex)
+          setTutorialProgressMessage("Progress checked. Meridian advanced to the next unfinished tutorial step.")
+          return
+        }
+      }
       setTutorialProgressMessage("Progress checked. New runs, samples, and alerts are reflected when Meridian receives them.")
     } catch {
       setTutorialProgressMessage("Progress check failed. Try the normal refresh control or reload the dashboard.")
     }
+  }
+
+  const updateTutorialWidgetPlacement = (placement: TutorialWidgetPlacement) => {
+    setTutorialWidgetPlacement(placement)
+    writeTutorialWidgetPlacement(placement)
+  }
+
+  const updateTutorialWidgetCollapsed = (value: boolean) => {
+    setIsTutorialWidgetCollapsed(value)
+    writeTutorialWidgetCollapsed(value)
   }
 
   const handleGlobalSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
@@ -2330,6 +2404,7 @@ export function MeridianDashboard({
     if (!isFirstWorkflowTutorialOpen) return
 
     let scrollTimer: number | null = null
+    let highlightedTarget: HTMLElement | null = null
     const measureTimer = window.setTimeout(() => {
       const target = document.querySelector(`[data-tutorial-id="${activeTutorialStep.targetId}"]`) as HTMLElement | null
       if (!target) {
@@ -2337,6 +2412,8 @@ export function MeridianDashboard({
         return
       }
 
+      highlightedTarget = target
+      target.setAttribute("data-tutorial-active", "true")
       target.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" })
       scrollTimer = window.setTimeout(() => {
         const rect = target.getBoundingClientRect()
@@ -2350,6 +2427,7 @@ export function MeridianDashboard({
     }, 100)
 
     return () => {
+      highlightedTarget?.removeAttribute("data-tutorial-active")
       window.clearTimeout(measureTimer)
       if (scrollTimer) window.clearTimeout(scrollTimer)
     }
@@ -2365,9 +2443,13 @@ export function MeridianDashboard({
           targetRect={tutorialTargetRect}
           progress={firstWorkflowTutorialProgress}
           progressMessage={tutorialProgressMessage}
+          placement={tutorialWidgetPlacement}
+          collapsed={isTutorialWidgetCollapsed}
           onBack={() => moveFirstWorkflowTutorial(firstWorkflowTutorialStepIndex - 1)}
           onNext={() => moveFirstWorkflowTutorial(firstWorkflowTutorialStepIndex + 1)}
           onCheckProgress={checkFirstWorkflowTutorialProgress}
+          onPlacementChange={updateTutorialWidgetPlacement}
+          onCollapsedChange={updateTutorialWidgetCollapsed}
           onSkip={() => closeFirstWorkflowTutorial("skipped")}
           onFinish={() => closeFirstWorkflowTutorial("completed")}
         />
@@ -2897,7 +2979,7 @@ export function MeridianDashboard({
                   <Edit3 data-icon="inline-start" />
                   {canEditProject ? (editMode ? "Editing" : "View mode") : "Read only"}
                 </Button>
-                <Button onClick={addEndpointNode} disabled={!canEditProject}>
+                <Button data-tutorial-id="map-add-node" onClick={addEndpointNode} disabled={!canEditProject}>
                   <Plus data-icon="inline-start" />
                   Add node
                 </Button>
@@ -3502,6 +3584,30 @@ function SidebarItem({
   )
 }
 
+function getTutorialWidgetPlacementClass(placement: TutorialWidgetPlacement) {
+  switch (placement) {
+    case "bottom-left":
+      return "bottom-4 left-4"
+    case "bottom-right":
+      return "bottom-4 right-4"
+    case "top-left":
+      return "left-4 top-4"
+    case "top-right":
+      return "right-4 top-4"
+    case "left-center":
+      return "left-4 top-1/2 -translate-y-1/2"
+    case "right-center":
+      return "right-4 top-1/2 -translate-y-1/2"
+    case "bottom-center":
+    default:
+      return "bottom-4 left-1/2 -translate-x-1/2"
+  }
+}
+
+function stopPointerPropagation(event: ReactPointerEvent<HTMLElement>) {
+  event.stopPropagation()
+}
+
 function TutorialOverlay({
   step,
   stepIndex,
@@ -3509,9 +3615,13 @@ function TutorialOverlay({
   targetRect,
   progress,
   progressMessage,
+  placement,
+  collapsed,
   onBack,
   onNext,
   onCheckProgress,
+  onPlacementChange,
+  onCollapsedChange,
   onSkip,
   onFinish,
 }: {
@@ -3526,44 +3636,104 @@ function TutorialOverlay({
     percent: number
   }
   progressMessage: string
+  placement: TutorialWidgetPlacement
+  collapsed: boolean
   onBack: () => void
   onNext: () => void
   onCheckProgress: () => Promise<void>
+  onPlacementChange: (placement: TutorialWidgetPlacement) => void
+  onCollapsedChange: (collapsed: boolean) => void
   onSkip: () => void
   onFinish: () => void
 }) {
+  const widgetRef = useRef<HTMLDivElement>(null)
+  const dragOffsetRef = useRef({ x: 0, y: 0 })
+  const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null)
   const isFirstStep = stepIndex === 0
   const isLastStep = stepIndex >= totalSteps - 1
   const hasTarget = Boolean(targetRect)
-  const highlightStyle = targetRect
-    ? {
-        top: Math.max(targetRect.top - 8, 8),
-        left: Math.max(targetRect.left - 8, 8),
-        width: targetRect.width + 16,
-        height: targetRect.height + 16,
-      }
-    : undefined
+  const placementClass = getTutorialWidgetPlacementClass(placement)
+  const dragStyle = dragPosition ? { left: dragPosition.x, top: dragPosition.y, transform: "none" } : undefined
+
+  const startWidgetDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const widget = widgetRef.current
+    if (!widget) return
+
+    const rect = widget.getBoundingClientRect()
+    dragOffsetRef.current = {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    }
+    setDragPosition({ x: rect.left, y: rect.top })
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  const moveWidgetDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!dragPosition) return
+
+    setDragPosition({
+      x: event.clientX - dragOffsetRef.current.x,
+      y: event.clientY - dragOffsetRef.current.y,
+    })
+  }
+
+  const finishWidgetDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!dragPosition) return
+
+    const widget = widgetRef.current
+    const rect = widget?.getBoundingClientRect()
+    const nextPlacement = snapTutorialWidgetPlacement(
+      { x: event.clientX, y: event.clientY },
+      { width: window.innerWidth, height: window.innerHeight },
+      { width: rect?.width ?? 420, height: rect?.height ?? 320 }
+    )
+    setDragPosition(null)
+    onPlacementChange(nextPlacement)
+  }
 
   return (
     <div className="pointer-events-none fixed inset-0 z-[60]">
-      <div className="pointer-events-none fixed inset-0 bg-black/50" />
-      {targetRect ? (
+      <style>{`
+        [data-tutorial-active="true"] {
+          position: relative;
+          z-index: 50;
+          outline: 2px solid hsl(var(--primary));
+          outline-offset: 4px;
+          box-shadow: 0 0 0 6px hsl(var(--primary) / 0.16), 0 12px 34px hsl(var(--primary) / 0.18);
+          transition: outline-color 160ms ease, box-shadow 160ms ease;
+        }
+      `}</style>
+      {collapsed ? (
+        <div className={cn("pointer-events-auto fixed z-[62] transition-all", placementClass)}>
+          <Button size="sm" onClick={() => onCollapsedChange(false)}>
+            Show tutorial ^
+          </Button>
+        </div>
+      ) : (
+      <div
+        ref={widgetRef}
+        className={cn("pointer-events-auto fixed z-[62] w-[min(28rem,calc(100vw-2rem))] rounded-xl border bg-popover p-4 text-popover-foreground shadow-2xl transition-[box-shadow,transform]", !dragPosition && placementClass)}
+        style={dragStyle}
+      >
         <div
-          className="pointer-events-none fixed z-[61] rounded-2xl ring-2 ring-primary ring-offset-2 ring-offset-background"
-          style={{
-            ...highlightStyle,
-          }}
-        />
-      ) : null}
-      <div className={cn("pointer-events-auto fixed z-[62] w-[min(26rem,calc(100vw-2rem))] rounded-xl border bg-popover p-4 text-popover-foreground shadow-2xl", hasTarget ? "bottom-5 right-5" : "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2")}>
-        <div className="flex items-start justify-between gap-3">
+          className="flex cursor-move items-start justify-between gap-3"
+          onPointerDown={startWidgetDrag}
+          onPointerMove={moveWidgetDrag}
+          onPointerUp={finishWidgetDrag}
+          onPointerCancel={() => setDragPosition(null)}
+        >
           <div>
             <Badge variant="secondary">Step {stepIndex + 1} of {totalSteps}</Badge>
             <h2 className="mt-3 text-base font-semibold">{step.title}</h2>
           </div>
-          <Button variant="ghost" size="sm" onClick={onSkip}>
-            Skip
-          </Button>
+          <div className="flex gap-1" onPointerDown={stopPointerPropagation}>
+            <Button variant="ghost" size="sm" onClick={() => onCollapsedChange(true)}>
+              Hide tutorial
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onSkip}>
+              Skip
+            </Button>
+          </div>
         </div>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">{hasTarget ? step.body : step.fallbackBody}</p>
         <div className="mt-4 grid gap-2 rounded-lg border bg-muted/30 p-3">
@@ -3610,6 +3780,7 @@ function TutorialOverlay({
           </div>
         </div>
       </div>
+      )}
     </div>
   )
 }
@@ -4360,7 +4531,7 @@ function ReportsSection({
                   Report links and exports never expose API secrets, ingestion tokens, encrypted credentials, or private team details.
                 </div>
                 <div className="grid gap-2 sm:grid-cols-3">
-                  <Button onClick={onCreateReportShare} disabled={!canManageOrganization}>
+                  <Button data-tutorial-id="reports-create-link" onClick={onCreateReportShare} disabled={!canManageOrganization}>
                     <Share2 data-icon="inline-start" />
                     Create link
                   </Button>
@@ -4671,6 +4842,7 @@ function IntegrationsSection({
   const TemplateButton = ({ template }: { template: IntegrationTemplate }) => (
     <button
       key={template.id}
+      data-tutorial-id={template.id === "custom-rest-metric" ? "integrations-template-custom-rest-metric" : undefined}
       type="button"
       className={cn("rounded-lg border bg-background p-4 text-left text-sm transition-colors hover:bg-muted/40", selectedTemplate.id === template.id && "border-primary/60 shadow-sm")}
       onClick={() => {
@@ -4726,7 +4898,7 @@ function IntegrationsSection({
             <div className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Workflow telemetry</div>
             {workflowTemplates.map((template) => <TemplateButton key={template.id} template={template} />)}
           </div>
-          <div className="grid gap-2">
+          <div data-tutorial-id="integrations-template-custom-rest-metric" className="grid gap-2">
             <div className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Metric polling</div>
             {metricTemplates.map((template) => <TemplateButton key={template.id} template={template} />)}
           </div>
@@ -5286,7 +5458,7 @@ function TestingSection({
           <summary className="cursor-pointer px-5 py-4 font-semibold">Polling and demo metric QA</summary>
           <div className="grid gap-4 px-5 pb-5 md:grid-cols-[0.8fr_1.2fr]">
             <div className="grid content-start gap-3">
-              <Button onClick={onRunPollNow} disabled={!canManageOrganization}>
+              <Button data-tutorial-id="testing-manual-poll" onClick={onRunPollNow} disabled={!canManageOrganization}>
                 <Activity data-icon="inline-start" />
                 Run poll now
               </Button>
@@ -6192,7 +6364,7 @@ function NodeInspector({
   }
 
   return (
-    <aside className="min-h-0 overflow-y-auto border-l bg-background">
+    <aside data-tutorial-id="map-inspector" className="min-h-0 overflow-y-auto border-l bg-background">
       <div className="sticky top-0 z-10 border-b bg-background/95 px-5 py-4 backdrop-blur">
         <div className="flex items-start gap-3">
           <div className="flex size-12 items-center justify-center rounded-xl border bg-muted">
@@ -6226,7 +6398,7 @@ function NodeInspector({
               {selectedNode.override ? <Badge variant="secondary">Admin override active</Badge> : null}
             </div>
             {realMetricCards ? (
-              <div className="grid grid-cols-2 gap-3">
+              <div data-tutorial-id="node-metric-evidence" className="grid grid-cols-2 gap-3">
                 {realMetricCards.map((metric) => (
                   <div key={metric.mappingId ?? metric.label} className="rounded-lg border bg-muted/30 p-3">
                     <div className="text-xs text-muted-foreground">{metric.label}</div>
@@ -6239,11 +6411,11 @@ function NodeInspector({
                 ))}
               </div>
             ) : hasPersistedMappings ? (
-              <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+              <div data-tutorial-id="node-metric-evidence" className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
                 This node has saved mappings, but no metric samples yet. Run poll now to populate real cards and charts.
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-3">
+              <div data-tutorial-id="node-metric-evidence" className="grid grid-cols-2 gap-3">
                 {selectedNode.metrics.map((metric) => (
                   <div key={metric.label} className="rounded-lg border bg-muted/30 p-3">
                     <div className="text-xs text-muted-foreground">{metric.label}</div>
@@ -6567,7 +6739,7 @@ function NodeInspector({
                   </Dialog>
 
                   <Dialog>
-                    <DialogTrigger render={<Button variant="outline" className="h-auto justify-start p-3" />}>
+                    <DialogTrigger render={<Button data-tutorial-id="node-api-setup-action" variant="outline" className="h-auto justify-start p-3" />}>
                       <Gauge data-icon="inline-start" />
                       API Setup
                     </DialogTrigger>
@@ -6582,7 +6754,7 @@ function NodeInspector({
                             <Wand2 data-icon="inline-start" />
                             Use demo metric
                           </Button>
-                          <label className="grid gap-1 text-sm font-medium">
+                          <label data-tutorial-id="api-setup-endpoint-url" className="grid gap-1 text-sm font-medium">
                             Endpoint URL
                             <Input
                               value={apiUrl}
@@ -6678,7 +6850,7 @@ function NodeInspector({
                               />
                             </label>
                           </div>
-                          <label className="grid gap-1 text-sm font-medium">
+                          <label data-tutorial-id="api-setup-jsonpath" className="grid gap-1 text-sm font-medium">
                             JSONPath
                             <Input
                               value={jsonPath}
@@ -6732,6 +6904,7 @@ function NodeInspector({
                           </div>
                           <div className="grid gap-2 sm:grid-cols-2">
                             <Button
+                              data-tutorial-id="api-setup-test-endpoint"
                               variant="outline"
                               onMouseEnter={() => setActiveApiHelpField("testEndpoint")}
                               onFocus={() => setActiveApiHelpField("testEndpoint")}
@@ -6741,6 +6914,7 @@ function NodeInspector({
                               Test endpoint
                             </Button>
                             <Button
+                              data-tutorial-id="api-setup-save"
                               onMouseEnter={() => setActiveApiHelpField("saveSetup")}
                               onFocus={() => setActiveApiHelpField("saveSetup")}
                               onClick={saveApiConfig}
@@ -7043,7 +7217,7 @@ function EmptyInspector({
             <CardDescription>Create the first endpoint node for this blank project.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
-            <Button onClick={onAddNode}>
+            <Button data-tutorial-id="map-add-node" onClick={onAddNode}>
               <Plus data-icon="inline-start" />
               Add endpoint node
             </Button>
