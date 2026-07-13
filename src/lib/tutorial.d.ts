@@ -37,7 +37,7 @@ export type TutorialStep = {
   title: string
   body: string
   fallbackBody: string
-  completionKind?: "node-exists" | "selected-node" | "rest-setup-saved" | "real-metric-sample" | "report-link"
+  completionKind?: "visited-step" | "node-exists" | "selected-node" | "rest-setup-saved" | "real-metric-sample" | "report-link"
 }
 
 export type TutorialEvidence = {
@@ -47,6 +47,7 @@ export type TutorialEvidence = {
   activeReportCount: number
   selectedNodeId?: string | null
   restSetupCount?: number
+  visitedStepIds?: TutorialStepId[]
 }
 
 export type TutorialWidgetPlacement = "bottom-center" | "bottom-left" | "bottom-right" | "top-left" | "top-right" | "left-center" | "right-center"

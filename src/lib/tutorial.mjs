@@ -13,9 +13,9 @@ export const tutorialWidgetPlacements = ["bottom-center", "bottom-left", "bottom
 /**
  * @typedef {"open-map" | "add-node" | "select-node" | "open-integrations" | "choose-rest-template" | "open-api-setup" | "configure-endpoint" | "configure-jsonpath" | "test-endpoint" | "save-api-setup" | "run-poll" | "verify-metric" | "create-report"} TutorialStepId
  * @typedef {"control-room" | "projects" | "map" | "runs" | "alerts" | "reports" | "integrations" | "testing" | "logs" | "team" | "settings"} TutorialSection
- * @typedef {"node-exists" | "selected-node" | "rest-setup-saved" | "real-metric-sample" | "report-link"} TutorialCompletionKind
+ * @typedef {"visited-step" | "node-exists" | "selected-node" | "rest-setup-saved" | "real-metric-sample" | "report-link"} TutorialCompletionKind
  * @typedef {"bottom-center" | "bottom-left" | "bottom-right" | "top-left" | "top-right" | "left-center" | "right-center"} TutorialWidgetPlacement
- * @typedef {{ nodeCount: number, runCount: number, metricCount: number, activeReportCount: number, selectedNodeId?: string | null, restSetupCount?: number }} TutorialEvidence
+ * @typedef {{ nodeCount: number, runCount: number, metricCount: number, activeReportCount: number, selectedNodeId?: string | null, restSetupCount?: number, visitedStepIds?: TutorialStepId[] }} TutorialEvidence
  * @typedef {object} TutorialStep
  * @property {TutorialStepId} id
  * @property {TutorialSection} section
@@ -35,6 +35,7 @@ export const firstWorkflowTutorialSteps = [
     title: "Open the automation map",
     body: "This is where Meridian keeps the monitored workflow nodes. Start here so the REST metric has a node to attach to.",
     fallbackBody: "Open Automation Map so Meridian can guide the REST metric setup on the workflow canvas.",
+    completionKind: "visited-step",
   },
   {
     id: "add-node",
@@ -61,6 +62,7 @@ export const firstWorkflowTutorialSteps = [
     title: "Open integration templates",
     body: "Templates explain the setup path before you copy or apply anything. For this tutorial, use REST metric polling.",
     fallbackBody: "Open Integrations and find the REST metric template.",
+    completionKind: "visited-step",
   },
   {
     id: "choose-rest-template",
@@ -207,12 +209,19 @@ export function buildFirstWorkflowTutorialProgress(input) {
   const currentRunCount = safeCount(currentEvidence.runCount)
   const currentMetricCount = safeCount(currentEvidence.metricCount)
   const currentReportCount = safeCount(currentEvidence.activeReportCount)
+  const visitedStepIds = Array.isArray(currentEvidence.visitedStepIds) ? currentEvidence.visitedStepIds : []
   const hasNode = currentNodeCount > 0
   const hasSelectedNode = Boolean(currentEvidence.selectedNodeId) || hasNode
   const hasRestSetup = safeCount(currentEvidence.restSetupCount) > 0
   const hasTelemetry = currentRunCount > safeCount(startEvidence.runCount) || currentMetricCount > safeCount(startEvidence.metricCount)
   const hasReport = currentReportCount > safeCount(startEvidence.activeReportCount)
   const completedStepIds = []
+
+  for (const step of firstWorkflowTutorialSteps) {
+    if (step.completionKind === "visited-step" && visitedStepIds.includes(step.id)) {
+      completedStepIds.push(step.id)
+    }
+  }
 
   if (hasNode) {
     completedStepIds.push("add-node")

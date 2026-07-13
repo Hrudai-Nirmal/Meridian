@@ -869,6 +869,10 @@ export function MeridianDashboard({
   const [tutorialTargetRect, setTutorialTargetRect] = useState<TutorialTargetRect>(null)
   const [tutorialWidgetPlacement, setTutorialWidgetPlacement] = useState<TutorialWidgetPlacement>(getInitialTutorialWidgetPlacement)
   const [isTutorialWidgetCollapsed, setIsTutorialWidgetCollapsed] = useState(getInitialTutorialWidgetCollapsed)
+  const [visitedTutorialStepIds, setVisitedTutorialStepIds] = useState<TutorialStep["id"][]>(() => {
+    const initialState = getInitialFirstWorkflowTutorialState(initialWorkspace)
+    return initialState.shouldOpen ? [firstWorkflowTutorialSteps[initialState.stepIndex]?.id ?? firstWorkflowTutorialSteps[0].id] : []
+  })
   const [selectedId, setSelectedId] = useState(initialWorkspace.nodes[0]?.id ?? "")
   const [selectedEdgeId, setSelectedEdgeId] = useState("")
   const [editMode, setEditMode] = useState(false)
@@ -1053,8 +1057,9 @@ export function MeridianDashboard({
       activeReportCount,
       selectedNodeId: selectedNode?.id ?? null,
       restSetupCount: endpointNodes.filter((node) => node.parameters.some((parameter) => parameter.id)).length,
+      visitedStepIds: visitedTutorialStepIds,
     }),
-    [activeReportCount, endpointNodes, projectMetrics.length, projectRuns.length, selectedNode?.id]
+    [activeReportCount, endpointNodes, projectMetrics.length, projectRuns.length, selectedNode?.id, visitedTutorialStepIds]
   )
   const firstWorkflowTutorialProgress = useMemo(
     () =>
@@ -2314,6 +2319,7 @@ export function MeridianDashboard({
     setFirstWorkflowTutorialStartEvidence(firstWorkflowTutorialEvidence)
     setTutorialProgressMessage("")
     setFirstWorkflowTutorialStepIndex(nextIndex)
+    setVisitedTutorialStepIds((currentIds) => Array.from(new Set([...currentIds, nextStep.id])))
     setTutorialTargetRect(null)
     setIsFirstWorkflowTutorialOpen(true)
     updateTutorialWidgetCollapsed(false)
@@ -2325,6 +2331,7 @@ export function MeridianDashboard({
     const nextStep = firstWorkflowTutorialSteps[boundedIndex] ?? firstWorkflowTutorialSteps[0]
 
     setFirstWorkflowTutorialStepIndex(boundedIndex)
+    setVisitedTutorialStepIds((currentIds) => Array.from(new Set([...currentIds, nextStep.id])))
     setTutorialTargetRect(null)
     openDashboardSection(nextStep.section as DashboardSection)
   }

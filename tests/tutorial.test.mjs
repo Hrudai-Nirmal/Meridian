@@ -21,10 +21,10 @@ test("firstWorkflowTutorialSteps keeps the core setup order stable", () => {
   assert.deepEqual(
     firstWorkflowTutorialSteps.map((step) => ({ id: step.id, section: step.section, targetId: step.targetId, completionKind: step.completionKind ?? null })),
     [
-      { id: "open-map", section: "map", targetId: "map-canvas", completionKind: null },
+      { id: "open-map", section: "map", targetId: "map-canvas", completionKind: "visited-step" },
       { id: "add-node", section: "map", targetId: "map-add-node", completionKind: "node-exists" },
       { id: "select-node", section: "map", targetId: "map-inspector", completionKind: "selected-node" },
-      { id: "open-integrations", section: "integrations", targetId: "integrations-templates", completionKind: null },
+      { id: "open-integrations", section: "integrations", targetId: "integrations-templates", completionKind: "visited-step" },
       { id: "choose-rest-template", section: "integrations", targetId: "integrations-template-custom-rest-metric", completionKind: "selected-node" },
       { id: "open-api-setup", section: "map", targetId: "node-api-setup-action", completionKind: "selected-node" },
       { id: "configure-endpoint", section: "map", targetId: "api-setup-endpoint-url", completionKind: "rest-setup-saved" },
@@ -92,6 +92,22 @@ test("buildFirstWorkflowTutorialProgress completes REST metric evidence from rea
   assert.equal(progress.completedStepIds.includes("run-poll"), true)
   assert.equal(progress.completedStepIds.includes("verify-metric"), true)
   assert.equal(progress.completedStepIds.includes("create-report"), false)
+})
+
+test("buildFirstWorkflowTutorialProgress completes navigation steps after they are visited", () => {
+  const progress = buildFirstWorkflowTutorialProgress({
+    startEvidence: { nodeCount: 0, runCount: 0, metricCount: 0, activeReportCount: 0 },
+    currentEvidence: {
+      nodeCount: 0,
+      runCount: 0,
+      metricCount: 0,
+      activeReportCount: 0,
+      visitedStepIds: ["open-map", "open-integrations"],
+    },
+  })
+
+  assert.deepEqual(progress.completedStepIds, ["open-map", "open-integrations"])
+  assert.equal(progress.completedCount, 2)
 })
 
 test("snapTutorialWidgetPlacement chooses nearest safe placement", () => {
