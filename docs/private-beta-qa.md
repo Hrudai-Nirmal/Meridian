@@ -128,6 +128,7 @@ Use this checklist for production validation on `https://meridian.hrudainirmal.i
 - Use a failing disposable webhook and confirm retry progress before the job becomes failed.
 - Confirm Deployment readiness shows safe version, commit, build time, and environment metadata.
 - Run manual poll and confirm latest poll metadata updates.
+- For REST metric onboarding, save API setup on a selected node, use the node inspector's `REST metric first signal` card to run the first poll, and confirm `Real sample received` shows a real persisted metric value and timestamp.
 - Send test email and confirm success/failure feedback does not expose provider secrets.
 - Send generic webhook and Slack tests from Testing.
 - Run integration readiness/test-run shortcuts for the selected node.

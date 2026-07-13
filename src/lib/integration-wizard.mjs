@@ -24,15 +24,17 @@ function firstCurrent(steps) {
  *   hasCreatedToken: boolean,
  *   hasRecentRun: boolean,
  *   hasMetricSetup: boolean,
+ *   hasMetricSample?: boolean,
  * }} input
  */
 export function buildIntegrationWizardSteps(input) {
   if (input.setupKind === "metric") {
+    const hasMetricSample = Boolean(input.hasMetricSample)
     return firstCurrent([
       step("select-node", "Select node", "Choose the node Meridian should poll for metric samples.", input.hasSelectedNode ? "done" : "waiting"),
       step("configure-api", "Configure API", "Open API setup, enter the endpoint URL, auth fields, JSONPath, transform, and threshold.", input.hasMetricSetup ? "done" : "waiting"),
       step("test-endpoint", "Test endpoint", "Preview response JSON, mapped value, transform result, and threshold behavior.", input.hasMetricSetup ? "done" : "waiting"),
-      step("verify-sample", "Verify sample", "Run polling and confirm the node shows a latest metric sample.", input.hasMetricSetup ? "done" : "waiting"),
+      step("verify-sample", "Verify sample", "Run polling and confirm the node shows a latest metric sample.", hasMetricSample ? "done" : "waiting"),
     ])
   }
 

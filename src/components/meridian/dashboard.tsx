@@ -91,6 +91,7 @@ import {
 } from "@/lib/meridian-data"
 import { integrationTemplates, type IntegrationTemplate } from "@/lib/integration-templates"
 import { buildIntegrationWizardSteps, buildProviderSetupCopy } from "@/lib/integration-wizard.mjs"
+import { buildRestMetricOnboardingStatus } from "@/lib/rest-metric-onboarding.mjs"
 import { formatSafeMetadata } from "@/lib/safe-metadata-format.mjs"
 import {
   buildJavascriptSdkSnippet,
@@ -3143,37 +3144,42 @@ export function MeridianDashboard({
             <NodeInspector
               key={selectedNode.id}
               selectedNode={selectedNode}
-            currentUser={currentUser}
-            categories={initialWorkspace.categories}
-            projectId={initialWorkspace.project.id}
-            alertRules={alertRules}
-            canEditProject={canEditProject}
-            isRefreshingProject={isRefreshingProject}
-            onOverride={setStatusOverride}
-            onRefreshProject={refreshProjectData}
-            onRuleSaved={(rule) => {
-              setAlertRules((currentRules) => {
-                const normalized = {
-                  ...rule,
-                  nodeLabel: selectedNode.label,
-                  mappingLabel: selectedNode.parameters.find((parameter) => parameter.id === rule.mappingId)?.label ?? null,
-                  createdAt: rule.createdAt ?? new Date().toISOString(),
-                  updatedAt: rule.updatedAt ?? new Date().toISOString(),
-                }
-                return currentRules.some((currentRule) => currentRule.id === rule.id)
-                  ? currentRules.map((currentRule) => (currentRule.id === rule.id ? normalized : currentRule))
-                  : currentRules.concat(normalized)
-              })
-            }}
-            onPatch={(patch) => {
-              setNodes((currentNodes) =>
-                currentNodes.map((node) => {
-                  if (node.id !== selectedId) return node
-                  const data = node.data as unknown as EndpointNodeData
-                  return { ...node, data: { ...data, ...patch } as unknown as Record<string, unknown> }
+              currentUser={currentUser}
+              categories={initialWorkspace.categories}
+              projectId={initialWorkspace.project.id}
+              alertRules={alertRules}
+              latestPoll={latestPoll}
+              pollMessage={pollMessage}
+              canEditProject={canEditProject}
+              canManageOrganization={canManageOrganization}
+              isRefreshingProject={isRefreshingProject}
+              onOverride={setStatusOverride}
+              onRefreshProject={refreshProjectData}
+              onRunPollNow={runPollNow}
+              onOpenReports={() => openDashboardSection("reports")}
+              onRuleSaved={(rule) => {
+                setAlertRules((currentRules) => {
+                  const normalized = {
+                    ...rule,
+                    nodeLabel: selectedNode.label,
+                    mappingLabel: selectedNode.parameters.find((parameter) => parameter.id === rule.mappingId)?.label ?? null,
+                    createdAt: rule.createdAt ?? new Date().toISOString(),
+                    updatedAt: rule.updatedAt ?? new Date().toISOString(),
+                  }
+                  return currentRules.some((currentRule) => currentRule.id === rule.id)
+                    ? currentRules.map((currentRule) => (currentRule.id === rule.id ? normalized : currentRule))
+                    : currentRules.concat(normalized)
                 })
-              )
-            }}
+              }}
+              onPatch={(patch) => {
+                setNodes((currentNodes) =>
+                  currentNodes.map((node) => {
+                    if (node.id !== selectedId) return node
+                    const data = node.data as unknown as EndpointNodeData
+                    return { ...node, data: { ...data, ...patch } as unknown as Record<string, unknown> }
+                  })
+                )
+              }}
             />
           ) : (
             <EmptyInspector currentUser={currentUser} onAddNode={addEndpointNode} />
@@ -4745,6 +4751,7 @@ function IntegrationsSection({
     : "Apply the metric preset on the selected node, test the endpoint, save mappings, then run polling."
   const hasCreatedToken = Boolean(integrationToken)
   const hasMetricSetup = selectedNode ? selectedNode.parameters.some((parameter) => parameter.id) || Boolean(selectedNode.latestSampledAt) : false
+  const hasMetricSample = Boolean(selectedNode?.realMetrics?.length)
   const wizardSteps = buildIntegrationWizardSteps({
     setupKind: selectedTemplate.setupKind,
     providerId: selectedTemplate.id,
@@ -4752,6 +4759,7 @@ function IntegrationsSection({
     hasCreatedToken,
     hasRecentRun: Boolean(selectedNode?.hasPersistedRuns),
     hasMetricSetup,
+    hasMetricSample,
   }) as IntegrationWizardStep[]
   const providerSetupCopy = buildProviderSetupCopy({
     providerId: selectedTemplate.id,
@@ -6032,10 +6040,15 @@ function NodeInspector({
   categories,
   projectId,
   alertRules,
+  latestPoll,
+  pollMessage,
   canEditProject,
+  canManageOrganization,
   isRefreshingProject,
   onOverride,
   onRefreshProject,
+  onRunPollNow,
+  onOpenReports,
   onRuleSaved,
   onPatch,
 }: {
@@ -6044,10 +6057,15 @@ function NodeInspector({
   categories: string[]
   projectId: string
   alertRules: WorkspacePayload["alertRules"]
+  latestPoll: WorkspacePayload["diagnostics"]["latestPoll"]
+  pollMessage: string
   canEditProject: boolean
+  canManageOrganization: boolean
   isRefreshingProject: boolean
   onOverride: (status: NodeStatus) => void
   onRefreshProject: () => Promise<void>
+  onRunPollNow: () => Promise<void>
+  onOpenReports: () => void
   onRuleSaved: (rule: ProjectAlertRule) => void
   onPatch: (patch: Partial<EndpointNodeData>) => void
 }) {
@@ -6087,6 +6105,13 @@ function NodeInspector({
   const [templateMessage, setTemplateMessage] = useState("")
   const realMetricCards = selectedNode.realMetrics?.length ? selectedNode.realMetrics : null
   const hasPersistedMappings = selectedNode.parameters.some((parameter) => parameter.id)
+  const restMetricOnboardingStatus = buildRestMetricOnboardingStatus({
+    hasSelectedNode: Boolean(selectedNode.id),
+    hasSavedMapping: hasPersistedMappings,
+    realMetrics: selectedNode.realMetrics ?? [],
+    latestPollStatus: latestPoll?.status ?? null,
+    latestPollError: latestPoll?.errorSummary ?? null,
+  })
   const hasRealTrend =
     Boolean(selectedNode.realRollupSeries?.some((series) => series.points.length)) ||
     Boolean(selectedNode.realSampleSeries?.some((series) => series.points.length))
@@ -6439,6 +6464,60 @@ function NodeInspector({
                 </Button>
               ))}
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <CardTitle>REST metric first signal</CardTitle>
+                <CardDescription>{restMetricOnboardingStatus.title}</CardDescription>
+              </div>
+              <Badge variant={restMetricOnboardingStatus.stage === "real-sample-received" ? "secondary" : "outline"}>
+                {restMetricOnboardingStatus.badge}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
+              {restMetricOnboardingStatus.detail}
+            </div>
+            {restMetricOnboardingStatus.evidence ? (
+              <div className="grid gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm">
+                <div className="font-medium text-emerald-700 dark:text-emerald-200">Real sample received</div>
+                <div className="text-muted-foreground">
+                  {restMetricOnboardingStatus.evidence.label}: {restMetricOnboardingStatus.evidence.displayValue}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Sampled {formatSampledAt(restMetricOnboardingStatus.evidence.sampledAt)}
+                </div>
+              </div>
+            ) : null}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                data-tutorial-id="rest-metric-first-poll"
+                onClick={onRunPollNow}
+                disabled={!canManageOrganization || !hasPersistedMappings}
+              >
+                <Activity data-icon="inline-start" />
+                Run first poll
+              </Button>
+              <Button variant="outline" onClick={onRefreshProject} disabled={isRefreshingProject}>
+                <Gauge data-icon="inline-start" />
+                {isRefreshingProject ? "Refreshing" : "Check for sample"}
+              </Button>
+              {restMetricOnboardingStatus.stage === "real-sample-received" ? (
+                <Button variant="outline" onClick={onOpenReports}>
+                  <Share2 data-icon="inline-start" />
+                  Create report
+                </Button>
+              ) : null}
+            </div>
+            {pollMessage ? <div className="text-xs text-muted-foreground">{pollMessage}</div> : null}
+            {!hasPersistedMappings ? (
+              <div className="text-xs text-muted-foreground">Save API setup first so Meridian knows which endpoint and JSONPath to poll.</div>
+            ) : null}
           </CardContent>
         </Card>
 

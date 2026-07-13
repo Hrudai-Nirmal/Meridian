@@ -31,7 +31,7 @@ test("firstWorkflowTutorialSteps keeps the core setup order stable", () => {
       { id: "configure-jsonpath", section: "map", targetId: "api-setup-jsonpath", completionKind: "rest-setup-saved" },
       { id: "test-endpoint", section: "map", targetId: "api-setup-test-endpoint", completionKind: "rest-setup-saved" },
       { id: "save-api-setup", section: "map", targetId: "api-setup-save", completionKind: "rest-setup-saved" },
-      { id: "run-poll", section: "testing", targetId: "testing-manual-poll", completionKind: "real-metric-sample" },
+      { id: "run-poll", section: "map", targetId: "rest-metric-first-poll", completionKind: "real-metric-sample" },
       { id: "verify-metric", section: "map", targetId: "node-metric-evidence", completionKind: "real-metric-sample" },
       { id: "create-report", section: "reports", targetId: "reports-create-link", completionKind: "report-link" },
     ]

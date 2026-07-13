@@ -234,6 +234,7 @@ Manual post-deploy checklist:
 - Owner/admin users can change roles, remove members, and cancel pending invitations.
 - API setup stores configuration without exposing secret values; auth header and secret fields appear only after an auth type is selected and are required for authenticated endpoint tests/saves.
 - API setup test shows response status, JSON preview, JSONPath mapping, threshold preview, and right-panel guidance for the currently selected setup field.
+- REST metric onboarding keeps saved API setup separate from real sample evidence: after saving mappings, use the selected node's `REST metric first signal` card to run the first poll, then confirm `Real sample received` shows the latest persisted value and timestamp.
 - Custom PNG/SVG node icon upload validates file type and size.
 - `/api/cron/poll` rejects a wrong bearer token.
 - Testing shows database, auth, encryption, cron, email provider readiness, latest poll status, and latest email delivery status.
@@ -244,7 +245,7 @@ Manual post-deploy checklist:
 - Posting valid workflow run telemetry updates the selected node's Runs tab after refresh and records step details without sending alert email.
 - While signed in, the dashboard live indicator reaches `Live`; posting valid workflow run telemetry or running a manual poll updates Runs, node health, alerts, metrics, and latest poll status without a full page reload.
 - If live updates disconnect, the dashboard header and Control Room show a reconnecting/manual state, the latest changed areas remain visible, and manual refresh still works.
-- Interactive Tutorial v2 auto-starts for no-telemetry projects, keeps the page undimmed/clickable, highlights real components, supports drag/snap plus hide/show, shows evidence progress, and guides REST metric setup through Map, Integrations, Testing, and Reports without exposing secrets.
+- Interactive Tutorial v2 auto-starts for no-telemetry projects, keeps the page undimmed/clickable, highlights real components, supports drag/snap plus hide/show, shows evidence progress, and guides REST metric setup through Map, Integrations, the selected-node first-poll card, metric evidence, and Reports without exposing secrets.
 - Basic and Advanced integration templates render in the API tab; custom REST metric applies fields without saving, and telemetry snippets include the selected node id but no real token.
 - Client report links can be created, opened in a signed-out browser, copied, and revoked without exposing secrets.
 - Client reports can include subtitle/prepared-by/executive note fields, optional PNG/SVG brand images, attached map PNGs, and browser print/save-as-PDF output.

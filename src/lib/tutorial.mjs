@@ -120,11 +120,11 @@ export const firstWorkflowTutorialSteps = [
   },
   {
     id: "run-poll",
-    section: "testing",
-    targetId: "testing-manual-poll",
+    section: "map",
+    targetId: "rest-metric-first-poll",
     title: "Run a manual poll",
-    body: "Manual poll asks Meridian to fetch configured endpoint metrics now, instead of waiting for scheduled polling.",
-    fallbackBody: "Open Testing and run a manual poll for this project.",
+    body: "Manual poll asks Meridian to fetch this saved endpoint now, instead of waiting for scheduled polling.",
+    fallbackBody: "Return to the selected node and run the first poll after saving API setup.",
     completionKind: "real-metric-sample",
   },
   {

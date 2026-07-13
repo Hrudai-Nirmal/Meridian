@@ -25,7 +25,7 @@ test("buildIntegrationWizardSteps marks telemetry wizard progress from evidence"
   )
 })
 
-test("buildIntegrationWizardSteps marks metric setup progress from saved mappings", () => {
+test("buildIntegrationWizardSteps waits for real metric evidence after saved mappings", () => {
   const steps = buildIntegrationWizardSteps({
     setupKind: "metric",
     providerId: "custom-rest-metric",
@@ -33,6 +33,29 @@ test("buildIntegrationWizardSteps marks metric setup progress from saved mapping
     hasCreatedToken: false,
     hasRecentRun: false,
     hasMetricSetup: true,
+    hasMetricSample: false,
+  })
+
+  assert.deepEqual(
+    steps.map((step) => ({ id: step.id, status: step.status })),
+    [
+      { id: "select-node", status: "done" },
+      { id: "configure-api", status: "done" },
+      { id: "test-endpoint", status: "done" },
+      { id: "verify-sample", status: "current" },
+    ]
+  )
+})
+
+test("buildIntegrationWizardSteps marks metric sample verification from persisted samples", () => {
+  const steps = buildIntegrationWizardSteps({
+    setupKind: "metric",
+    providerId: "custom-rest-metric",
+    hasSelectedNode: true,
+    hasCreatedToken: false,
+    hasRecentRun: false,
+    hasMetricSetup: true,
+    hasMetricSample: true,
   })
 
   assert.deepEqual(
