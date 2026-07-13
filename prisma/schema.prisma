@@ -75,6 +75,7 @@ model User {
   notifications   NotificationPreference[]
   ingestionTokens IngestionToken[]
   reportShares    ReportShare[]
+  reportPresets   ReportPreset[]
   createdAt       DateTime                 @default(now())
   updatedAt       DateTime                 @updatedAt
 }
@@ -172,6 +173,7 @@ model Project {
   webhookDestinations ProjectWebhookDestination[]
   slackDestinations   ProjectSlackDestination[]
   reportShares        ReportShare[]
+  reportPresets       ReportPreset[]
   alertRules          AlertRule[]
   notificationJobs    NotificationJob[]
   auditLogs           AuditLog[]
@@ -347,18 +349,53 @@ model ReportShare {
   mapImageData       Bytes?
   brandImageMimeType String?
   brandImageData     Bytes?
+  periodMode         String    @default("window")
+  periodWindow       String?   @default("30d")
+  periodStart        DateTime?
+  periodEnd          DateTime?
+  comparisonEnabled  Boolean   @default(true)
+  presetId           String?
   projectId          String
   createdById        String
   project            Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   createdBy          User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  preset             ReportPreset? @relation(fields: [presetId], references: [id], onDelete: SetNull)
   expiresAt          DateTime?
   revokedAt          DateTime?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
   @@index([projectId, revokedAt])
+  @@index([presetId])
   @@index([createdById])
   @@index([expiresAt])
+}
+
+model ReportPreset {
+  id                 String        @id @default(cuid())
+  name               String
+  title              String
+  clientName         String?
+  subtitle           String?
+  preparedBy         String?
+  executiveNote      String?
+  brandImageMimeType String?
+  brandImageData     Bytes?
+  periodMode         String        @default("window")
+  periodWindow       String?       @default("30d")
+  periodStart        DateTime?
+  periodEnd          DateTime?
+  comparisonEnabled  Boolean       @default(true)
+  projectId          String
+  createdById        String
+  project            Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy          User          @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  shares             ReportShare[]
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@index([projectId])
+  @@index([createdById])
 }
 
 model ParameterMapping {

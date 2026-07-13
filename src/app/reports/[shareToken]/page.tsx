@@ -27,6 +27,13 @@ function formatInteger(value: number) {
   return new Intl.NumberFormat("en").format(value)
 }
 
+function comparisonNote(current: number, previous: number, suffix = "") {
+  const delta = current - previous
+  if (delta === 0) return `No change vs previous period${suffix}`
+  const sign = delta > 0 ? "+" : ""
+  return `${sign}${formatInteger(delta)}${suffix} vs previous period`
+}
+
 function statusVariant(status: string): "secondary" | "destructive" | "outline" {
   if (status === "DOWN") return "destructive"
   if (status === "DEGRADED") return "secondary"
@@ -41,11 +48,31 @@ export default async function ReportPage({ params }: { params: Promise<{ shareTo
 
   const metricCards = [
     { label: "Automation uptime", value: `${report.summary.uptimePercent}%`, note: "Active nodes / total nodes" },
-    { label: "Workflow runs", value: formatInteger(report.summary.totalRuns), note: "Recent ingested runs" },
-    { label: "Success rate", value: `${report.summary.successRate}%`, note: "Successful runs / total runs" },
-    { label: "AI value score", value: `${report.summary.qualityScore}`, note: "Success and uptime blend" },
-    { label: "Tracked spend", value: formatCurrency(report.summary.totalCostUsd), note: "Reported workflow cost" },
-    { label: "Token usage", value: formatInteger(report.summary.totalTokens), note: "Reported LLM tokens" },
+    {
+      label: "Workflow runs",
+      value: formatInteger(report.summary.totalRuns),
+      note: report.comparison ? comparisonNote(report.summary.totalRuns, report.comparison.summary.totalRuns) : "Submitted runs in period",
+    },
+    {
+      label: "Success rate",
+      value: `${report.summary.successRate}%`,
+      note: report.comparison ? comparisonNote(report.summary.successRate, report.comparison.summary.successRate, " pts") : "Successful runs / total runs",
+    },
+    {
+      label: "AI value score",
+      value: `${report.summary.qualityScore}`,
+      note: report.comparison ? comparisonNote(report.summary.qualityScore, report.comparison.summary.qualityScore, " pts") : "Success and uptime blend",
+    },
+    {
+      label: "Tracked spend",
+      value: formatCurrency(report.summary.totalCostUsd),
+      note: report.comparison ? `${formatCurrency(report.summary.totalCostUsd - report.comparison.summary.totalCostUsd)} vs previous period` : "Reported workflow cost",
+    },
+    {
+      label: "Token usage",
+      value: formatInteger(report.summary.totalTokens),
+      note: report.comparison ? comparisonNote(report.summary.totalTokens, report.comparison.summary.totalTokens) : "Reported LLM tokens",
+    },
   ]
   const executiveStatus =
     report.summary.activeAlerts > 0
@@ -72,6 +99,10 @@ export default async function ReportPage({ params }: { params: Promise<{ shareTo
               {report.clientName ? `${report.clientName} / ` : ""}
               {report.organizationName} / {report.projectName}
             </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Reporting period: <span className="font-medium text-foreground">{report.period.label}</span>
+              {report.comparison ? ` / compared with ${report.comparison.label}` : ""}
+            </p>
             {report.preparedBy ? <p className="mt-1 text-sm text-muted-foreground">Prepared by {report.preparedBy}</p> : null}
           </div>
           <div className="grid gap-2">
@@ -87,6 +118,7 @@ export default async function ReportPage({ params }: { params: Promise<{ shareTo
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={executiveStatus === "Healthy" ? "secondary" : "destructive"}>{executiveStatus}</Badge>
               <Badge variant="outline">{report.nodes.length} monitored nodes</Badge>
+              <Badge variant="outline">{report.period.label}</Badge>
               <Badge variant="outline">Latest sample {formatDateTime(report.summary.latestSampleAt)}</Badge>
             </div>
             <h2 className="mt-4 text-xl font-semibold">Executive summary</h2>
@@ -176,22 +208,24 @@ export default async function ReportPage({ params }: { params: Promise<{ shareTo
 
           <Card className="print:break-inside-avoid">
             <CardHeader>
-              <CardTitle>Recent incidents</CardTitle>
-              <CardDescription>{report.summary.activeAlerts} active alerts across this project</CardDescription>
+              <CardTitle>Incident timeline</CardTitle>
+              <CardDescription>{report.summary.activeAlerts} active alerts in this report period</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-2">
-              {report.alerts.length ? (
-                report.alerts.map((alert) => (
+              {report.incidentTimeline.length ? (
+                report.incidentTimeline.map((alert) => (
                   <div key={alert.id} className="rounded-lg border p-3 text-sm">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="font-medium">{alert.title}</div>
                         <div className="mt-1 text-xs text-muted-foreground">
                           {alert.nodeLabel ?? "Project"} / {formatDateTime(alert.createdAt)}
+                          {alert.resolvedAt ? ` / resolved ${formatDateTime(alert.resolvedAt)}` : ""}
                         </div>
+                        <p className="mt-2 text-xs leading-5 text-muted-foreground">{alert.message}</p>
                       </div>
-                      <Badge variant={alert.resolvedAt ? "secondary" : "destructive"}>
-                        {alert.resolvedAt ? "resolved" : alert.severity.toLowerCase()}
+                      <Badge variant={alert.status === "resolved" ? "secondary" : "destructive"}>
+                        {alert.status === "resolved" ? "resolved" : alert.severity.toLowerCase()}
                       </Badge>
                     </div>
                   </div>

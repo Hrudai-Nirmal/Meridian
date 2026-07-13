@@ -78,7 +78,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { CostQualityChart, IncidentHeatmap, LatencyChart } from "@/components/meridian/charts"
 import { EndpointGraphNode } from "@/components/meridian/endpoint-node"
-import { anomalyDefaults, type AlertRuleMode, type AnomalyDirection } from "@/lib/alert-rule-metadata"
+import { anomalyDefaults, type AlertRuleMode, type AlertRuleSource, type AnomalyDirection, type RunAlertMetric } from "@/lib/alert-rule-metadata"
+import { ALERT_RULE_TEMPLATES, buildAlertRulePayloadFromTemplate } from "@/lib/alert-rule-templates.mjs"
 import { validateApiAuthConfig } from "@/lib/api-auth-headers.mjs"
 import { getApiSetupFieldHelp, getAuthHeaderPlaceholder } from "@/lib/api-setup-help.mjs"
 import { buildGlobalSearchIndex, searchGlobalIndex, type GlobalSearchResult } from "@/lib/global-search.mjs"
@@ -438,10 +439,33 @@ type ReportShareRecord = {
   executiveNote: string | null
   hasMapImage: boolean
   hasBrandImage: boolean
+  periodMode: string
+  periodWindow: string | null
+  periodStart: string | null
+  periodEnd: string | null
+  comparisonEnabled: boolean
+  presetId: string | null
   url: string
   expiresAt: string | null
   revokedAt: string | null
   createdAt: string
+}
+type ReportPresetRecord = {
+  id: string
+  name: string
+  title: string
+  clientName: string | null
+  subtitle: string | null
+  preparedBy: string | null
+  executiveNote: string | null
+  brandImage: ReportBrandImage | null
+  periodMode: "window" | "custom" | "all"
+  periodWindow: "7d" | "30d" | "90d" | null
+  periodStart: string | null
+  periodEnd: string | null
+  comparisonEnabled: boolean
+  createdAt: string
+  updatedAt: string
 }
 type ReportBrandImage = {
   mimeType: "image/png" | "image/svg+xml"
@@ -939,6 +963,9 @@ export function MeridianDashboard({
   const [notificationJobCounts, setNotificationJobCounts] = useState<Record<string, number>>({})
   const [notificationJobMessage, setNotificationJobMessage] = useState("")
   const [reportShares, setReportShares] = useState<ReportShareRecord[]>([])
+  const [reportPresets, setReportPresets] = useState<ReportPresetRecord[]>([])
+  const [selectedReportPresetId, setSelectedReportPresetId] = useState("")
+  const [reportPresetName, setReportPresetName] = useState("Client review default")
   const [reportTitle, setReportTitle] = useState("Client automation report")
   const [reportClientName, setReportClientName] = useState("")
   const [reportSubtitle, setReportSubtitle] = useState("Monthly automation operations review")
@@ -946,6 +973,11 @@ export function MeridianDashboard({
   const [reportExecutiveNote, setReportExecutiveNote] = useState("This report summarizes automation reliability, workflow volume, AI usage, cost, and open incidents for the selected project.")
   const [reportMapDataUrl, setReportMapDataUrl] = useState("")
   const [reportBrandImage, setReportBrandImage] = useState<ReportBrandImage | null>(null)
+  const [reportPeriodMode, setReportPeriodMode] = useState<"window" | "custom" | "all">("window")
+  const [reportPeriodWindow, setReportPeriodWindow] = useState<"7d" | "30d" | "90d">("30d")
+  const [reportPeriodStart, setReportPeriodStart] = useState("")
+  const [reportPeriodEnd, setReportPeriodEnd] = useState("")
+  const [reportComparisonEnabled, setReportComparisonEnabled] = useState(true)
   const [reportExpiryDays, setReportExpiryDays] = useState("90")
   const [reportMessage, setReportMessage] = useState("")
   const [nodes, setNodes, onNodesChange] = useNodesState(initialWorkspace.nodes.map(toFlowNode))
@@ -1902,6 +1934,95 @@ export function MeridianDashboard({
     setReportMessage("Report links loaded.")
   }
 
+  const loadReportPresets = async () => {
+    if (!canManageOrganization) {
+      setReportMessage("Only owners and admins can manage report presets.")
+      return
+    }
+
+    setReportMessage("Loading report presets...")
+    const response = await fetch(`/api/projects/${initialWorkspace.project.id}/report-presets`)
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      setReportMessage(payload?.error ?? "Report presets failed to load.")
+      return
+    }
+    setReportPresets(payload.presets ?? [])
+    setReportMessage("Report presets loaded.")
+  }
+
+  const applyReportPreset = (presetId: string) => {
+    setSelectedReportPresetId(presetId)
+    const preset = reportPresets.find((candidate) => candidate.id === presetId)
+    if (!preset) return
+
+    setReportPresetName(preset.name)
+    setReportTitle(preset.title)
+    setReportClientName(preset.clientName ?? "")
+    setReportSubtitle(preset.subtitle ?? "")
+    setReportPreparedBy(preset.preparedBy ?? "")
+    setReportExecutiveNote(preset.executiveNote ?? "")
+    setReportBrandImage(preset.brandImage)
+    setReportPeriodMode(preset.periodMode)
+    setReportPeriodWindow(preset.periodWindow ?? "30d")
+    setReportPeriodStart(preset.periodStart ? preset.periodStart.slice(0, 10) : "")
+    setReportPeriodEnd(preset.periodEnd ? preset.periodEnd.slice(0, 10) : "")
+    setReportComparisonEnabled(preset.comparisonEnabled)
+    setReportMessage(`Applied preset "${preset.name}".`)
+  }
+
+  const saveReportPreset = async () => {
+    if (!canManageOrganization) {
+      setReportMessage("Only owners and admins can save report presets.")
+      return
+    }
+
+    setReportMessage("Saving report preset...")
+    const response = await fetch(`/api/projects/${initialWorkspace.project.id}/report-presets`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: reportPresetName,
+        title: reportTitle,
+        clientName: reportClientName.trim() || undefined,
+        subtitle: reportSubtitle.trim() || undefined,
+        preparedBy: reportPreparedBy.trim() || undefined,
+        executiveNote: reportExecutiveNote.trim() || undefined,
+        periodMode: reportPeriodMode,
+        periodWindow: reportPeriodMode === "window" ? reportPeriodWindow : undefined,
+        periodStart: reportPeriodMode === "custom" ? reportPeriodStart || undefined : undefined,
+        periodEnd: reportPeriodMode === "custom" ? reportPeriodEnd || undefined : undefined,
+        comparisonEnabled: reportComparisonEnabled,
+        brandImage: reportBrandImage ?? undefined,
+      }),
+    })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      setReportMessage(payload?.error ?? "Report preset save failed.")
+      return
+    }
+    setReportPresets((current) => [payload.preset, ...current])
+    setSelectedReportPresetId(payload.preset.id)
+    setReportMessage("Report preset saved.")
+  }
+
+  const deleteReportPreset = async (presetId: string) => {
+    if (!canManageOrganization) {
+      setReportMessage("Only owners and admins can delete report presets.")
+      return
+    }
+
+    const response = await fetch(`/api/projects/${initialWorkspace.project.id}/report-presets/${presetId}`, { method: "DELETE" })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      setReportMessage(payload?.error ?? "Report preset deletion failed.")
+      return
+    }
+    setReportPresets((current) => current.filter((preset) => preset.id !== presetId))
+    if (selectedReportPresetId === presetId) setSelectedReportPresetId("")
+    setReportMessage("Report preset deleted.")
+  }
+
   const createReportShare = async () => {
     if (!canManageOrganization) {
       setReportMessage("Only owners and admins can create client reports.")
@@ -1919,6 +2040,12 @@ export function MeridianDashboard({
         subtitle: reportSubtitle.trim() || undefined,
         preparedBy: reportPreparedBy.trim() || undefined,
         executiveNote: reportExecutiveNote.trim() || undefined,
+        periodMode: reportPeriodMode,
+        periodWindow: reportPeriodMode === "window" ? reportPeriodWindow : undefined,
+        periodStart: reportPeriodMode === "custom" ? reportPeriodStart || undefined : undefined,
+        periodEnd: reportPeriodMode === "custom" ? reportPeriodEnd || undefined : undefined,
+        comparisonEnabled: reportComparisonEnabled,
+        presetId: selectedReportPresetId || undefined,
         expiresInDays: Number.isFinite(expiresInDays) ? expiresInDays : undefined,
         mapImage: reportMapDataUrl ? { mimeType: "image/png", dataUrl: reportMapDataUrl } : undefined,
         brandImage: reportBrandImage ?? undefined,
@@ -3241,6 +3368,9 @@ export function MeridianDashboard({
             projectMetrics={projectMetrics}
             projectSummary={projectSummary}
             reportShares={reportShares}
+            reportPresets={reportPresets}
+            selectedReportPresetId={selectedReportPresetId}
+            reportPresetName={reportPresetName}
             reportTitle={reportTitle}
             reportClientName={reportClientName}
             reportSubtitle={reportSubtitle}
@@ -3248,14 +3378,26 @@ export function MeridianDashboard({
             reportExecutiveNote={reportExecutiveNote}
             reportMapDataUrl={reportMapDataUrl}
             reportBrandImage={reportBrandImage}
+            reportPeriodMode={reportPeriodMode}
+            reportPeriodWindow={reportPeriodWindow}
+            reportPeriodStart={reportPeriodStart}
+            reportPeriodEnd={reportPeriodEnd}
+            reportComparisonEnabled={reportComparisonEnabled}
             reportExpiryDays={reportExpiryDays}
             reportMessage={reportMessage}
             canManageOrganization={canManageOrganization}
+            onSelectedReportPresetChange={applyReportPreset}
+            onReportPresetNameChange={setReportPresetName}
             onReportTitleChange={setReportTitle}
             onReportClientNameChange={setReportClientName}
             onReportSubtitleChange={setReportSubtitle}
             onReportPreparedByChange={setReportPreparedBy}
             onReportExecutiveNoteChange={setReportExecutiveNote}
+            onReportPeriodModeChange={setReportPeriodMode}
+            onReportPeriodWindowChange={setReportPeriodWindow}
+            onReportPeriodStartChange={setReportPeriodStart}
+            onReportPeriodEndChange={setReportPeriodEnd}
+            onReportComparisonEnabledChange={setReportComparisonEnabled}
             onAttachReportMap={attachReportMap}
             onClearReportMap={() => {
               setReportMapDataUrl("")
@@ -3268,6 +3410,9 @@ export function MeridianDashboard({
             }}
             onReportExpiryDaysChange={setReportExpiryDays}
             onLoadReportShares={loadReportShares}
+            onLoadReportPresets={loadReportPresets}
+            onSaveReportPreset={saveReportPreset}
+            onDeleteReportPreset={deleteReportPreset}
             onCreateReportShare={createReportShare}
             onCopyReportShareUrl={copyReportShareUrl}
             onRevokeReportShare={revokeReportShare}
@@ -4392,6 +4537,9 @@ function ReportsSection({
   projectMetrics,
   projectSummary,
   reportShares,
+  reportPresets,
+  selectedReportPresetId,
+  reportPresetName,
   reportTitle,
   reportClientName,
   reportSubtitle,
@@ -4399,20 +4547,35 @@ function ReportsSection({
   reportExecutiveNote,
   reportMapDataUrl,
   reportBrandImage,
+  reportPeriodMode,
+  reportPeriodWindow,
+  reportPeriodStart,
+  reportPeriodEnd,
+  reportComparisonEnabled,
   reportExpiryDays,
   reportMessage,
   canManageOrganization,
+  onSelectedReportPresetChange,
+  onReportPresetNameChange,
   onReportTitleChange,
   onReportClientNameChange,
   onReportSubtitleChange,
   onReportPreparedByChange,
   onReportExecutiveNoteChange,
+  onReportPeriodModeChange,
+  onReportPeriodWindowChange,
+  onReportPeriodStartChange,
+  onReportPeriodEndChange,
+  onReportComparisonEnabledChange,
   onAttachReportMap,
   onClearReportMap,
   onReportBrandImageChange,
   onClearReportBrandImage,
   onReportExpiryDaysChange,
   onLoadReportShares,
+  onLoadReportPresets,
+  onSaveReportPreset,
+  onDeleteReportPreset,
   onCreateReportShare,
   onCopyReportShareUrl,
   onRevokeReportShare,
@@ -4428,6 +4591,9 @@ function ReportsSection({
     latestSampledAt: string | null
   }
   reportShares: ReportShareRecord[]
+  reportPresets: ReportPresetRecord[]
+  selectedReportPresetId: string
+  reportPresetName: string
   reportTitle: string
   reportClientName: string
   reportSubtitle: string
@@ -4435,20 +4601,35 @@ function ReportsSection({
   reportExecutiveNote: string
   reportMapDataUrl: string
   reportBrandImage: ReportBrandImage | null
+  reportPeriodMode: "window" | "custom" | "all"
+  reportPeriodWindow: "7d" | "30d" | "90d"
+  reportPeriodStart: string
+  reportPeriodEnd: string
+  reportComparisonEnabled: boolean
   reportExpiryDays: string
   reportMessage: string
   canManageOrganization: boolean
+  onSelectedReportPresetChange: (value: string) => void
+  onReportPresetNameChange: (value: string) => void
   onReportTitleChange: (value: string) => void
   onReportClientNameChange: (value: string) => void
   onReportSubtitleChange: (value: string) => void
   onReportPreparedByChange: (value: string) => void
   onReportExecutiveNoteChange: (value: string) => void
+  onReportPeriodModeChange: (value: "window" | "custom" | "all") => void
+  onReportPeriodWindowChange: (value: "7d" | "30d" | "90d") => void
+  onReportPeriodStartChange: (value: string) => void
+  onReportPeriodEndChange: (value: string) => void
+  onReportComparisonEnabledChange: (value: boolean) => void
   onAttachReportMap: () => void
   onClearReportMap: () => void
   onReportBrandImageChange: (file: File | null) => Promise<void>
   onClearReportBrandImage: () => void
   onReportExpiryDaysChange: (value: string) => void
   onLoadReportShares: () => Promise<void>
+  onLoadReportPresets: () => Promise<void>
+  onSaveReportPreset: () => Promise<void>
+  onDeleteReportPreset: (presetId: string) => Promise<void>
   onCreateReportShare: () => Promise<void>
   onCopyReportShareUrl: (url: string) => Promise<void>
   onRevokeReportShare: (shareId: string) => Promise<void>
@@ -4477,6 +4658,36 @@ function ReportsSection({
                 <CardDescription>Share uptime, runs, cost, tokens, quality, incidents, and latest status without exposing secrets.</CardDescription>
               </CardHeader>
               <CardContent className="grid gap-3">
+                <div className="grid gap-2 rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
+                  <div className="font-medium text-foreground">Report presets</div>
+                  <div>Save reusable client proof defaults for title, prepared-by text, period, comparison, and brand image.</div>
+                  <div className="grid gap-2 md:grid-cols-[1fr_1fr_auto_auto]">
+                    <select
+                      className="h-10 rounded-md border bg-background px-3 text-sm text-foreground"
+                      value={selectedReportPresetId}
+                      onChange={(event) => onSelectedReportPresetChange(event.target.value)}
+                      disabled={!canManageOrganization}
+                      aria-label="Report preset"
+                    >
+                      <option value="">No preset selected</option>
+                      {reportPresets.map((preset) => (
+                        <option key={preset.id} value={preset.id}>{preset.name}</option>
+                      ))}
+                    </select>
+                    <Input value={reportPresetName} onChange={(event) => onReportPresetNameChange(event.target.value)} placeholder="Preset name" disabled={!canManageOrganization} />
+                    <Button variant="outline" size="sm" onClick={onLoadReportPresets} disabled={!canManageOrganization}>
+                      Load
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={onSaveReportPreset} disabled={!canManageOrganization}>
+                      Save preset
+                    </Button>
+                  </div>
+                  {selectedReportPresetId ? (
+                    <Button variant="ghost" size="sm" className="justify-self-start" onClick={() => onDeleteReportPreset(selectedReportPresetId)} disabled={!canManageOrganization}>
+                      Delete selected preset
+                    </Button>
+                  ) : null}
+                </div>
                 <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
                   Report title
                   <Input value={reportTitle} onChange={(event) => onReportTitleChange(event.target.value)} aria-label="Report title" disabled={!canManageOrganization} />
@@ -4497,6 +4708,61 @@ function ReportsSection({
                   Executive note
                   <Textarea value={reportExecutiveNote} onChange={(event) => onReportExecutiveNoteChange(event.target.value)} placeholder="Short client-facing summary" disabled={!canManageOrganization} />
                 </label>
+                <div className="grid gap-2 rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
+                  <div className="font-medium text-foreground">Reporting period</div>
+                  <div>Choose the data window used for the public report and optional previous-period comparison.</div>
+                  <div className="grid gap-2 md:grid-cols-3">
+                    <label className="grid gap-1">
+                      Mode
+                      <select
+                        className="h-10 rounded-md border bg-background px-3 text-sm text-foreground"
+                        value={reportPeriodMode}
+                        onChange={(event) => onReportPeriodModeChange(event.target.value as "window" | "custom" | "all")}
+                        disabled={!canManageOrganization}
+                      >
+                        <option value="window">Preset window</option>
+                        <option value="custom">Custom dates</option>
+                        <option value="all">All available data</option>
+                      </select>
+                    </label>
+                    {reportPeriodMode === "window" ? (
+                      <label className="grid gap-1">
+                        Window
+                        <select
+                          className="h-10 rounded-md border bg-background px-3 text-sm text-foreground"
+                          value={reportPeriodWindow}
+                          onChange={(event) => onReportPeriodWindowChange(event.target.value as "7d" | "30d" | "90d")}
+                          disabled={!canManageOrganization}
+                        >
+                          <option value="7d">Last 7 days</option>
+                          <option value="30d">Last 30 days</option>
+                          <option value="90d">Last 90 days</option>
+                        </select>
+                      </label>
+                    ) : null}
+                    {reportPeriodMode === "custom" ? (
+                      <>
+                        <label className="grid gap-1">
+                          Start
+                          <Input type="date" value={reportPeriodStart} onChange={(event) => onReportPeriodStartChange(event.target.value)} disabled={!canManageOrganization} />
+                        </label>
+                        <label className="grid gap-1">
+                          End
+                          <Input type="date" value={reportPeriodEnd} onChange={(event) => onReportPeriodEndChange(event.target.value)} disabled={!canManageOrganization} />
+                        </label>
+                      </>
+                    ) : null}
+                  </div>
+                  <label className="flex items-center gap-2 text-sm text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={reportPeriodMode !== "all" && reportComparisonEnabled}
+                      onChange={(event) => onReportComparisonEnabledChange(event.target.checked)}
+                      disabled={!canManageOrganization || reportPeriodMode === "all"}
+                    />
+                    Compare with previous matching period
+                  </label>
+                </div>
                 <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
                   Expiry window
                   <Input value={reportExpiryDays} onChange={(event) => onReportExpiryDaysChange(event.target.value)} placeholder="Days, optional" disabled={!canManageOrganization} />
@@ -4589,6 +4855,14 @@ function ReportsSection({
                 <div className="mt-1 text-sm text-muted-foreground">
                   {reportClientName.trim() || "Client name optional"} {reportPreparedBy.trim() ? `/ Prepared by ${reportPreparedBy.trim()}` : ""}
                 </div>
+                <div className="mt-1 text-sm text-muted-foreground">
+                  {reportPeriodMode === "all"
+                    ? "All available data"
+                    : reportPeriodMode === "custom"
+                      ? `${reportPeriodStart || "Start date"} to ${reportPeriodEnd || "End date"}`
+                      : `Last ${reportPeriodWindow.replace("d", " days")}`}
+                  {reportPeriodMode !== "all" && reportComparisonEnabled ? " / previous-period comparison enabled" : ""}
+                </div>
                 {reportExecutiveNote.trim() ? <p className="mt-3 text-sm leading-6 text-muted-foreground">{reportExecutiveNote.trim()}</p> : null}
               </div>
               {reportMapDataUrl ? (
@@ -4629,6 +4903,14 @@ function ReportsSection({
                       </div>
                       <div className="mt-1 text-xs text-muted-foreground">
                         {share.subtitle ?? "No subtitle"} / {share.preparedBy ?? "No prepared-by"} / {share.hasBrandImage ? "Brand attached" : "No brand"} / {share.hasMapImage ? "Map attached" : "No map"}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {share.periodMode === "all"
+                          ? "All available data"
+                          : share.periodMode === "custom"
+                            ? `${share.periodStart ? formatSampledAt(share.periodStart) : "Custom start"} to ${share.periodEnd ? formatSampledAt(share.periodEnd) : "Custom end"}`
+                            : `Last ${(share.periodWindow ?? "30d").replace("d", " days")}`}
+                        {share.comparisonEnabled ? " / comparison enabled" : " / no comparison"}
                       </div>
                     </div>
                     <Badge variant={share.revokedAt ? "secondary" : "outline"}>{share.revokedAt ? "Revoked" : "Live"}</Badge>
@@ -6044,6 +6326,10 @@ function inferApiAuthType(authLabel: string) {
   return "NONE"
 }
 
+function getAlertTemplateTitle(templateId: string) {
+  return ALERT_RULE_TEMPLATES.find((template) => template.id === templateId)?.title ?? "Alert rule"
+}
+
 type ApiTestResult = {
   ok?: boolean
   status?: number
@@ -6127,8 +6413,12 @@ function NodeInspector({
   const [ruleMappingId, setRuleMappingId] = useState(nodeAlertRules[0]?.mappingId ?? firstPersistedParameter?.id ?? "")
   const [ruleName, setRuleName] = useState(nodeAlertRules[0]?.name ?? `${firstPersistedParameter?.label ?? mappingLabel} threshold crossed`)
   const [ruleExpression, setRuleExpression] = useState(nodeAlertRules[0]?.expression ?? threshold)
+  const [ruleSource, setRuleSource] = useState<AlertRuleSource>(firstAlertRule?.source ?? "metric")
+  const [ruleTemplateId, setRuleTemplateId] = useState(firstAlertRule?.templateId ?? "")
   const [ruleMode, setRuleMode] = useState<AlertRuleMode>(firstAlertRule?.mode ?? "threshold")
   const [anomalyDirection, setAnomalyDirection] = useState<AnomalyDirection>(firstAlertRule?.anomalyDirection ?? anomalyDefaults.direction)
+  const [runMetric, setRunMetric] = useState<RunAlertMetric>(firstAlertRule?.runMetric ?? "status")
+  const [windowRuns, setWindowRuns] = useState(String(firstAlertRule?.windowRuns ?? 1))
   const [ruleSeverity, setRuleSeverity] = useState(nodeAlertRules[0]?.severity ?? "WARNING")
   const [ruleEnabled, setRuleEnabled] = useState(nodeAlertRules[0]?.enabled ?? true)
   const [ruleMessage, setRuleMessage] = useState("")
@@ -6225,11 +6515,39 @@ function NodeInspector({
     setVisualization("NUMBER")
     setRuleName("Demo metric threshold crossed")
     setRuleExpression("> 90")
+    setRuleSource("metric")
+    setRuleTemplateId("metric-threshold-high")
     setRuleMode("threshold")
     setAnomalyDirection(anomalyDefaults.direction)
     setRuleSeverity("WARNING")
     setRuleEnabled(true)
     setApiMessage("Demo metric loaded. Test and save the API setup, then save the alert rule.")
+  }
+
+  const applyAlertRuleTemplate = (templateId: string) => {
+    setRuleTemplateId(templateId)
+    const selectedParameter = selectedNode.parameters.find((parameter) => parameter.id === ruleMappingId) ?? firstPersistedParameter
+    try {
+      const payload = buildAlertRulePayloadFromTemplate(templateId, {
+        nodeId: selectedNode.id,
+        nodeLabel: selectedNode.label,
+        mappingId: selectedParameter?.id,
+        mappingLabel: selectedParameter?.label,
+        unit: selectedParameter?.unit,
+      })
+      setRuleSource(payload.source as AlertRuleSource)
+      setRuleName(String(payload.name ?? "Alert rule"))
+      setRuleExpression(String(payload.expression ?? ""))
+      setRuleMode((payload.mode as AlertRuleMode) ?? "threshold")
+      setAnomalyDirection((payload.anomalyDirection as AnomalyDirection) ?? anomalyDefaults.direction)
+      setRuleSeverity(String(payload.severity ?? "WARNING"))
+      if (payload.mappingId) setRuleMappingId(String(payload.mappingId))
+      if (payload.runMetric) setRunMetric(payload.runMetric as RunAlertMetric)
+      if (payload.windowRuns) setWindowRuns(String(payload.windowRuns))
+      setRuleMessage(`${getAlertTemplateTitle(templateId)} template applied.`)
+    } catch (error) {
+      setRuleMessage(error instanceof Error ? error.message : "Alert rule template could not be applied.")
+    }
   }
 
   const applyIntegrationTemplate = (template: IntegrationTemplate) => {
@@ -6370,7 +6688,7 @@ function NodeInspector({
       return
     }
     const parameter = selectedNode.parameters.find((candidate) => candidate.id === ruleMappingId)
-    if (!parameter?.id) {
+    if (ruleSource === "metric" && !parameter?.id) {
       setRuleMessage("Save an API mapping first, then attach a rule to it.")
       return
     }
@@ -6382,15 +6700,19 @@ function NodeInspector({
       body: JSON.stringify({
         id: ruleId || undefined,
         nodeId: selectedNode.id,
-        mappingId: parameter.id,
-        mappingLabel: parameter.label,
+        source: ruleSource,
+        templateId: ruleTemplateId || undefined,
+        mappingId: ruleSource === "metric" ? parameter?.id : null,
+        mappingLabel: ruleSource === "metric" ? parameter?.label : undefined,
         name: ruleName,
-        expression: ruleMode === "threshold" ? ruleExpression : undefined,
-        mode: ruleMode,
+        expression: ruleSource === "run" || ruleMode === "threshold" ? ruleExpression : undefined,
+        mode: ruleSource === "run" ? "threshold" : ruleMode,
         anomalyDirection,
         sigma: anomalyDefaults.sigma,
         windowDays: anomalyDefaults.windowDays,
         minSamples: anomalyDefaults.minSamples,
+        runMetric: ruleSource === "run" ? runMetric : undefined,
+        windowRuns: ruleSource === "run" ? Number(windowRuns) : undefined,
         severity: ruleSeverity,
         enabled: ruleEnabled,
       }),
@@ -6406,12 +6728,16 @@ function NodeInspector({
       createdAt: payload.rule.createdAt ?? new Date().toISOString(),
       updatedAt: payload.rule.updatedAt ?? new Date().toISOString(),
       nodeLabel: selectedNode.label,
-      mappingLabel: parameter.label,
-      mode: ruleMode,
-      anomalyDirection: ruleMode === "anomaly" ? anomalyDirection : null,
-      anomalySigma: ruleMode === "anomaly" ? anomalyDefaults.sigma : null,
-      anomalyWindowDays: ruleMode === "anomaly" ? anomalyDefaults.windowDays : null,
-      anomalyMinSamples: ruleMode === "anomaly" ? anomalyDefaults.minSamples : null,
+      mappingLabel: ruleSource === "metric" ? parameter?.label ?? null : null,
+      source: ruleSource,
+      templateId: ruleTemplateId || null,
+      mode: ruleSource === "run" ? "threshold" : ruleMode,
+      anomalyDirection: ruleSource === "metric" && ruleMode === "anomaly" ? anomalyDirection : null,
+      anomalySigma: ruleSource === "metric" && ruleMode === "anomaly" ? anomalyDefaults.sigma : null,
+      anomalyWindowDays: ruleSource === "metric" && ruleMode === "anomaly" ? anomalyDefaults.windowDays : null,
+      anomalyMinSamples: ruleSource === "metric" && ruleMode === "anomaly" ? anomalyDefaults.minSamples : null,
+      runMetric: ruleSource === "run" ? runMetric : null,
+      windowRuns: ruleSource === "run" ? Number(windowRuns) : null,
     } as ProjectAlertRule
     setRuleId(savedRule.id)
     onRuleSaved(savedRule)
@@ -7117,17 +7443,71 @@ function NodeInspector({
                     <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-3xl">
                       <DialogHeader>
                         <DialogTitle>Alert rule</DialogTitle>
-                        <DialogDescription>Create a static threshold or anomaly-baseline rule from a saved parameter mapping.</DialogDescription>
+                        <DialogDescription>Create metric-sample rules from API mappings or workflow-run rules from submitted telemetry.</DialogDescription>
                       </DialogHeader>
                       <div className="grid gap-4 lg:grid-cols-[1fr_0.9fr]">
                         <div className="grid content-start gap-3 rounded-lg border bg-muted/20 p-3">
+                          <div className="grid gap-2 rounded-lg border bg-background p-2">
+                            <div className="text-xs font-medium uppercase tracking-normal text-muted-foreground">Rule templates</div>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {ALERT_RULE_TEMPLATES.map((template) => (
+                                <button
+                                  key={template.id}
+                                  type="button"
+                                  className={cn(
+                                    "rounded-md border p-2 text-left text-xs transition hover:bg-muted/40",
+                                    ruleTemplateId === template.id ? "border-primary bg-primary/5" : "bg-background"
+                                  )}
+                                  onClick={() => applyAlertRuleTemplate(template.id)}
+                                  disabled={!canEditProject || (template.source === "metric" && !firstPersistedParameter)}
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="font-medium text-foreground">{template.title}</span>
+                                    <Badge variant={template.source === "run" ? "secondary" : "outline"}>{template.source}</Badge>
+                                  </div>
+                                  <div className="mt-1 leading-5 text-muted-foreground">{template.description}</div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
                           <div className="flex items-start justify-between gap-3">
                             <div>
-                              <div className="text-sm font-medium">{ruleMode === "anomaly" ? "Anomaly baseline" : "Static threshold"}</div>
-                              <div className="mt-1 text-xs text-muted-foreground">Attach this rule to a saved API mapping.</div>
+                              <div className="text-sm font-medium">{ruleSource === "run" ? "Workflow-run rule" : ruleMode === "anomaly" ? "Anomaly baseline" : "Static threshold"}</div>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                {ruleSource === "run" ? "Evaluated when workflow telemetry is ingested." : "Evaluated when API metric polling records a sample."}
+                              </div>
                             </div>
                             <Badge variant={ruleEnabled ? "secondary" : "outline"}>{ruleEnabled ? "Enabled" : "Disabled"}</Badge>
                           </div>
+                          <div className="grid grid-cols-2 rounded-lg border bg-background p-1 text-xs">
+                            <button
+                              className={cn("rounded-md px-2 py-1.5 font-medium", ruleSource === "metric" ? "bg-primary text-primary-foreground" : "text-muted-foreground")}
+                              type="button"
+                              onClick={() => {
+                                setRuleSource("metric")
+                                setRuleMode("threshold")
+                                if (firstPersistedParameter?.id) setRuleMappingId(firstPersistedParameter.id)
+                              }}
+                              disabled={!canEditProject}
+                            >
+                              Metric sample
+                            </button>
+                            <button
+                              className={cn("rounded-md px-2 py-1.5 font-medium", ruleSource === "run" ? "bg-primary text-primary-foreground" : "text-muted-foreground")}
+                              type="button"
+                              onClick={() => {
+                                setRuleSource("run")
+                                setRuleMode("threshold")
+                                setRuleMappingId("")
+                                setRuleExpression(runMetric === "status" ? "!= success" : ruleExpression || "> 5000")
+                              }}
+                              disabled={!canEditProject}
+                            >
+                              Workflow run
+                            </button>
+                          </div>
+                          {ruleSource === "metric" ? (
+                            <>
                           <div className="grid grid-cols-2 rounded-lg border bg-background p-1 text-xs">
                             <button
                               className={cn("rounded-md px-2 py-1.5 font-medium", ruleMode === "threshold" ? "bg-primary text-primary-foreground" : "text-muted-foreground")}
@@ -7172,18 +7552,51 @@ function NodeInspector({
                               .map((parameter) => (
                                 <option key={parameter.id} value={parameter.id}>
                                   {parameter.label}
-                                </option>
-                              ))}
+                              </option>
+                            ))}
                           </select>
+                            </>
+                          ) : (
+                            <div className="grid gap-2 rounded-lg border bg-background p-3 text-xs text-muted-foreground">
+                              <div className="font-medium text-foreground">Workflow-run telemetry rule</div>
+                              <div>Run rules evaluate submitted SDK/API/Dify/n8n workflow runs after ingestion. They do not run during cron metric polling.</div>
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                <label className="grid gap-1">
+                                  Run metric
+                                  <select
+                                    className="h-9 rounded-lg border bg-background px-2 text-sm text-foreground disabled:opacity-50"
+                                    value={runMetric}
+                                    onChange={(event) => {
+                                      const nextMetric = event.target.value as RunAlertMetric
+                                      setRunMetric(nextMetric)
+                                      setRuleExpression(nextMetric === "status" ? "!= success" : ruleExpression === "!= success" ? "> 5000" : ruleExpression)
+                                    }}
+                                    disabled={!canEditProject}
+                                  >
+                                    <option value="status">Failed or degraded status</option>
+                                    <option value="durationMs">Single-run duration</option>
+                                    <option value="costUsd">Single-run cost</option>
+                                    <option value="tokens">Single-run tokens</option>
+                                    <option value="failureRate">Failure rate over recent runs</option>
+                                    <option value="averageDurationMs">Average latency over recent runs</option>
+                                  </select>
+                                </label>
+                                <label className="grid gap-1">
+                                  Window runs
+                                  <Input value={windowRuns} onChange={(event) => setWindowRuns(event.target.value)} disabled={!canEditProject || runMetric === "status"} />
+                                </label>
+                              </div>
+                            </div>
+                          )}
                           <Input value={ruleName} onChange={(event) => setRuleName(event.target.value)} aria-label="Alert rule name" disabled={!canEditProject} />
                           <div className="grid gap-2 sm:grid-cols-[1fr_130px]">
-                            {ruleMode === "threshold" ? (
+                            {ruleSource === "run" || ruleMode === "threshold" ? (
                               <Input
                                 value={ruleExpression}
                                 onChange={(event) => setRuleExpression(event.target.value)}
                                 aria-label="Alert rule threshold"
-                                placeholder="> 90"
-                                disabled={!canEditProject}
+                                placeholder={ruleSource === "run" && runMetric === "status" ? "!= success" : "> 90"}
+                                disabled={!canEditProject || (ruleSource === "run" && runMetric === "status")}
                               />
                             ) : (
                               <select
@@ -7208,7 +7621,7 @@ function NodeInspector({
                               <option value="CRITICAL">Critical</option>
                             </select>
                           </div>
-                          {ruleMode === "anomaly" ? (
+                          {ruleSource === "metric" && ruleMode === "anomaly" ? (
                             <div className="grid gap-2 rounded-lg border border-dashed bg-background/80 p-3 text-xs text-muted-foreground">
                               <div>
                                 Learns a {anomalyDefaults.windowDays} day baseline and alerts on {getAnomalyDirectionLabel(anomalyDirection).toLowerCase()} more than {anomalyDefaults.sigma}σ outside the norm.
@@ -7262,12 +7675,16 @@ function NodeInspector({
                                 <div className="flex items-center justify-between gap-2">
                                   <span className="font-medium">{rule.name}</span>
                                   <div className="flex shrink-0 items-center gap-1">
-                                    <Badge variant={rule.mode === "anomaly" ? "default" : "outline"}>{rule.mode === "anomaly" ? "Anomaly" : "Threshold"}</Badge>
+                                    <Badge variant={rule.source === "run" ? "secondary" : rule.mode === "anomaly" ? "default" : "outline"}>
+                                      {rule.source === "run" ? "Run" : rule.mode === "anomaly" ? "Anomaly" : "Metric"}
+                                    </Badge>
                                     <Badge variant={rule.enabled ? "secondary" : "outline"}>{rule.severity}</Badge>
                                   </div>
                                 </div>
                                 <div className="mt-1 text-muted-foreground">
-                                  {rule.mode === "anomaly"
+                                  {rule.source === "run"
+                                    ? `${rule.runMetric ?? "run metric"} ${rule.expression}${rule.windowRuns ? ` / ${rule.windowRuns} runs` : ""}`
+                                    : rule.mode === "anomaly"
                                     ? `${rule.mappingLabel ?? "Mapping"} / ${getAnomalyDirectionLabel((rule.anomalyDirection ?? "high") as AnomalyDirection)} / ${rule.anomalySigma ?? anomalyDefaults.sigma}σ / ${rule.anomalyWindowDays ?? anomalyDefaults.windowDays}d / ${rule.anomalyMinSamples ?? anomalyDefaults.minSamples} samples`
                                     : `${rule.mappingLabel ?? "Mapping"} ${rule.expression}`}
                                 </div>

@@ -12,7 +12,7 @@ import {
   type IconKind,
   type NodeStatus,
 } from "@/lib/meridian-data"
-import { normalizeAlertRuleMetadata, type AlertRuleMode, type AnomalyDirection } from "@/lib/alert-rule-metadata"
+import { normalizeAlertRuleMetadata, type AlertRuleMode, type AlertRuleSource, type AnomalyDirection, type RunAlertMetric } from "@/lib/alert-rule-metadata"
 import { getReadinessStatus, type ReadinessStatus } from "@/lib/health"
 import { getPrisma } from "@/lib/prisma"
 import { buildRunDerivedMetricCards } from "@/lib/run-metrics.mjs"
@@ -176,11 +176,15 @@ export type WorkspacePayload = {
     mappingId: string | null
     nodeLabel: string | null
     mappingLabel: string | null
+    source: AlertRuleSource
+    templateId: string | null
     mode: AlertRuleMode
     anomalyDirection: AnomalyDirection | null
     anomalySigma: number | null
     anomalyWindowDays: number | null
     anomalyMinSamples: number | null
+    runMetric: RunAlertMetric | null
+    windowRuns: number | null
     createdAt: string
     updatedAt: string
   }[]
@@ -497,7 +501,7 @@ function projectToWorkspace(
         resolvedAt: event.resolvedAt?.toISOString() ?? null,
         nodeId: event.nodeId,
         nodeLabel: event.node?.label ?? null,
-        source: ruleMode === "anomaly" ? "Anomaly baseline" : event.ruleId ? "Threshold rule" : event.nodeId ? "Endpoint polling" : "Project",
+        source: ruleMode === "anomaly" ? "Anomaly baseline" : rule ? normalizeAlertRuleMetadata(rule.metadata).source === "run" ? "Workflow run rule" : "Threshold rule" : event.nodeId ? "Endpoint polling" : "Project",
         firstSeen: event.createdAt.toISOString(),
         lastSeen: event.createdAt.toISOString(),
         deliveryStatus: latestEmailDelivery?.status ?? null,
@@ -533,11 +537,15 @@ function projectToWorkspace(
         mappingId: rule.mappingId,
         nodeLabel: node?.label ?? null,
         mappingLabel: getRuleMappingLabel(rule, nodes),
+        source: metadata.source,
+        templateId: metadata.templateId,
         mode: metadata.mode,
         anomalyDirection: metadata.anomaly?.direction ?? null,
         anomalySigma: metadata.anomaly?.sigma ?? null,
         anomalyWindowDays: metadata.anomaly?.windowDays ?? null,
         anomalyMinSamples: metadata.anomaly?.minSamples ?? null,
+        runMetric: metadata.run?.metric ?? null,
+        windowRuns: metadata.run?.windowRuns ?? null,
         createdAt: rule.createdAt.toISOString(),
         updatedAt: rule.updatedAt.toISOString(),
       }

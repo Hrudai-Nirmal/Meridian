@@ -88,17 +88,26 @@ Use this checklist for production validation on `https://meridian.hrudainirmal.i
 - Run manual poll from Testing.
 - Confirm the selected node shows the deterministic `95 score` sample and trend/freshness details.
 - Confirm a matching threshold alert opens once and does not duplicate while unresolved.
+- In the selected node Alert Rule dialog, apply a metric threshold template and confirm the mapping, threshold, severity, and enabled state are prefilled.
+- Apply metric anomaly templates for high, low, and both directions; confirm sample-history preview still shows baseline/wait-state details.
+- Apply a workflow-run template such as failed/degraded run, run duration, cost, tokens, failure rate, or average latency.
+- Send matching Dify/SDK/API run telemetry and confirm run-source rules open alerts after ingestion.
+- Confirm metric polling does not evaluate run-source rules, and workflow-run ingestion does not evaluate metric-source rules.
 - Resolve/ignore the alert and confirm alert detail, node status, Logs, and notifications update.
 - Confirm anomaly alert preview explains sample count, baseline, standard deviation, and wait state when history is insufficient.
 
 ## Reports
 
 - Open Reports and fill title, client name, subtitle, prepared by, executive note, and expiry.
+- Save the current report defaults as a preset, reload presets, apply it, and delete it.
+- Create reports with 7d, 30d, 90d, all-data, and custom start/end periods.
+- Confirm previous-period comparison can be enabled for bounded periods and is disabled for all-data reports.
 - Upload a small PNG/SVG brand image and confirm the in-app preview shows it in the report header.
 - Try an oversized or unsafe SVG brand image and confirm it is rejected without creating a link.
 - Attach the current map and confirm the in-app preview includes the map and summary metrics.
 - Create a report link and open it in a signed-out/private browser.
 - Confirm the public report header shows the uploaded brand image when present.
+- Confirm the public report shows the period label, comparison notes when enabled, and an active/resolved incident timeline.
 - Confirm the public report is read-only and does not expose secrets, tokens, credentials, or private team data.
 - Use Print / Save PDF and confirm print layout is clean.
 - Revoke the report link and confirm the public page, brand image, and map image no longer open.

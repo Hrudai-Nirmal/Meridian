@@ -5,6 +5,7 @@ import { getApiUserId, requireProjectRole } from "@/lib/api-session"
 import { createAuditLog } from "@/lib/audit-log"
 import { getPrisma } from "@/lib/prisma"
 import { decodeReportAsset, MAX_BRAND_IMAGE_BYTES, MAX_MAP_IMAGE_BYTES } from "@/lib/report-assets.mjs"
+import { resolveReportPeriod } from "@/lib/report-periods.mjs"
 import { createReportToken, serializeReportShare } from "@/lib/reports"
 
 const reportShareSchema = z.object({
@@ -13,6 +14,12 @@ const reportShareSchema = z.object({
   subtitle: z.string().max(140).optional(),
   preparedBy: z.string().max(100).optional(),
   executiveNote: z.string().max(800).optional(),
+  periodMode: z.enum(["window", "custom", "all"]).default("window"),
+  periodWindow: z.enum(["7d", "30d", "90d"]).nullable().optional(),
+  periodStart: z.string().optional(),
+  periodEnd: z.string().optional(),
+  comparisonEnabled: z.boolean().default(true),
+  presetId: z.string().nullable().optional(),
   expiresInDays: z.number().int().min(1).max(365).optional(),
   mapImage: z
     .object({
@@ -55,6 +62,12 @@ export async function GET(request: Request, context: { params: Promise<{ project
       executiveNote: true,
       mapImageMimeType: true,
       brandImageMimeType: true,
+      periodMode: true,
+      periodWindow: true,
+      periodStart: true,
+      periodEnd: true,
+      comparisonEnabled: true,
+      presetId: true,
       expiresAt: true,
       revokedAt: true,
       createdAt: true,
@@ -96,8 +109,29 @@ export async function POST(request: Request, context: { params: Promise<{ projec
   if (brandImage.error) {
     return NextResponse.json({ error: brandImage.error }, { status: 400 })
   }
+  try {
+    resolveReportPeriod({
+      mode: parsed.data.periodMode,
+      window: parsed.data.periodWindow,
+      start: parsed.data.periodStart,
+      end: parsed.data.periodEnd,
+      comparisonEnabled: parsed.data.comparisonEnabled,
+    })
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Invalid report period." }, { status: 400 })
+  }
 
   const prisma = getPrisma()
+  const presetId = parsed.data.presetId?.trim() || null
+  if (presetId) {
+    const preset = await prisma.reportPreset.findFirst({
+      where: { id: presetId, projectId },
+      select: { id: true },
+    })
+    if (!preset) {
+      return NextResponse.json({ error: "Report preset not found for this project." }, { status: 404 })
+    }
+  }
   const expiresAt = parsed.data.expiresInDays
     ? new Date(Date.now() + parsed.data.expiresInDays * 24 * 60 * 60 * 1000)
     : null
@@ -113,6 +147,12 @@ export async function POST(request: Request, context: { params: Promise<{ projec
       mapImageData: mapImage.data ? new Uint8Array(mapImage.data) : null,
       brandImageMimeType: brandImage.mimeType,
       brandImageData: brandImage.data ? new Uint8Array(brandImage.data) : null,
+      periodMode: parsed.data.periodMode,
+      periodWindow: parsed.data.periodMode === "window" ? parsed.data.periodWindow ?? "30d" : null,
+      periodStart: parsed.data.periodMode === "custom" && parsed.data.periodStart ? new Date(parsed.data.periodStart) : null,
+      periodEnd: parsed.data.periodMode === "custom" && parsed.data.periodEnd ? new Date(parsed.data.periodEnd) : null,
+      comparisonEnabled: parsed.data.periodMode !== "all" && parsed.data.comparisonEnabled,
+      presetId,
       expiresAt,
       projectId,
       createdById: userId,
@@ -130,6 +170,9 @@ export async function POST(request: Request, context: { params: Promise<{ projec
       expiresAt: share.expiresAt,
       hasMapImage: Boolean(share.mapImageMimeType),
       hasBrandImage: Boolean(share.brandImageMimeType),
+      periodMode: share.periodMode,
+      periodWindow: share.periodWindow,
+      comparisonEnabled: share.comparisonEnabled,
     },
   })
 

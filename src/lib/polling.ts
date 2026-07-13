@@ -3,9 +3,9 @@ import "server-only"
 import { JSONPath } from "jsonpath-plus"
 
 import { buildApiAuthHeaderEntries, getStoredAuthHeaderName } from "@/lib/api-auth-headers.mjs"
+import { createAndDispatchAlertEvent } from "@/lib/alert-events"
 import { normalizeAlertRuleMetadata, type AnomalyDirection } from "@/lib/alert-rule-metadata"
 import { decryptSecret } from "@/lib/crypto"
-import { dispatchNotificationJobs, queueAlertNotificationJobs } from "@/lib/notification-jobs"
 import { getPrisma } from "@/lib/prisma"
 
 type JsonDocument = string | number | boolean | object | unknown[] | null
@@ -128,39 +128,6 @@ function bucketHour(date: Date) {
   const bucket = new Date(date)
   bucket.setMinutes(0, 0, 0)
   return bucket
-}
-
-async function createAlertIfNeeded(
-  prisma: ReturnType<typeof getPrisma>,
-  input: {
-    nodeId: string
-    title: string
-    message: string
-    severity: "INFO" | "WARNING" | "CRITICAL"
-    ruleId?: string | null
-  }
-) {
-  const result = await prisma.$transaction(async (transaction) => {
-    const existing = await transaction.alertEvent.findFirst({
-      where: { nodeId: input.nodeId, title: input.title, resolvedAt: null },
-      select: { id: true },
-    })
-    if (existing) return { created: false, jobs: [] }
-
-    const alertEvent = await transaction.alertEvent.create({
-      data: {
-        title: input.title,
-        message: input.message,
-        severity: input.severity,
-        nodeId: input.nodeId,
-        ruleId: input.ruleId,
-      },
-    })
-    const jobs = await queueAlertNotificationJobs(transaction, alertEvent.id, "alert.opened")
-    return { created: true, jobs }
-  })
-  await dispatchNotificationJobs(result.jobs)
-  return result.created
 }
 
 /**
@@ -317,9 +284,10 @@ export async function runProjectPolling(options: { projectId?: string; force?: b
           mappingId: mapping.id,
         })
 
-        const matchingRules = node.project.alertRules.filter(
-          (candidate) => candidate.nodeId === node.id && (candidate.mappingId === mapping.id || !candidate.mappingId)
-        )
+        const matchingRules = node.project.alertRules.filter((candidate) => {
+          const metadata = normalizeAlertRuleMetadata(candidate.metadata)
+          return metadata.source === "metric" && candidate.nodeId === node.id && (candidate.mappingId === mapping.id || !candidate.mappingId)
+        })
 
         if (matchingRules.length) {
           for (const rule of matchingRules) {
@@ -361,7 +329,7 @@ export async function runProjectPolling(options: { projectId?: string; force?: b
               const title = rule.name
               const message = `${mapping.label} anomaly: ${formatNumber(value)}${unit} is a ${direction} outlier vs ${metadata.anomaly.windowDays}d baseline mean ${formatNumber(mean)}${unit}, std dev ${formatNumber(stdDev)}${unit}, ${metadata.anomaly.sigma}σ.`
               breachReasons.push(`Anomaly breach: ${mapping.label} ${direction} outlier`)
-              if (await createAlertIfNeeded(prisma, { nodeId: node.id, title, message, severity: rule.severity, ruleId: rule.id })) {
+              if (await createAndDispatchAlertEvent({ nodeId: node.id, title, message, severity: rule.severity, ruleId: rule.id })) {
                 evaluatedAlerts += 1
               }
               continue
@@ -372,7 +340,7 @@ export async function runProjectPolling(options: { projectId?: string; force?: b
               const title = rule.name
               const message = `${mapping.label} is ${value}${mapping.unit ? ` ${mapping.unit}` : ""} (${thresholdExpression(rule.expression)}).`
               breachReasons.push(`Threshold breach: ${mapping.label} ${thresholdExpression(rule.expression)}`)
-              if (await createAlertIfNeeded(prisma, { nodeId: node.id, title, message, severity: rule.severity, ruleId: rule.id })) {
+              if (await createAndDispatchAlertEvent({ nodeId: node.id, title, message, severity: rule.severity, ruleId: rule.id })) {
                 evaluatedAlerts += 1
               }
             }
@@ -382,7 +350,7 @@ export async function runProjectPolling(options: { projectId?: string; force?: b
           const title = `${mapping.label} threshold crossed`
           const message = `${mapping.label} is ${value}${mapping.unit ? ` ${mapping.unit}` : ""} (${thresholdExpression(mapping.threshold)}).`
           breachReasons.push(`Threshold breach: ${mapping.label} ${thresholdExpression(mapping.threshold)}`)
-          if (await createAlertIfNeeded(prisma, { nodeId: node.id, title, message, severity: "WARNING", ruleId: null })) {
+          if (await createAndDispatchAlertEvent({ nodeId: node.id, title, message, severity: "WARNING", ruleId: null })) {
             evaluatedAlerts += 1
           }
         }
@@ -465,7 +433,7 @@ export async function runProjectPolling(options: { projectId?: string; force?: b
 
       if (!existing) {
         if (
-          await createAlertIfNeeded(prisma, {
+          await createAndDispatchAlertEvent({
             nodeId: node.id,
             title: "Endpoint polling failed",
             message,

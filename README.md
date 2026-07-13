@@ -82,21 +82,24 @@ When a main dashboard section is selected, the sidebar switches to contextual mo
 
 The header search opens Meridian's project-scoped command palette. Click the search control, press `Cmd/Ctrl+K`, or press `/` outside text fields to find sections, nodes, alerts, runs, reports, integrations, recent notification jobs, and common actions such as creating telemetry tokens, opening Dify setup, running a manual poll, creating reports, testing Slack, and opening failed-job logs. Results are built from safe dashboard state only and must never include raw tokens, webhook/Slack URLs, signing secrets, encrypted payloads, or environment values.
 
-Owners/admins can create secure client-facing report links from the dashboard. Report links render a read-only project summary with uptime, run volume, success rate, cost, token usage, active alerts, quality score, node summaries, optional brand imagery, map imagery, and recent incidents. Links can expire and can be revoked.
+Owners/admins can create secure client-facing report links from the dashboard. Report links render a read-only project summary with uptime, run volume, success rate, cost, token usage, active alerts, quality score, node summaries, optional brand imagery, map imagery, previous-period comparison metrics, and a client-facing incident timeline. Links can expire and can be revoked.
 
-The Reports section includes an in-app report preview, minimal client/agency customization fields, optional PNG/SVG brand image upload, manual map PNG attachment, browser print/save-as-PDF support, and owner/admin CSV exports for runs, metric samples, and alerts. Brand images are capped at 256KB and map images are capped at 2MB. CSV exports default to a bounded 30-day window with a 5,000-row default cap and 10,000-row hard cap; response headers report row count, row limit, and truncation. Exports and public reports never include API credentials, ingestion tokens, encrypted secrets, or private team/member details.
+The Reports section includes an in-app report preview, reusable report presets, minimal client/agency customization fields, selectable reporting periods, optional PNG/SVG brand image upload, manual map PNG attachment, browser print/save-as-PDF support, and owner/admin CSV exports for runs, metric samples, and alerts. Periods support 7d, 30d, 90d, all data, or custom start/end dates. Previous-period comparison is available for bounded periods and is disabled for all-data reports. Brand images are capped at 256KB and map images are capped at 2MB. CSV exports default to a bounded 30-day window with a 5,000-row default cap and 10,000-row hard cap; response headers report row count, row limit, and truncation. Exports and public reports never include API credentials, ingestion tokens, encrypted secrets, or private team/member details.
 
 Automation Map nodes include visible input and output connection handles. In view mode the handles are visible but locked; in `Edit mode`, drag from a node's right output handle to another node's left input handle to create an autosaved visual workflow link. Click a link to open its label editor, then rename the workflow handoff while Edit mode is on. Self-links and duplicate source-to-target links are blocked.
 
 Client report flow:
 
 1. Open `Reports`.
-2. Fill report title, client name, subtitle/period, prepared-by, executive note, and expiry window.
-3. Upload an optional PNG/SVG brand image for the report header.
-4. Click `Attach current map` to store the current Automation Map PNG with the next report link.
-5. Confirm the in-app preview shows the brand image, summary metrics, and attached map.
-6. Click `Create link`, then open the public report link in a signed-out browser.
-7. Use `Print / Save PDF` on the public report page for a browser-generated PDF.
+2. Optionally load an existing preset, or fill report title, client name, subtitle, prepared-by, executive note, and expiry window.
+3. Choose a report period: 7d, 30d, 90d, all data, or custom start/end dates.
+4. Toggle previous-period comparison for bounded periods when client context needs trend direction.
+5. Upload an optional PNG/SVG brand image for the report header.
+6. Click `Save preset` if these defaults should be reused later.
+7. Click `Attach current map` to store the current Automation Map PNG with the next report link.
+8. Confirm the in-app preview shows the period, comparison setting, brand image, summary metrics, and attached map.
+9. Click `Create link`, then open the public report link in a signed-out browser.
+10. Use `Print / Save PDF` on the public report page for a browser-generated PDF.
 
 Attached maps are served through `/reports/[shareToken]/map.png`; attached brand images are served through `/reports/[shareToken]/brand-image`. Expired or revoked report links return `404` for the report page and attached image routes.
 
@@ -135,7 +138,7 @@ The Dify demo recipe in `examples/dify-support-triage` builds the same support-t
 
 The in-app Dify wizard shows the Code node Python, HTTP Request settings, node id input guidance, token-safety reminders, and connection verification flow directly inside Integrations so beta users do not need external instructions for the first successful run.
 
-Alert rules support static thresholds and anomaly baselines. Anomaly rules learn from the previous 7 days of metric samples, require at least 8 prior samples, and fire when the next value is more than 2 standard deviations outside the selected direction. The node inspector's alert-rule dialog previews the selected mapping's sample count, baseline mean, standard deviation, watch band, and whether more samples are needed before anomaly alerts can fire.
+Alert rules support guided templates for both API metric samples and workflow-run telemetry. Metric templates prefill static thresholds or anomaly baselines for saved mappings such as latency, score, cost, tokens, queue depth, and custom API metrics. Anomaly rules learn from the previous 7 days of metric samples, require at least 8 prior samples, and fire when the next value is more than 2 standard deviations outside the selected direction. Run templates evaluate after `/api/ingest/runs` persists a workflow run and can alert on failed/degraded status, duration, cost, tokens, failure rate over recent runs, or average latency over recent runs. Metric polling ignores run-source rules, and run ingestion ignores metric-source rules, while both paths share the same duplicate unresolved incident prevention and durable notification job queueing.
 
 Project editors can create outbound webhook destinations from `Integrations`; owners/admins test them from `Testing`. Meridian queues `alert.opened`, `alert.resolved`, and `webhook.test` JSON payloads for enabled destinations, retries through durable jobs, and records delivery status in alert details and Logs. Signing secrets are shown once at creation and are not exposed again.
 

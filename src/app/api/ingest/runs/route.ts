@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { createAlertEventWithJobs } from "@/lib/alert-events"
 import { authenticateIngestionRequest } from "@/lib/ingestion-tokens"
+import { dispatchNotificationJobs } from "@/lib/notification-jobs"
 import { getPrisma } from "@/lib/prisma"
+import { evaluateRunAlertRule, normalizeRunAlertMetadata } from "@/lib/run-alert-rules.mjs"
 
 const stepSchema = z.object({
   name: z.string().min(1).max(120),
@@ -57,6 +60,7 @@ export async function POST(request: Request) {
     select: {
       id: true,
       label: true,
+      projectId: true,
     },
   })
 
@@ -83,7 +87,7 @@ export async function POST(request: Request) {
   const finishedCopy = parsed.data.finishedAt ? ` in ${durationMs(parsed.data.startedAt, parsed.data.finishedAt)}ms` : ""
   const statusReason = `Latest run ${parsed.data.status}${finishedCopy} at ${new Date().toISOString()}.`
 
-  const result = await prisma.$transaction(async (transaction) => {
+  const transactionResult = await prisma.$transaction(async (transaction) => {
     const run = parsed.data.externalId
       ? await transaction.workflowRun.upsert({
           where: {
@@ -125,11 +129,71 @@ export async function POST(request: Request) {
       },
     })
 
-    return run
+    const alertRules = await transaction.alertRule.findMany({
+      where: {
+        projectId: node.projectId,
+        nodeId: node.id,
+        enabled: true,
+      },
+    })
+    const runRules = alertRules.filter((rule) => normalizeRunAlertMetadata(rule.metadata).source === "run")
+    const maxWindowRuns = Math.max(1, ...runRules.map((rule) => normalizeRunAlertMetadata(rule.metadata).windowRuns))
+    const recentRuns = runRules.length
+      ? await transaction.workflowRun.findMany({
+          where: { nodeId: node.id },
+          orderBy: { startedAt: "desc" },
+          take: maxWindowRuns,
+          select: {
+            id: true,
+            status: true,
+            startedAt: true,
+            finishedAt: true,
+            costUsd: true,
+            tokens: true,
+          },
+        })
+      : []
+    const jobs = []
+    let alertsCreated = 0
+    for (const rule of runRules) {
+      const evaluation = evaluateRunAlertRule(
+        {
+          id: rule.id,
+          name: rule.name,
+          expression: rule.expression,
+          severity: rule.severity,
+          metadata: rule.metadata,
+        },
+        {
+          run,
+          recentRuns,
+          nodeLabel: node.label,
+        }
+      )
+      if (!evaluation.breached || !evaluation.title || !evaluation.message) continue
+
+      const alertResult = await createAlertEventWithJobs(transaction, {
+        nodeId: node.id,
+        title: evaluation.title,
+        message: evaluation.message,
+        severity: rule.severity,
+        ruleId: rule.id,
+      })
+      if (alertResult.created) alertsCreated += 1
+      jobs.push(...alertResult.jobs)
+    }
+
+    return { run, jobs, alertsCreated, rulesEvaluated: runRules.length }
   })
+  await dispatchNotificationJobs(transactionResult.jobs)
+  const result = transactionResult.run
 
   return NextResponse.json({
     ok: true,
+    alerts: {
+      evaluated: transactionResult.rulesEvaluated,
+      created: transactionResult.alertsCreated,
+    },
     run: {
       id: result.id,
       externalId: result.externalId,
