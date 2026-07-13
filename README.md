@@ -127,7 +127,7 @@ curl -X POST "https://meridian.hrudainirmal.in/api/ingest/runs" \
   }'
 ```
 
-The node inspector includes Basic and Advanced integration templates for Dify, n8n, GitHub Actions, and OpenAI/custom REST metrics. Basic templates explain the setup path and Advanced templates provide copyable snippets that use the selected node id and `<ingestion-token>` placeholders. The Integrations section also provides a guided setup wizard: select a node and provider, create a one-time provider-named ingestion token, copy provider-specific setup blocks, send a harmless synthetic test run for telemetry integrations, check connection evidence, and refresh readiness from existing runs, samples, mappings, and alert rules.
+The node inspector includes Basic and Advanced integration templates for Dify, n8n, GitHub Actions, JavaScript SDK telemetry, and OpenAI/custom REST metrics. Basic templates explain the setup path and Advanced templates provide copyable snippets that use the selected node id and `<ingestion-token>` placeholders. The Integrations section also provides a guided setup wizard and provider first-signal card: select a node and provider, create a one-time provider-named ingestion token, copy provider-specific setup blocks, send a harmless synthetic test run for telemetry integrations, check connection evidence, and refresh readiness from existing runs, samples, mappings, and alert rules.
 
 The reusable live workflow demo in `examples/live-workflow` installs the published `@meridian-workflows/sdk` package and simulates a Support Triage Agent with success, degraded, and failed modes. Use it with a disposable Meridian ingestion token to validate the full live telemetry loop from a local Node.js workflow into Runs, Logs, and the live dashboard refresh path.
 
@@ -179,7 +179,7 @@ Slack setup flow:
 5. Use `Send test` in `Integrations` or `Testing` and confirm Slack receives the message.
 6. Trigger and resolve a demo alert, then confirm alert details and Logs show Slack delivery status without exposing the URL.
 
-SDK previews live in `sdk/python` and `sdk/js`. See `docs/sdk.md` for one-minute `@meridian.trace` examples, direct run ingestion, runnable disposable-token test scripts, timeout/error-hook setup, and the JavaScript `flush()` helper for short-lived scripts and serverless handlers. The JavaScript SDK is published as `@meridian-workflows/sdk`; Python remains package-ready for wheel dry runs but is not published to PyPI yet. Integrations shows a node-specific published SDK onboarding block for telemetry templates.
+SDK previews live in `sdk/python` and `sdk/js`. See `docs/sdk.md` for one-minute `@meridian.trace` examples, direct run ingestion, runnable disposable-token test scripts, timeout/error-hook setup, and the JavaScript `flush()` helper for short-lived scripts and serverless handlers. The JavaScript SDK is published as `@meridian-workflows/sdk`; Python remains package-ready for wheel dry runs but is not published to PyPI yet. Integrations now treats JavaScript SDK as a first-class telemetry template with install/env/snippet guidance and an `SDK run received` evidence state.
 
 ## Release And CI
 
@@ -242,6 +242,7 @@ Manual post-deploy checklist:
 - Owner/admin test email from Testing returns clear success or failure feedback and does not expose `RESEND_API_KEY`.
 - Owner/admin manual poll run from Testing updates latest poll diagnostics without exposing `CRON_SECRET`.
 - Owner/admin workflow telemetry token creation shows the raw token once, token refresh lists only prefixes, revoke blocks future ingestion, and `/api/ingest/runs` rejects missing/wrong tokens.
+- In Integrations, Dify, n8n, GitHub Actions, and JavaScript SDK templates show provider-specific setup steps plus a provider first-signal card that moves from token creation to test/external run to real run evidence.
 - Posting valid workflow run telemetry updates the selected node's Runs tab after refresh and records step details without sending alert email.
 - While signed in, the dashboard live indicator reaches `Live`; posting valid workflow run telemetry or running a manual poll updates Runs, node health, alerts, metrics, and latest poll status without a full page reload.
 - If live updates disconnect, the dashboard header and Control Room show a reconnecting/manual state, the latest changed areas remain visible, and manual refresh still works.

@@ -108,7 +108,7 @@ Use this checklist for production validation on `https://meridian.hrudainirmal.i
 
 - In Integrations, create a disposable telemetry token from the selected provider setup.
 - Confirm setup snippets include placeholders or the one-time token only where expected.
-- Confirm the provider setup wizard shows step badges for selected node, token creation, provider configuration, test run, and verification.
+- Confirm Dify, n8n, GitHub Actions, and JavaScript SDK templates show provider-specific step badges, setup copy, status badges, and a provider first-signal card that reaches the real-run-received state without exposing the token.
 - In the Dify wizard, confirm Code-node and HTTP Request-node guidance includes the selected node id, uses `<ingestion-token>` placeholders, and never exposes a real token unless one was just created for one-time copy.
 - Create a generic webhook destination with a temporary HTTPS receiver.
 - Confirm the signing secret is shown once and never returned after refresh.

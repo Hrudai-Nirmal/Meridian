@@ -91,6 +91,7 @@ import {
 } from "@/lib/meridian-data"
 import { integrationTemplates, type IntegrationTemplate } from "@/lib/integration-templates"
 import { buildIntegrationWizardSteps, buildProviderSetupCopy } from "@/lib/integration-wizard.mjs"
+import { buildProviderFirstSignalStatus, getProviderOnboardingCopy } from "@/lib/provider-onboarding.mjs"
 import { buildRestMetricOnboardingStatus } from "@/lib/rest-metric-onboarding.mjs"
 import { formatSafeMetadata } from "@/lib/safe-metadata-format.mjs"
 import {
@@ -4723,6 +4724,7 @@ function IntegrationsSection({
   const [isSendingTestRun, setIsSendingTestRun] = useState(false)
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? nodes[0]
   const selectedTemplate = integrationTemplates.find((template) => template.id === selectedTemplateId) ?? integrationTemplates[0]
+  const selectedProviderCopy = getProviderOnboardingCopy(selectedTemplate.id)
   const snippet = selectedNode ? buildIntegrationSnippet(selectedTemplate, selectedNode.id) : "Select a node on the Automation Map first."
   const sdkInstallCommand = buildSdkInstallCommand()
   const sdkEnvironmentBlock = buildSdkEnvironmentBlock(selectedNode?.id ?? "")
@@ -4752,6 +4754,20 @@ function IntegrationsSection({
   const hasCreatedToken = Boolean(integrationToken)
   const hasMetricSetup = selectedNode ? selectedNode.parameters.some((parameter) => parameter.id) || Boolean(selectedNode.latestSampledAt) : false
   const hasMetricSample = Boolean(selectedNode?.realMetrics?.length)
+  const latestPersistedRun = selectedNode?.hasPersistedRuns ? selectedNode.runs[0] : null
+  const providerFirstSignalStatus = buildProviderFirstSignalStatus({
+    providerId: selectedTemplate.id,
+    hasSelectedNode: Boolean(selectedNode),
+    hasToken: hasCreatedToken,
+    hasRun: Boolean(selectedNode?.hasPersistedRuns),
+    latestRun: latestPersistedRun
+      ? {
+          externalId: latestPersistedRun.externalId,
+          status: latestPersistedRun.status,
+          startedAt: latestPersistedRun.startedAt ?? latestPersistedRun.started,
+        }
+      : null,
+  })
   const wizardSteps = buildIntegrationWizardSteps({
     setupKind: selectedTemplate.setupKind,
     providerId: selectedTemplate.id,
@@ -4854,10 +4870,20 @@ function IntegrationsSection({
     await onRefreshProject()
   }
 
+  const getTemplateStatusLabel = (template: IntegrationTemplate) => {
+    if (!selectedNode) return "Select node"
+    if (template.setupKind === "metric") {
+      if (selectedNode.realMetrics?.length) return "Signal received"
+      if (selectedNode.parameters.some((parameter) => parameter.id)) return "Setup saved"
+      return "Not started"
+    }
+    return selectedNode.hasPersistedRuns ? "Signal received" : "Not started"
+  }
+
   const TemplateButton = ({ template }: { template: IntegrationTemplate }) => (
     <button
       key={template.id}
-      data-tutorial-id={template.id === "custom-rest-metric" ? "integrations-template-custom-rest-metric" : undefined}
+      data-tutorial-id={`integrations-template-${template.id}`}
       type="button"
       className={cn("rounded-lg border bg-background p-4 text-left text-sm transition-colors hover:bg-muted/40", selectedTemplate.id === template.id && "border-primary/60 shadow-sm")}
       onClick={() => {
@@ -4872,6 +4898,7 @@ function IntegrationsSection({
         <span className="font-medium">{template.name}</span>
         <Badge variant={template.setupKind === "metric" ? "secondary" : "outline"}>{template.setupKind === "metric" ? "Metric polling" : "Workflow telemetry"}</Badge>
         <Badge variant="outline">{template.difficulty}</Badge>
+        <Badge variant={getTemplateStatusLabel(template) === "Signal received" ? "secondary" : "outline"}>{getTemplateStatusLabel(template)}</Badge>
       </div>
       <div className="mt-2 text-xs leading-5 text-muted-foreground">{template.description}</div>
     </button>
@@ -5082,18 +5109,21 @@ function IntegrationsSection({
               {message ? <div className="text-xs text-muted-foreground">{message}</div> : null}
             </div>
             {telemetryReady ? (
-              <div data-tutorial-id="integrations-telemetry-test" className="grid gap-3 rounded-lg border bg-background p-3 text-xs">
-                <div className="flex flex-wrap items-center justify-between gap-2">
+              <div data-tutorial-id="integrations-provider-first-signal" className="grid gap-3 rounded-lg border bg-background p-3 text-xs">
+                <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <div className="font-medium">One-time telemetry test</div>
-                    <div className="mt-1 text-muted-foreground">Creates a project token named {selectedTemplate.tokenName} and posts a harmless run to the selected node.</div>
+                    <div className="font-medium">Provider first signal</div>
+                    <div className="mt-1 text-muted-foreground">{providerFirstSignalStatus.title}</div>
                   </div>
-                  <Badge variant={selectedNode?.hasPersistedRuns ? "secondary" : "outline"}>
-                    {selectedNode?.hasPersistedRuns ? "Real runs detected" : "Awaiting real run"}
+                  <Badge variant={providerFirstSignalStatus.stage === "run-received" ? "secondary" : "outline"}>
+                    {providerFirstSignalStatus.badge}
                   </Badge>
                 </div>
+                <div className="rounded-md border bg-muted/20 p-3 text-muted-foreground">
+                  {providerFirstSignalStatus.detail}
+                </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button size="sm" onClick={createProviderToken} disabled={!selectedNode || !canManageOrganization || isCreatingToken}>
+                  <Button size="sm" onClick={createProviderToken} disabled={!selectedNode || !canManageOrganization || isCreatingToken || Boolean(integrationToken)}>
                     <KeyRound data-icon="inline-start" />
                     {isCreatingToken ? "Creating..." : "Create token"}
                   </Button>
@@ -5118,6 +5148,9 @@ function IntegrationsSection({
                     <Activity data-icon="inline-start" />
                     Open Runs
                   </Button>
+                </div>
+                <div className="text-muted-foreground">
+                  Setup focus: {selectedProviderCopy.setupInstruction}
                 </div>
                 {integrationToken ? (
                   <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">

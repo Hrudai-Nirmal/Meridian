@@ -1,5 +1,5 @@
 export type IntegrationTemplate = {
-  id: "dify" | "n8n" | "github-actions" | "custom-rest-metric"
+  id: "dify" | "n8n" | "github-actions" | "javascript-sdk" | "custom-rest-metric"
   name: string
   category: string
   difficulty: "Basic" | "Advanced"
@@ -84,6 +84,24 @@ export const integrationTemplates: IntegrationTemplate[] = [
       toolName: "github-actions",
       tokens: 0,
       costUsd: 0,
+    },
+  },
+  {
+    id: "javascript-sdk",
+    name: "JavaScript SDK",
+    category: "SDK Telemetry",
+    difficulty: "Basic",
+    mode: "basic",
+    setupKind: "telemetry",
+    description: "Use the published npm package to report Node.js apps, jobs, scripts, and serverless handlers.",
+    requiredFields: ["Ingestion token", "Selected node id", "Node.js runtime"],
+    basicSteps: ["Create an ingestion token.", "Install @meridian-workflows/sdk.", "Set token and node id environment variables.", "Run the SDK test command.", "Refresh Runs."],
+    tokenName: "JavaScript SDK telemetry",
+    testRun: {
+      name: "JavaScript SDK test",
+      toolName: "javascript-sdk",
+      tokens: 420,
+      costUsd: 0.012,
     },
   },
   {

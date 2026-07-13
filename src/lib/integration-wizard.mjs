@@ -1,7 +1,10 @@
+import { getProviderOnboardingCopy } from "./provider-onboarding.mjs"
+
 const TELEMETRY_PROVIDER_LABELS = {
   dify: "Dify",
   n8n: "n8n",
   "github-actions": "GitHub Actions",
+  "javascript-sdk": "JavaScript SDK",
 }
 
 function step(id, title, body, status) {
@@ -38,12 +41,13 @@ export function buildIntegrationWizardSteps(input) {
     ])
   }
 
-  const providerName = TELEMETRY_PROVIDER_LABELS[input.providerId] ?? "provider"
+  const providerCopy = getProviderOnboardingCopy(input.providerId)
+  const providerName = TELEMETRY_PROVIDER_LABELS[input.providerId] ?? providerCopy.providerName
   return firstCurrent([
     step("select-node", "Select node", "Choose the graph node that represents this workflow.", input.hasSelectedNode ? "done" : "waiting"),
     step("create-token", "Create token", "Create a one-time Meridian ingestion token and copy it immediately.", input.hasCreatedToken ? "done" : "waiting"),
-    step("configure-provider", `Configure ${providerName}`, "Paste the provider-specific code, HTTP request settings, and placeholders into the workflow.", input.hasRecentRun ? "done" : "waiting"),
-    step("send-test", "Run once", "Run the external workflow once, or use Meridian's built-in synthetic test run.", input.hasRecentRun ? "done" : "waiting"),
+    step("configure-provider", providerCopy.configureTitle, `Follow the ${providerName} setup copy, using environment variables or placeholders rather than hardcoded secrets.`, input.hasRecentRun ? "done" : "waiting"),
+    step("send-test", providerCopy.runTitle, "Run the external workflow once, or use Meridian's built-in synthetic test run.", input.hasRecentRun ? "done" : "waiting"),
     step("verify-run", "Verify in Meridian", "Confirm Runs, Logs, and node summary cards update from the submitted telemetry.", input.hasRecentRun ? "done" : "waiting"),
   ])
 }
@@ -122,6 +126,36 @@ Use the selected node id: ${input.nodeId || "<node-id>"}`,
       codeNode: "Store the ingestion token as a GitHub Actions secret named MERIDIAN_INGESTION_TOKEN.",
       httpRequest: `Report with curl from a final if: always() step.
 Use node id: ${input.nodeId || "<node-id>"}`,
+    }
+  }
+
+  if (input.providerId === "javascript-sdk") {
+    return {
+      codeNode: `npm install @meridian-workflows/sdk
+
+import { createMeridian } from "@meridian-workflows/sdk"
+
+const meridian = createMeridian({
+  token: process.env.MERIDIAN_INGESTION_TOKEN,
+})
+
+await meridian.ingestRun({
+  nodeId: process.env.MERIDIAN_NODE_ID,
+  externalId: "sdk-run-001",
+  status: "success",
+  startedAt: new Date(Date.now() - 2400).toISOString(),
+  finishedAt: new Date().toISOString(),
+  costUsd: 0.012,
+  tokens: 420,
+  steps: [
+    { name: "SDK workflow", status: "success", latencyMs: 2400, toolName: "javascript-sdk" },
+  ],
+})`,
+      httpRequest: `MERIDIAN_INGESTION_TOKEN=<ingestion-token>
+MERIDIAN_NODE_ID=${input.nodeId || "<node-id>"}
+MERIDIAN_INGEST_URL=https://meridian.hrudainirmal.in/api/ingest/runs
+
+Then run your Node.js script or the packaged live-workflow example.`,
     }
   }
 
