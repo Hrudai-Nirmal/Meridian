@@ -2,8 +2,12 @@ import { notFound } from "next/navigation"
 
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { buildClientReportSummary, formatReportComparisonBadge } from "@/lib/report-client-proof.mjs"
 import { getPublicReport } from "@/lib/reports"
+import { ReportClientProof } from "./report-client-proof"
 import { PrintReportButton } from "./print-report-button"
+
+type ReportComparisonTone = "good" | "bad" | "neutral"
 
 function formatDateTime(value: string | null) {
   if (!value) return "No data yet"
@@ -27,16 +31,15 @@ function formatInteger(value: number) {
   return new Intl.NumberFormat("en").format(value)
 }
 
-function comparisonNote(current: number, previous: number, suffix = "") {
-  const delta = current - previous
-  if (delta === 0) return `No change vs previous period${suffix}`
-  const sign = delta > 0 ? "+" : ""
-  return `${sign}${formatInteger(delta)}${suffix} vs previous period`
-}
-
 function statusVariant(status: string): "secondary" | "destructive" | "outline" {
   if (status === "DOWN") return "destructive"
   if (status === "DEGRADED") return "secondary"
+  return "outline"
+}
+
+function comparisonVariant(tone: ReportComparisonTone): "secondary" | "destructive" | "outline" {
+  if (tone === "good") return "secondary"
+  if (tone === "bad") return "destructive"
   return "outline"
 }
 
@@ -47,33 +50,39 @@ export default async function ReportPage({ params }: { params: Promise<{ shareTo
   if (!report) notFound()
 
   const metricCards = [
-    { label: "Automation uptime", value: `${report.summary.uptimePercent}%`, note: "Active nodes / total nodes" },
+    { label: "Automation uptime", value: `${report.summary.uptimePercent}%`, note: "Active nodes / total nodes", comparison: null },
     {
       label: "Workflow runs",
       value: formatInteger(report.summary.totalRuns),
-      note: report.comparison ? comparisonNote(report.summary.totalRuns, report.comparison.summary.totalRuns) : "Submitted runs in period",
+      note: "Submitted runs in period",
+      comparison: report.comparison ? formatReportComparisonBadge({ current: report.summary.totalRuns, previous: report.comparison.summary.totalRuns, higherIsBetter: true }) : null,
     },
     {
       label: "Success rate",
       value: `${report.summary.successRate}%`,
-      note: report.comparison ? comparisonNote(report.summary.successRate, report.comparison.summary.successRate, " pts") : "Successful runs / total runs",
+      note: "Successful runs / total runs",
+      comparison: report.comparison ? formatReportComparisonBadge({ current: report.summary.successRate, previous: report.comparison.summary.successRate, unit: " pts", higherIsBetter: true }) : null,
     },
     {
       label: "AI value score",
       value: `${report.summary.qualityScore}`,
-      note: report.comparison ? comparisonNote(report.summary.qualityScore, report.comparison.summary.qualityScore, " pts") : "Success and uptime blend",
+      note: "Success and uptime blend",
+      comparison: report.comparison ? formatReportComparisonBadge({ current: report.summary.qualityScore, previous: report.comparison.summary.qualityScore, unit: " pts", higherIsBetter: true }) : null,
     },
     {
       label: "Tracked spend",
       value: formatCurrency(report.summary.totalCostUsd),
-      note: report.comparison ? `${formatCurrency(report.summary.totalCostUsd - report.comparison.summary.totalCostUsd)} vs previous period` : "Reported workflow cost",
+      note: "Reported workflow cost",
+      comparison: report.comparison ? formatReportComparisonBadge({ current: report.summary.totalCostUsd, previous: report.comparison.summary.totalCostUsd }) : null,
     },
     {
       label: "Token usage",
       value: formatInteger(report.summary.totalTokens),
-      note: report.comparison ? comparisonNote(report.summary.totalTokens, report.comparison.summary.totalTokens) : "Reported LLM tokens",
+      note: "Reported LLM tokens",
+      comparison: report.comparison ? formatReportComparisonBadge({ current: report.summary.totalTokens, previous: report.comparison.summary.totalTokens }) : null,
     },
   ]
+  const clientSummary = buildClientReportSummary(report)
   const executiveStatus =
     report.summary.activeAlerts > 0
       ? "Needs attention"
@@ -158,12 +167,19 @@ export default async function ReportPage({ params }: { params: Promise<{ shareTo
                 <CardDescription>{metric.label}</CardDescription>
                 <CardTitle className="text-2xl">{metric.value}</CardTitle>
               </CardHeader>
-              <CardContent className="text-xs text-muted-foreground">{metric.note}</CardContent>
+              <CardContent className="grid gap-2 text-xs text-muted-foreground">
+                <span>{metric.note}</span>
+                {metric.comparison ? (
+                  <Badge variant={comparisonVariant(metric.comparison.tone)} className="w-fit">
+                    {metric.comparison.label}
+                  </Badge>
+                ) : null}
+              </CardContent>
             </Card>
           ))}
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[1.4fr_0.8fr]">
+        <section className="grid gap-6">
           <Card className="print:break-inside-avoid">
             <CardHeader>
               <CardTitle>Automation nodes</CardTitle>
@@ -205,39 +221,8 @@ export default async function ReportPage({ params }: { params: Promise<{ shareTo
               </table>
             </CardContent>
           </Card>
-
-          <Card className="print:break-inside-avoid">
-            <CardHeader>
-              <CardTitle>Incident timeline</CardTitle>
-              <CardDescription>{report.summary.activeAlerts} active alerts in this report period</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-2">
-              {report.incidentTimeline.length ? (
-                report.incidentTimeline.map((alert) => (
-                  <div key={alert.id} className="rounded-lg border p-3 text-sm">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="font-medium">{alert.title}</div>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {alert.nodeLabel ?? "Project"} / {formatDateTime(alert.createdAt)}
-                          {alert.resolvedAt ? ` / resolved ${formatDateTime(alert.resolvedAt)}` : ""}
-                        </div>
-                        <p className="mt-2 text-xs leading-5 text-muted-foreground">{alert.message}</p>
-                      </div>
-                      <Badge variant={alert.status === "resolved" ? "secondary" : "destructive"}>
-                        {alert.status === "resolved" ? "resolved" : alert.severity.toLowerCase()}
-                      </Badge>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                  No alert events have been recorded for this report.
-                </div>
-              )}
-            </CardContent>
-          </Card>
         </section>
+        <ReportClientProof summaryText={clientSummary} incidents={report.incidentTimeline} activeAlertCount={report.summary.activeAlerts} />
       </div>
     </main>
   )

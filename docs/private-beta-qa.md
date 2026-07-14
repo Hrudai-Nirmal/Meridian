@@ -108,6 +108,9 @@ Use this checklist for production validation on `https://meridian.hrudainirmal.i
 - Create a report link and open it in a signed-out/private browser.
 - Confirm the public report header shows the uploaded brand image when present.
 - Confirm the public report shows the period label, comparison notes when enabled, and an active/resolved incident timeline.
+- Confirm comparison badges clearly show direction and tone for runs, success rate, score, spend, and tokens.
+- Click `Copy client summary` and confirm the copied text is readable, client-safe, and contains no secrets.
+- Filter the public incident timeline by All, Active only, and Resolved only.
 - Confirm the public report is read-only and does not expose secrets, tokens, credentials, or private team data.
 - Use Print / Save PDF and confirm print layout is clean.
 - Revoke the report link and confirm the public page, brand image, and map image no longer open.
