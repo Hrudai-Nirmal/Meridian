@@ -43,6 +43,20 @@ test("metric templates produce existing metric-rule payloads", () => {
   assert.equal(payload.runMetric, undefined)
 })
 
+test("metric templates can prefill before a mapping is persisted", () => {
+  const payload = buildAlertRulePayloadFromTemplate("metric-threshold-high", {
+    nodeId: "node_1",
+    nodeLabel: "Checkout Agent",
+    mappingLabel: "Draft latency",
+    unit: "ms",
+  })
+
+  assert.equal(payload.source, "metric")
+  assert.equal(payload.mappingId, "")
+  assert.equal(payload.mappingLabel, "Draft latency")
+  assert.match(String(payload.name), /Draft latency/)
+})
+
 test("run templates produce run-rule metadata payloads", () => {
   const payload = buildAlertRulePayloadFromTemplate("run-failure-rate-high", {
     nodeId: "node_1",

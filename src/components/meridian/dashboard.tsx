@@ -6532,8 +6532,8 @@ function NodeInspector({
         nodeId: selectedNode.id,
         nodeLabel: selectedNode.label,
         mappingId: selectedParameter?.id,
-        mappingLabel: selectedParameter?.label,
-        unit: selectedParameter?.unit,
+        mappingLabel: (selectedParameter?.label ?? mappingLabel.trim()) || "Metric",
+        unit: selectedParameter?.unit ?? unit.trim(),
       })
       setRuleSource(payload.source as AlertRuleSource)
       setRuleName(String(payload.name ?? "Alert rule"))
@@ -6544,7 +6544,11 @@ function NodeInspector({
       if (payload.mappingId) setRuleMappingId(String(payload.mappingId))
       if (payload.runMetric) setRunMetric(payload.runMetric as RunAlertMetric)
       if (payload.windowRuns) setWindowRuns(String(payload.windowRuns))
-      setRuleMessage(`${getAlertTemplateTitle(templateId)} template applied.`)
+      setRuleMessage(
+        payload.source === "metric" && !payload.mappingId
+          ? `${getAlertTemplateTitle(templateId)} template applied. Save API setup first so Meridian has a mapping to attach it to.`
+          : `${getAlertTemplateTitle(templateId)} template applied.`
+      )
     } catch (error) {
       setRuleMessage(error instanceof Error ? error.message : "Alert rule template could not be applied.")
     }
@@ -7459,7 +7463,7 @@ function NodeInspector({
                                     ruleTemplateId === template.id ? "border-primary bg-primary/5" : "bg-background"
                                   )}
                                   onClick={() => applyAlertRuleTemplate(template.id)}
-                                  disabled={!canEditProject || (template.source === "metric" && !firstPersistedParameter)}
+                                  disabled={!canEditProject}
                                 >
                                   <div className="flex items-center justify-between gap-2">
                                     <span className="font-medium text-foreground">{template.title}</span>
