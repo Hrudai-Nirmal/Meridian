@@ -246,8 +246,12 @@ Manual post-deploy checklist:
 - Graph node edits autosave and survive refresh.
 - Automation Map handles are visible on every node; the React Flow attribution watermark is hidden; view mode cannot create links, Edit mode can drag output-to-input links, clicked links expose a label editor, link labels autosave, self-links and duplicate same-direction links are blocked, and saved links survive refresh.
 - Team invitation save shows a visible result.
+- Team shows `Project Access Review` and `Role Capability Matrix` so owners/admins can explain owner/admin/member/viewer capabilities before inviting enterprise stakeholders.
+- Duplicate pending invitations for the same email return the existing pending invite instead of creating another row.
 - Pending invited users are attached to the organization on first matching GitHub login.
-- Owner/admin users can change roles, remove members, and cancel pending invitations.
+- Accepted invitations, duplicate invite attempts, role changes, removals, and cancelled pending invitations write safe audit evidence.
+- Owner/admin users can change roles, remove members, and cancel pending invitations; at least one owner must remain.
+- Webhook and Slack destination management is owner/admin-only, while members can still manage map/node setup and alert rules.
 - API setup stores configuration without exposing secret values; auth header and secret fields appear only after an auth type is selected and are required for authenticated endpoint tests/saves.
 - API setup test shows response status, JSON preview, JSONPath mapping, threshold preview, and right-panel guidance for the currently selected setup field.
 - REST metric onboarding keeps saved API setup separate from real sample evidence: after saving mappings, use the selected node's `REST metric first signal` card to run the first poll, then confirm `Real sample received` shows the latest persisted value and timestamp.

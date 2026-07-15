@@ -14,6 +14,7 @@ import {
 } from "@/lib/meridian-data"
 import { normalizeAlertRuleMetadata, type AlertRuleMode, type AlertRuleSource, type AnomalyDirection, type RunAlertMetric } from "@/lib/alert-rule-metadata"
 import { getReadinessStatus, type ReadinessStatus } from "@/lib/health"
+import { createAuditLog } from "@/lib/audit-log"
 import { getPrisma } from "@/lib/prisma"
 import { buildRunDerivedMetricCards } from "@/lib/run-metrics.mjs"
 
@@ -137,6 +138,7 @@ export type WorkspacePayload = {
     email: string
     role: string
     status: string
+    createdAt: string
   }[]
   alerts: {
     id: string
@@ -713,8 +715,8 @@ export async function ensureWorkspaceForUser(user: { id: string; name?: string |
     })
 
     for (const invitation of invitations) {
-      await prisma.$transaction([
-        prisma.membership.upsert({
+      await prisma.$transaction(async (tx) => {
+        await tx.membership.upsert({
           where: {
             userId_organizationId: {
               userId: user.id,
@@ -729,12 +731,20 @@ export async function ensureWorkspaceForUser(user: { id: string; name?: string |
             organizationId: invitation.organizationId,
             role: invitation.role,
           },
-        }),
-        prisma.teamInvitation.update({
+        })
+        await tx.teamInvitation.update({
           where: { id: invitation.id },
           data: { status: "ACCEPTED" },
-        }),
-      ])
+        })
+        await createAuditLog(tx, {
+          action: "team.invite_accepted",
+          entity: "team",
+          entityId: invitation.id,
+          organizationId: invitation.organizationId,
+          userId: user.id,
+          metadata: { email: invitation.email, role: invitation.role },
+        })
+      })
     }
   }
 
@@ -1028,6 +1038,7 @@ export async function getWorkspaceForUser(userId: string, projectId?: string) {
     email: invitation.email,
     role: invitation.role,
     status: invitation.status,
+    createdAt: invitation.createdAt.toISOString(),
   }))
 
   const diagnostics = await getReadinessStatus()

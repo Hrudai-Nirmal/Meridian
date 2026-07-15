@@ -41,7 +41,7 @@ export async function GET(_: Request, context: { params: Promise<{ projectId: st
   if (error) return error
 
   const { projectId } = await context.params
-  const accessError = await requireProjectRole(userId, projectId)
+  const accessError = await requireProjectRole(userId, projectId, ["OWNER", "ADMIN"])
   if (accessError) return accessError
 
   const prisma = getPrisma()
@@ -58,7 +58,7 @@ export async function POST(request: Request, context: { params: Promise<{ projec
   if (error) return error
 
   const { projectId } = await context.params
-  const accessError = await requireProjectRole(userId, projectId)
+  const accessError = await requireProjectRole(userId, projectId, ["OWNER", "ADMIN"])
   if (accessError) return accessError
 
   const parsed = webhookSchema.safeParse(await request.json())

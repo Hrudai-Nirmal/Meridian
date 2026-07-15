@@ -78,6 +78,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { CostQualityChart, IncidentHeatmap, LatencyChart } from "@/components/meridian/charts"
 import { EndpointGraphNode } from "@/components/meridian/endpoint-node"
+import { ENTERPRISE_ROLES, getRoleCapabilityRows, getRoleLabel } from "@/lib/access-policy.mjs"
 import { anomalyDefaults, type AlertRuleMode, type AlertRuleSource, type AnomalyDirection, type RunAlertMetric } from "@/lib/alert-rule-metadata"
 import { ALERT_RULE_TEMPLATES, buildAlertRulePayloadFromTemplate } from "@/lib/alert-rule-templates.mjs"
 import { validateApiAuthConfig } from "@/lib/api-auth-headers.mjs"
@@ -218,6 +219,10 @@ function formatSampledAt(timestamp: string) {
 function formatDateTime(timestamp: string | null | undefined) {
   if (!timestamp) return "Not available"
   return formatUtcTimestamp(timestamp, { includeYear: true })
+}
+
+function canRoleAccess(roles: Record<string, boolean>, role: string) {
+  return Boolean(roles[role])
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer) {
@@ -1534,11 +1539,16 @@ export function MeridianDashboard({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
     })
-    setTeamMessage(response.ok ? "Invitation saved." : "Invitation failed.")
+    const payload = await response.json().catch(() => null)
+    setTeamMessage(response.ok ? payload?.message ?? "Invitation saved." : payload?.error ?? "Invitation failed.")
     if (response.ok) {
-      const payload = await response.json()
-      setInvitations((current) => [payload.invitation, ...current])
-      setInviteEmail("")
+      setInvitations((current) => {
+        if (!payload?.invitation) return current
+        const existingIndex = current.findIndex((invitation) => invitation.id === payload.invitation.id)
+        if (existingIndex === -1) return [payload.invitation, ...current]
+        return current.map((invitation) => invitation.id === payload.invitation.id ? payload.invitation : invitation)
+      })
+      if (!payload?.message) setInviteEmail("")
     }
   }
 
@@ -5607,6 +5617,12 @@ function TeamSection({
   onRemoveMember: (memberId: string) => Promise<void>
   onCancelInvitation: (invitationId: string) => Promise<void>
 }) {
+  const roleCapabilityRows = getRoleCapabilityRows()
+  const roleTotals = ENTERPRISE_ROLES.map((role) => ({
+    role,
+    count: roleCapabilityRows.filter((row) => canRoleAccess(row.roles, role)).length,
+  }))
+
   return (
     <SectionShell>
       <div className="mx-auto grid max-w-7xl gap-5 lg:grid-cols-[0.8fr_1.2fr]">
@@ -5624,6 +5640,28 @@ function TeamSection({
             </select>
             <Button onClick={onInviteMember} disabled={!canManageOrganization}>Save invitation</Button>
             {teamMessage ? <div className="text-sm text-muted-foreground">{teamMessage}</div> : null}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Project Access Review</CardTitle>
+            <CardDescription>
+              This private-beta version grants project access through organization membership. Review each role before inviting enterprise stakeholders.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            {roleTotals.map((item) => (
+              <div key={item.role} className="flex items-center justify-between rounded-lg border p-3 text-sm">
+                <span>
+                  <span className="block font-medium">{getRoleLabel(item.role)}</span>
+                  <span className="block text-xs text-muted-foreground">{item.count} of {roleCapabilityRows.length} capabilities enabled</span>
+                </span>
+                <Badge variant={item.role === "VIEWER" ? "outline" : "secondary"}>{item.role}</Badge>
+              </div>
+            ))}
+            <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+              Viewers are safest for client observers: they can inspect dashboards, logs, and report evidence but cannot change configuration or export data.
+            </div>
           </CardContent>
         </Card>
         <Card>
@@ -5656,9 +5694,14 @@ function TeamSection({
             ))}
             {invitations.map((invitation) => (
               <div key={invitation.id} className="flex items-center justify-between gap-3 rounded-lg border p-3 text-sm">
-                <span className="truncate">{invitation.email}</span>
+                <span className="min-w-0">
+                  <span className="block truncate font-medium">{invitation.email}</span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    Pending since {formatDateTime(invitation.createdAt)}
+                  </span>
+                </span>
                 <div className="flex shrink-0 items-center gap-2">
-                  <Badge variant="outline">{invitation.role} pending</Badge>
+                  <Badge variant="outline">{getRoleLabel(invitation.role)} pending</Badge>
                   {canManageOrganization ? (
                     <Button variant="ghost" size="sm" onClick={() => onCancelInvitation(invitation.id)}>
                       Cancel
@@ -5667,6 +5710,44 @@ function TeamSection({
                 </div>
               </div>
             ))}
+          </CardContent>
+        </Card>
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Role Capability Matrix</CardTitle>
+            <CardDescription>Use this as the access contract for enterprise pilots before granting roles.</CardDescription>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead className="border-b text-xs text-muted-foreground">
+                <tr>
+                  <th className="py-2 pr-3 font-medium">Capability</th>
+                  {ENTERPRISE_ROLES.map((role) => (
+                    <th key={role} className="py-2 pr-3 text-center font-medium">{getRoleLabel(role)}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {roleCapabilityRows.map((capability) => (
+                  <tr key={capability.id} className="border-b last:border-b-0">
+                    <td className="py-3 pr-3">
+                      <div className="font-medium">{capability.label}</div>
+                      <div className="text-xs text-muted-foreground">{capability.description}</div>
+                    </td>
+                    {ENTERPRISE_ROLES.map((role) => {
+                      const isAllowed = canRoleAccess(capability.roles, role)
+                      return (
+                        <td key={role} className="py-3 pr-3 text-center">
+                          <Badge variant={isAllowed ? "secondary" : "outline"}>
+                            {isAllowed ? "Allowed" : "Blocked"}
+                          </Badge>
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </CardContent>
         </Card>
       </div>

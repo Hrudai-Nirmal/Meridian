@@ -158,6 +158,16 @@ Use this checklist for production validation on `https://meridian.hrudainirmal.i
 - Confirm Logs never expose raw tokens, webhook secrets, Slack URLs, encrypted payloads, env values, or private credential bodies.
 - Confirm notification job rows expose attempts and safe summaries, never provider URLs, keys, or message payloads.
 
+## Team Access
+
+- Confirm Team shows `Project Access Review` and `Role Capability Matrix`.
+- Confirm viewer copy says viewers can inspect safe dashboards/logs/reports but cannot mutate configuration or export data.
+- Invite a disposable email as Viewer, then invite it again and confirm Meridian reports the existing pending invite instead of creating a duplicate row.
+- Cancel the pending invite and confirm Logs shows safe team audit evidence.
+- Confirm owner/admin users can change non-owner roles and remove non-owner members.
+- Confirm members/viewers cannot create generic webhook destinations, Slack destinations, telemetry tokens, report links, report presets, CSV exports, project edits, or team invites.
+- Confirm members can still edit map/nodes/API metric setup and alert rules where the matrix says allowed.
+
 ## Settings
 
 - Confirm Settings is configuration-only.

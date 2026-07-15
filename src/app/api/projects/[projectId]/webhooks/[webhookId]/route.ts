@@ -37,7 +37,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ proje
   if (error) return error
 
   const { projectId, webhookId } = await context.params
-  const accessError = await requireProjectRole(userId, projectId)
+  const accessError = await requireProjectRole(userId, projectId, ["OWNER", "ADMIN"])
   if (accessError) return accessError
 
   const parsed = updateWebhookSchema.safeParse(await request.json())
@@ -80,7 +80,7 @@ export async function DELETE(_: Request, context: { params: Promise<{ projectId:
   if (error) return error
 
   const { projectId, webhookId } = await context.params
-  const accessError = await requireProjectRole(userId, projectId)
+  const accessError = await requireProjectRole(userId, projectId, ["OWNER", "ADMIN"])
   if (accessError) return accessError
 
   const prisma = getPrisma()
