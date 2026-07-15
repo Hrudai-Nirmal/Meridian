@@ -19,7 +19,7 @@ Search for the incident ID or structured `event` field. Logs deliberately omit r
 
 - `DATABASE_UNREACHABLE`: Check Neon status, organization usage, compute availability, and network-transfer quota.
 - `DATABASE_AUTH_FAILED`: Rotate Neon credentials through Vercel, then redeploy so Functions receive the new values.
-- `DATABASE_SCHEMA_MISMATCH`: Run `npm run prisma:deploy` against the intended database before redeploying.
+- `DATABASE_SCHEMA_MISMATCH`: Run `npm run prisma:deploy` against the intended database, then `npm run release:check`, before continuing QA or redeploying.
 - `DATABASE_NOT_CONFIGURED`: Restore the Neon Vercel integration or `DATABASE_URL` environment variable.
 
 Meridian prefers Vercel Neon's managed `NeonDB_POSTGRES_PRISMA_URL` and falls back to `DATABASE_URL`. Never paste connection strings into logs or tickets.
@@ -40,7 +40,7 @@ Inngest events contain job ids and generations only. Never paste provider keys, 
 
 ## Release Gate
 
-Run the manual GitHub Actions `Production smoke` workflow after every production deployment. It sets `SMOKE_REQUIRE_READY=1` and fails when database or authentication readiness is false, or when GitHub sign-in cannot begin.
+Run `npm run prisma:deploy`, then `npm run release:check`, then the manual GitHub Actions `Production smoke` workflow after every production deployment. The smoke workflow sets `SMOKE_REQUIRE_READY=1` and fails when database connectivity, schema compatibility, authentication readiness, or GitHub sign-in startup is unhealthy.
 
 ## June 2026 Incident
 

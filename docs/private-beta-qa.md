@@ -132,13 +132,13 @@ Use this checklist for production validation on `https://meridian.hrudainirmal.i
 
 ## Testing
 
-- Confirm readiness cards show database, auth, encryption, cron, email, Inngest jobs, and poll status.
+- Confirm readiness cards show database connectivity, database schema, auth, encryption, cron, email, Inngest jobs, and poll status.
 - Confirm runtime safety shows Production on `https://meridian.hrudainirmal.in` with external side effects, background jobs, and cron enabled.
 - Confirm any Preview/local runtime clearly shows non-production status and does not send email, Slack, webhooks, or endpoint polling unless explicitly opted in.
 - Queue email, webhook, and Slack tests; confirm the UI follows each job from queued to a terminal result.
 - In `Notification jobs`, verify counts, refresh, failed-job retry, queued/retrying cancellation, and owner/admin enforcement.
 - Use a failing disposable webhook and confirm retry progress before the job becomes failed.
-- Confirm Deployment readiness shows safe version, commit, build time, and environment metadata.
+- Confirm Deployment readiness shows safe version, commit, build time, environment metadata, and `Database schema current`.
 - Run manual poll and confirm latest poll metadata updates.
 - For REST metric onboarding, save API setup on a selected node, use the node inspector's `REST metric first signal` card to run the first poll, and confirm `Real sample received` shows a real persisted metric value and timestamp.
 - Send test email and confirm success/failure feedback does not expose provider secrets.
@@ -170,5 +170,5 @@ Use this checklist for production validation on `https://meridian.hrudainirmal.i
 - Test desktop at 1440px wide and a smaller laptop/tablet width.
 - Toggle light/dark mode and confirm readable text, borders, controls, graph dots, and report surfaces.
 - Run `SMOKE_BASE_URL="https://meridian.hrudainirmal.in" npm run test:smoke`.
-- After Vercel deploys `main`, manually dispatch the GitHub Actions `Production smoke` workflow.
+- After Vercel deploys `main`, run `npm run prisma:deploy`, then `npm run release:check`, then manually dispatch the GitHub Actions `Production smoke` workflow.
 - Record failures as separate fix tasks with reproduction steps and screenshots when useful.

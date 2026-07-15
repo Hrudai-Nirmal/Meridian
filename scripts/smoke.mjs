@@ -49,11 +49,13 @@ try {
   assert(typeof health?.runtime?.environment === "string" && health.runtime.environment.length > 0, "Health route did not return runtime environment metadata.")
   assert(typeof health?.runtime?.externalSideEffectsEnabled === "boolean", "Health route did not return runtime side-effect policy metadata.")
   assert(typeof health?.runtime?.backgroundJobsEnabled === "boolean", "Health route did not return runtime background-job policy metadata.")
+  assert(typeof health?.checks?.schema === "boolean", "Health route did not return database schema readiness metadata.")
   assert(Array.isArray(health?.issues), "Health route did not return safe issue metadata.")
   assert(Array.isArray(health?.warnings), "Health route did not return safe warning metadata.")
   if (requireReady) {
     assert(healthResponse.ok(), `Production readiness failed: ${health?.issues?.map((issue) => issue.code).join(", ") || "unknown issue"}.`)
     assert(health?.checks?.database === true, "Production database readiness is not healthy.")
+    assert(health?.checks?.schema === true, "Production database schema is not compatible with this deployment.")
     assert(health?.checks?.auth === true, "Production authentication readiness is not healthy.")
   }
   assert(!JSON.stringify(health).includes("npg_"), "Health route leaked a database secret-looking value.")

@@ -21,6 +21,7 @@ export type ReadinessStatus = {
   runtime: RuntimeEnvironment
   checks: {
     database: boolean
+    schema: boolean
     auth: boolean
     encryption: boolean
     cron: boolean
@@ -58,6 +59,7 @@ export async function getReadinessStatus(): Promise<ReadinessStatus> {
   const runtime = getRuntimeEnvironment()
   const checks = {
     database: false,
+    schema: false,
     auth: Boolean(process.env.NEXTAUTH_URL && process.env.NEXTAUTH_SECRET && hasGithubAuthConfig()),
     encryption: Boolean(process.env.ENCRYPTION_KEY),
     cron: Boolean(process.env.CRON_SECRET),
@@ -75,38 +77,65 @@ export async function getReadinessStatus(): Promise<ReadinessStatus> {
       const prisma = getPrisma()
       await prisma.$queryRaw`SELECT 1`
       checks.database = true
-      const [poll, delivery, groupedJobs] = await Promise.all([
-        prisma.pollExecution.findFirst({ orderBy: { startedAt: "desc" } }),
-        prisma.alertNotificationDelivery.findFirst({
-          orderBy: { attemptedAt: "desc" },
-          select: { status: true, provider: true, attemptedAt: true, sentAt: true },
-        }),
-        prisma.notificationJob.groupBy({ by: ["status"], _count: { _all: true } }),
-      ])
-      notificationJobs = Object.fromEntries(groupedJobs.map((item) => [item.status, item._count._all]))
+      try {
+        await prisma.reportPreset.findFirst({
+          select: {
+            id: true,
+            periodMode: true,
+            comparisonEnabled: true,
+            brandImageMimeType: true,
+          },
+        })
+        checks.schema = true
+      } catch (error) {
+        const incident = logServerError("health.schema_check_failed", error, {
+          component: "database",
+          connectionSource: getDatabaseConnectionSource(),
+        })
+        issues.push({
+          code: incident.errorCode,
+          component: "database",
+          message: incident.errorCode === "DATABASE_SCHEMA_MISMATCH"
+            ? "The database schema is not compatible with this deployment. Run production migrations and retry."
+            : "Database schema readiness could not be verified.",
+          incidentId: incident.incidentId,
+        })
+      }
 
-      latestPoll = poll
-        ? {
-            status: poll.status,
-            startedAt: poll.startedAt.toISOString(),
-            finishedAt: poll.finishedAt?.toISOString() ?? null,
-            durationMs: poll.durationMs,
-            sampledNodes: poll.sampledNodes,
-            createdSamples: poll.createdSamples,
-            evaluatedAlerts: poll.evaluatedAlerts,
-            rollupsQueued: poll.rollupsQueued,
-            deletedSamples: poll.deletedSamples,
-            errorSummary: poll.errorSummary,
-          }
-        : null
-      latestEmail = delivery
-        ? {
-            status: delivery.status,
-            provider: delivery.provider,
-            attemptedAt: delivery.attemptedAt.toISOString(),
-            sentAt: delivery.sentAt?.toISOString() ?? null,
-          }
-        : null
+      if (checks.schema) {
+        const [poll, delivery, groupedJobs] = await Promise.all([
+          prisma.pollExecution.findFirst({ orderBy: { startedAt: "desc" } }),
+          prisma.alertNotificationDelivery.findFirst({
+            orderBy: { attemptedAt: "desc" },
+            select: { status: true, provider: true, attemptedAt: true, sentAt: true },
+          }),
+          prisma.notificationJob.groupBy({ by: ["status"], _count: { _all: true } }),
+        ])
+        notificationJobs = Object.fromEntries(groupedJobs.map((item) => [item.status, item._count._all]))
+
+        latestPoll = poll
+          ? {
+              status: poll.status,
+              startedAt: poll.startedAt.toISOString(),
+              finishedAt: poll.finishedAt?.toISOString() ?? null,
+              durationMs: poll.durationMs,
+              sampledNodes: poll.sampledNodes,
+              createdSamples: poll.createdSamples,
+              evaluatedAlerts: poll.evaluatedAlerts,
+              rollupsQueued: poll.rollupsQueued,
+              deletedSamples: poll.deletedSamples,
+              errorSummary: poll.errorSummary,
+            }
+          : null
+        latestEmail = delivery
+          ? {
+              status: delivery.status,
+              provider: delivery.provider,
+              attemptedAt: delivery.attemptedAt.toISOString(),
+              sentAt: delivery.sentAt?.toISOString() ?? null,
+            }
+          : null
+      }
     } catch (error) {
       checks.database = false
       const incident = logServerError("health.database_check_failed", error, {

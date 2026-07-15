@@ -67,6 +67,7 @@ Meridian is a PC-first AI automation control room for agencies and teams. The pr
 - Added audit evidence for key user actions including project create/rename/archive, graph saves, telemetry token create/revoke, webhook create/update/delete/test, report create/revoke, team invite/role/remove/cancel, notification preference changes, manual poll, and alert resolution.
 - Added a private-beta manual QA checklist in `docs/private-beta-qa.md` and hid the React Flow attribution watermark from the Automation Map while keeping map controls and minimap visible.
 - Added Enterprise Foundation v1 basics: GitHub Actions CI, manual production smoke workflow, safe build/version metadata in `/api/health` and Testing readiness, `CHANGELOG.md`, and expanded smoke checks for health metadata and secret-safety.
+- Added Release Safety v1 guardrails after production QA found schema drift: `/api/health` and Testing now separate database connectivity from Prisma schema compatibility, smoke requires schema readiness when `SMOKE_REQUIRE_READY=1`, and `npm run release:check`/`npm run release:prod` provide a secret-redacting production migration gate.
 - Added Enterprise Data Scale v1 basics: bounded CSV export windows/limits with row-count/truncation headers, Logs API limit/truncation metadata, shared query-limit parsing, and index-only support for enterprise query paths.
 - Hardened GitHub login with a native CSRF-protected Auth.js form redirect and smoke coverage that verifies the sign-in button reaches GitHub OAuth.
 - Hardened database startup by preferring Vercel Neon's managed Prisma URL over a separately maintained `DATABASE_URL`, while retaining the standard URL as a local/non-Vercel fallback.
@@ -104,7 +105,7 @@ Meridian is a PC-first AI automation control room for agencies and teams. The pr
 
 ## Next Priorities
 - Run the smoke script against the deployed Vercel site after each push.
-- Keep GitHub Actions CI green on `main`; after Vercel deploys `main`, manually dispatch the `Production smoke` workflow for release validation.
+- Keep GitHub Actions CI green on `main`; after Vercel deploys `main`, run production Prisma migrations, run `npm run release:check`, then manually dispatch the `Production smoke` workflow for release validation.
 - Use `docs/private-beta-qa.md` for side-by-side production manual QA before inviting more private-beta users.
 - Keep Preview/local as guarded non-production runtimes until a separate Preview Neon database and Inngest environment are intentionally provisioned.
 - Browser-test bounded exports and Logs metadata: CSV routes should respect window/start/end/limit, report truncation headers, and stay secret-safe; Logs should show returned/limit/truncation copy.
@@ -126,7 +127,7 @@ Meridian is a PC-first AI automation control room for agencies and teams. The pr
 - Browser-test the Ops IA split: Settings should stay configuration-only, Integrations should manage webhooks/Slack/telemetry setup, Testing should run readiness/manual poll/test email/webhook/Slack/integration/endpoint checks, Logs should filter by type/window/search, and contextual sidebar back/subsection behavior should work across sections.
 - Browser-test global header search: click the header search, use `Cmd/Ctrl+K`, use `/` outside input fields, search for a node/alert/run/report/job/setup action, confirm navigation/selection/filtering works, and confirm no raw secrets or provider URLs appear in results.
 - Browser-test log creation for report revoke/create, webhook create/test/delete, manual poll, alert resolve, team invite/role/remove/cancel, token create/revoke, notification preference save, and graph save without exposing secrets.
-- Validate the Prisma report-share migration with `prisma migrate deploy` before production use.
+- Keep production schema and code in lockstep: run `npm run prisma:deploy` and `npm run release:check` before manual QA or inviting users after any Prisma migration lands.
 - Test the in-app published SDK onboarding snippets and package READMEs against a disposable ingestion token and confirm runs appear in the selected node.
 - Test `examples/live-workflow` against a disposable ingestion token and confirm success/degraded/failed runs appear with step details.
 - Build `examples/dify-support-triage` inside Dify with a disposable ingestion token and confirm success/degraded/failed runs appear with step details.

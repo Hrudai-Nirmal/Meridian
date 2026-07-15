@@ -10,6 +10,8 @@
     "demo:verify": "npm --prefix examples/live-workflow ci && npm --prefix examples/live-workflow test",
     "sdk:verify": "node scripts/verify-sdk-packages.mjs",
     "test:smoke": "node scripts/smoke.mjs",
+    "release:check": "node scripts/release-safety.mjs",
+    "release:prod": "npm run prisma:deploy && npm run release:check && SMOKE_BASE_URL=https://meridian.hrudainirmal.in SMOKE_REQUIRE_READY=1 npm run test:smoke",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",

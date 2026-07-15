@@ -2909,8 +2909,9 @@ export function MeridianDashboard({
             <div className="grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">
               <div className="grid content-start gap-4">
                 <div className="grid gap-2">
-                  <ReadinessItem label="Database connected" ready={initialWorkspace.diagnostics.checks.database} />
-                  <ReadinessItem label="GitHub OAuth ready" ready={initialWorkspace.diagnostics.checks.auth} />
+              <ReadinessItem label="Database connected" ready={initialWorkspace.diagnostics.checks.database} />
+              <ReadinessItem label="Database schema current" ready={initialWorkspace.diagnostics.checks.schema} />
+              <ReadinessItem label="GitHub OAuth ready" ready={initialWorkspace.diagnostics.checks.auth} />
                   <ReadinessItem label="Encryption enabled" ready={initialWorkspace.diagnostics.checks.encryption} />
                   <ReadinessItem label="Cron secret configured" ready={initialWorkspace.diagnostics.checks.cron} />
                   <ReadinessItem label="Email provider configured" ready={initialWorkspace.diagnostics.checks.email} />
@@ -5740,6 +5741,7 @@ function TestingSection({
           <div className="grid gap-4 px-5 pb-5">
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               <ReadinessItem label="Database connected" ready={diagnostics.checks.database} />
+              <ReadinessItem label="Database schema current" ready={diagnostics.checks.schema} />
               <ReadinessItem label="GitHub OAuth ready" ready={diagnostics.checks.auth} />
               <ReadinessItem label="Encryption enabled" ready={diagnostics.checks.encryption} />
               <ReadinessItem label="Cron secret configured" ready={diagnostics.checks.cron} />

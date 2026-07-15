@@ -188,13 +188,24 @@ SDK previews live in `sdk/python` and `sdk/js`. See `docs/sdk.md` for one-minute
 
 Meridian uses GitHub Actions as the first enterprise-readiness gate. CI runs on pull requests and pushes to `main` with dependency install, Prisma client generation, typecheck, lint, production build, `npm run sdk:verify` for JavaScript/Python SDK package checks, and `npm run demo:verify` for the live workflow demo. A separate `Production smoke` workflow is manual so it can be dispatched after Vercel finishes deploying `main`.
 
-`/api/health` includes safe build metadata: app version, commit SHA, optional build time, and environment. Testing -> Deployment readiness renders the same metadata for operators. These fields must never include database URLs, OAuth secrets, encryption keys, cron secrets, email provider keys, Slack webhook URLs, webhook signing secrets, raw ingestion tokens, or encrypted payloads.
+`/api/health` includes safe build metadata: app version, commit SHA, optional build time, and environment. It also separates database reachability from database schema compatibility so an unapplied Prisma migration shows up before feature QA reaches a broken route. Testing -> Deployment readiness renders the same metadata for operators. These fields must never include database URLs, OAuth secrets, encryption keys, cron secrets, email provider keys, Slack webhook URLs, webhook signing secrets, raw ingestion tokens, or encrypted payloads.
 
 Meridian currently uses a minimum-safe environment model: Production is the only live runtime. Preview deployments and local development may render the app and readiness state, but external side effects are disabled by default outside Production. That means cron polling, manual endpoint polling, Resend email sends, Slack incoming-webhook sends, generic webhook sends, and Inngest cloud worker execution are blocked or skipped unless an explicit operator opt-in is configured. `/api/health` and Testing -> Deployment readiness show the runtime label, deployment URL, side-effect policy, background-job policy, cron policy, and safe warnings. The optional escape hatches `MERIDIAN_ALLOW_EXTERNAL_EFFECTS=1` and `MERIDIAN_ALLOW_BACKGROUND_JOBS=1` are reserved for deliberate isolated Preview/dev testing, not for shared production data.
 
 Full Preview isolation with a separate Neon database and separate Inngest environment is deferred until Preview is used for mutation QA. Until then, do not point Preview at production data for active testing.
 
 Release notes start in `CHANGELOG.md`. Keep `package.json` semver and the changelog aligned for production-facing changes.
+
+Production release order:
+
+```bash
+# Requires DATABASE_URL/NeonDB_POSTGRES_PRISMA_URL for the intended production database.
+npm run prisma:deploy
+npm run release:check
+SMOKE_BASE_URL="https://meridian.hrudainirmal.in" SMOKE_REQUIRE_READY=1 npm run test:smoke
+```
+
+`npm run release:prod` runs those three commands in sequence for the canonical production domain. Use it only when the shell environment is pointed at the intended production database. `release:check` is non-mutating: it fails when Prisma reports pending migrations and redacts connection strings, Neon password-like values, bearer tokens, and Slack webhook URLs from command output.
 
 ## Deployed QA
 
@@ -219,8 +230,10 @@ SMOKE_BASE_URL="https://meridian.hrudainirmal.in" SMOKE_AUTH_STATE="./playwright
 Manual production smoke workflow:
 
 1. Wait for Vercel to finish deploying `main`.
-2. In GitHub Actions, run `Production smoke`.
-3. Confirm the workflow passes without creating production data.
+2. Run `npm run prisma:deploy` against the production database.
+3. Run `npm run release:check` and confirm Prisma reports no pending migrations.
+4. In GitHub Actions, run `Production smoke`.
+5. Confirm the workflow passes without creating production data.
 
 Use `docs/private-beta-qa.md` for the full side-by-side private-beta manual QA flow. It covers sign-in, projects, Automation Map, runs, telemetry, polling, alerts, reports, integrations, Testing, Logs, Settings, and secret-safety checks.
 
@@ -265,7 +278,7 @@ Manual post-deploy checklist:
 - New alert incidents send `alert.opened` webhooks and Slack messages, resolved/ignored incidents send `alert.resolved` webhooks and Slack messages, and alert details show latest webhook and Slack delivery status.
 - Anomaly alert rules can be created from saved parameter mappings; the setup preview should show sample history, mean/std dev, watch bands, wait for enough history, explain baseline context in alert messages, and avoid duplicate unresolved emails.
 - Light mode remains readable with stronger text, borders, graph canvas dots, dialogs, report cards, and empty states; dark mode remains neutral black/grey.
-- `/api/health` does not include raw env var values, database URLs, OAuth secrets, or encrypted credential payloads.
+- `/api/health` reports database schema compatibility and does not include raw env var values, database URLs, OAuth secrets, or encrypted credential payloads.
 
 ## Local Development
 

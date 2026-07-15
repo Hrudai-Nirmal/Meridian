@@ -19,7 +19,7 @@ export async function GET() {
       checkedAt: new Date().toISOString(),
       build: getAppBuildMetadata(),
       runtime: getRuntimeEnvironment(),
-      checks: { database: false, auth: false, encryption: false, cron: false, email: false, jobs: false },
+      checks: { database: false, schema: false, auth: false, encryption: false, cron: false, email: false, jobs: false },
       latestPoll: null,
       latestEmail: null,
       notificationJobs: {},
