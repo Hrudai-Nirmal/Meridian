@@ -44,7 +44,7 @@ export async function GET(request: Request, context: { params: Promise<{ project
   const alerts = alertsWithSentinel.slice(0, bounds.value.limit)
 
   const csv = toCsv(
-    ["alert_id", "title", "severity", "node", "rule", "created_at", "resolved_at", "message"],
+    ["alert_id", "title", "severity", "node", "rule", "created_at", "last_seen_at", "occurrence_count", "resolved_at", "message"],
     alerts.map((alert) => [
       alert.id,
       alert.title,
@@ -52,6 +52,8 @@ export async function GET(request: Request, context: { params: Promise<{ project
       alert.node?.label ?? "",
       alert.rule?.name ?? "",
       alert.createdAt.toISOString(),
+      alert.lastSeenAt.toISOString(),
+      alert.occurrenceCount,
       alert.resolvedAt?.toISOString() ?? "",
       alert.message,
     ])

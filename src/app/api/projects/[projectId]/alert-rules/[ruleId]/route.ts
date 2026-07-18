@@ -3,6 +3,7 @@ import { z } from "zod"
 
 import { getApiUserId, requireProjectRole } from "@/lib/api-session"
 import { anomalyDefaults, buildAlertRuleMetadata, normalizeAlertRuleMetadata } from "@/lib/alert-rule-metadata"
+import { MAX_ALERT_SUPPRESSION_MINUTES } from "@/lib/alert-noise-control.mjs"
 import { getPrisma } from "@/lib/prisma"
 
 const thresholdExpressionSchema = z.string().regex(/^(>=|>|<=|<|=)\s*-?\d+(\.\d+)?$/)
@@ -21,6 +22,7 @@ const patchRuleSchema = z
     minSamples: z.coerce.number().int().min(3).max(1000).optional(),
     runMetric: z.enum(["status", "durationMs", "costUsd", "tokens", "failureRate", "averageDurationMs"]).nullable().optional(),
     windowRuns: z.coerce.number().int().min(1).max(100).optional(),
+    suppressionMinutes: z.coerce.number().int().min(0).max(MAX_ALERT_SUPPRESSION_MINUTES).optional(),
     severity: z.enum(["INFO", "WARNING", "CRITICAL"]).optional(),
     enabled: z.boolean().optional(),
   })
@@ -99,7 +101,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ proje
       parsed.data.windowDays ||
       parsed.data.minSamples ||
       parsed.data.runMetric !== undefined ||
-      parsed.data.windowRuns
+      parsed.data.windowRuns ||
+      parsed.data.suppressionMinutes !== undefined
         ? buildAlertRuleMetadata({
             source: nextSource,
             mode: nextMode,
@@ -112,6 +115,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ proje
             minSamples: parsed.data.minSamples ?? currentMetadata.anomaly?.minSamples ?? anomalyDefaults.minSamples,
             runMetric: parsed.data.runMetric ?? currentMetadata.run?.metric ?? null,
             windowRuns: parsed.data.windowRuns ?? currentMetadata.run?.windowRuns ?? 1,
+            suppressionMinutes: parsed.data.suppressionMinutes ?? currentMetadata.suppressionMinutes,
           })
         : undefined,
     mappingId: nextSource === "run" ? null : undefined,

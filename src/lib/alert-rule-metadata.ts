@@ -1,5 +1,7 @@
 import type { Prisma } from "@prisma/client"
 
+import { DEFAULT_ALERT_SUPPRESSION_MINUTES, getAlertSuppressionMinutes } from "@/lib/alert-noise-control.mjs"
+
 export type AlertRuleMode = "threshold" | "anomaly"
 export type AnomalyDirection = "high" | "low" | "both"
 export type AlertRuleSource = "metric" | "run"
@@ -28,6 +30,7 @@ export type NormalizedAlertRuleMetadata = {
     metric: RunAlertMetric | null
     windowRuns: number
   } | null
+  suppressionMinutes: number
 }
 
 function metadataRecord(metadata: unknown) {
@@ -92,6 +95,9 @@ export function normalizeAlertRuleMetadata(metadata: unknown): NormalizedAlertRu
     mappingLabel: typeof record.mappingLabel === "string" ? record.mappingLabel : null,
     anomaly,
     run,
+    suppressionMinutes: getAlertSuppressionMinutes({
+      suppressionMinutes: record.suppressionMinutes ?? DEFAULT_ALERT_SUPPRESSION_MINUTES,
+    }),
   }
 }
 
@@ -107,6 +113,7 @@ export function buildAlertRuleMetadata(input: {
   minSamples?: number
   runMetric?: RunAlertMetric | null
   windowRuns?: number | null
+  suppressionMinutes?: number | null
 }): Prisma.InputJsonObject {
   const source = input.source ?? "metric"
   const mode = input.mode ?? "threshold"
@@ -116,6 +123,7 @@ export function buildAlertRuleMetadata(input: {
     templateId: input.templateId ?? null,
     nodeLabel: input.nodeLabel ?? null,
     mappingLabel: input.mappingLabel ?? null,
+    suppressionMinutes: getAlertSuppressionMinutes({ suppressionMinutes: input.suppressionMinutes ?? DEFAULT_ALERT_SUPPRESSION_MINUTES }),
   }
 
   if (mode === "anomaly") {

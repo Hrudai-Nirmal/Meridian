@@ -21,6 +21,8 @@ type PublicIncident = {
   nodeLabel: string | null
   message: string
   createdAt: string
+  lastSeenAt: string
+  occurrenceCount: number
   resolvedAt: string | null
   status: "active" | "resolved"
 }
@@ -92,6 +94,7 @@ export function ReportClientProof({
                     <div className="font-medium">{alert.title}</div>
                     <div className="mt-1 text-xs text-muted-foreground">
                       {alert.nodeLabel ?? "Project"} / {formatDateTime(alert.createdAt)}
+                      {alert.occurrenceCount > 1 ? ` / seen ${alert.occurrenceCount} times, last ${formatDateTime(alert.lastSeenAt)}` : ""}
                       {alert.resolvedAt ? ` / resolved ${formatDateTime(alert.resolvedAt)}` : ""}
                     </div>
                     <p className="mt-2 text-xs leading-5 text-muted-foreground">{alert.message}</p>

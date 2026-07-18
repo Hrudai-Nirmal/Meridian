@@ -88,6 +88,8 @@ export type PublicReportPayload = {
     severity: string
     nodeLabel: string | null
     createdAt: string
+    lastSeenAt: string
+    occurrenceCount: number
     resolvedAt: string | null
     status: "active" | "resolved"
     message: string
@@ -99,6 +101,8 @@ export type PublicReportPayload = {
     nodeLabel: string | null
     message: string
     createdAt: string
+    lastSeenAt: string
+    occurrenceCount: number
     resolvedAt: string | null
     status: "active" | "resolved"
   }[]
@@ -339,6 +343,8 @@ export async function getPublicReport(token: string): Promise<PublicReportPayloa
       nodeLabel: event.node?.label ?? null,
       message: event.message,
       createdAt: event.createdAt.toISOString(),
+      lastSeenAt: event.lastSeenAt.toISOString(),
+      occurrenceCount: event.occurrenceCount,
       resolvedAt: event.resolvedAt?.toISOString() ?? null,
       status: event.resolvedAt ? "resolved" as const : "active" as const,
     }))

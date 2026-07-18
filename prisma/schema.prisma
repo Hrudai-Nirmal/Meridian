@@ -531,9 +531,13 @@ model AlertEvent {
   rule             AlertRule?                  @relation(fields: [ruleId], references: [id], onDelete: SetNull)
   deliveries       AlertNotificationDelivery[]
   notificationJobs NotificationJob[]
+  lastSeenAt       DateTime                    @default(now())
+  occurrenceCount  Int                         @default(1)
   createdAt        DateTime                    @default(now())
 
   @@index([nodeId, resolvedAt])
+  @@index([nodeId, ruleId, resolvedAt])
+  @@index([lastSeenAt])
   @@index([nodeId, createdAt])
   @@index([ruleId, createdAt])
   @@index([createdAt])

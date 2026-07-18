@@ -3,6 +3,7 @@ import { z } from "zod"
 
 import { getApiUserId, requireProjectRole } from "@/lib/api-session"
 import { anomalyDefaults, buildAlertRuleMetadata } from "@/lib/alert-rule-metadata"
+import { DEFAULT_ALERT_SUPPRESSION_MINUTES, MAX_ALERT_SUPPRESSION_MINUTES } from "@/lib/alert-noise-control.mjs"
 import { getPrisma } from "@/lib/prisma"
 
 const thresholdExpressionSchema = z.string().regex(/^(>=|>|<=|<|=)\s*-?\d+(\.\d+)?$/, "Use a simple threshold like > 90 or <= 2.")
@@ -25,6 +26,7 @@ const alertRuleSchema = z
     minSamples: z.coerce.number().int().min(3).max(1000).default(anomalyDefaults.minSamples),
     runMetric: z.enum(["status", "durationMs", "costUsd", "tokens", "failureRate", "averageDurationMs"]).nullable().optional(),
     windowRuns: z.coerce.number().int().min(1).max(100).default(1),
+    suppressionMinutes: z.coerce.number().int().min(0).max(MAX_ALERT_SUPPRESSION_MINUTES).default(DEFAULT_ALERT_SUPPRESSION_MINUTES),
     severity: z.enum(["INFO", "WARNING", "CRITICAL"]),
     enabled: z.boolean(),
   })
@@ -108,6 +110,7 @@ export async function POST(request: Request, context: { params: Promise<{ projec
         mappingLabel: null,
         runMetric: parsed.data.runMetric ?? null,
         windowRuns: parsed.data.windowRuns,
+        suppressionMinutes: parsed.data.suppressionMinutes,
       }),
       projectId,
     }
@@ -166,6 +169,7 @@ export async function POST(request: Request, context: { params: Promise<{ projec
       sigma: parsed.data.sigma,
       windowDays: parsed.data.windowDays,
       minSamples: parsed.data.minSamples,
+      suppressionMinutes: parsed.data.suppressionMinutes,
     }),
     projectId,
   }

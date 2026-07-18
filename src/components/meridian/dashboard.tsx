@@ -80,6 +80,7 @@ import { CostQualityChart, IncidentHeatmap, LatencyChart } from "@/components/me
 import { EndpointGraphNode } from "@/components/meridian/endpoint-node"
 import { ENTERPRISE_ROLES, getRoleCapabilityRows, getRoleLabel } from "@/lib/access-policy.mjs"
 import { anomalyDefaults, type AlertRuleMode, type AlertRuleSource, type AnomalyDirection, type RunAlertMetric } from "@/lib/alert-rule-metadata"
+import { DEFAULT_ALERT_SUPPRESSION_MINUTES, buildAlertSuppressionSummary } from "@/lib/alert-noise-control.mjs"
 import { ALERT_RULE_TEMPLATES, buildAlertRulePayloadFromTemplate } from "@/lib/alert-rule-templates.mjs"
 import { validateApiAuthConfig } from "@/lib/api-auth-headers.mjs"
 import { getApiSetupFieldHelp, getAuthHeaderPlaceholder } from "@/lib/api-setup-help.mjs"
@@ -3697,6 +3698,10 @@ export function MeridianDashboard({
                   <div className="text-xs text-muted-foreground">Last seen</div>
                   <div className="font-medium">{formatDateTime(selectedAlertDetail.lastSeen)}</div>
                 </div>
+                <div className="rounded-lg border p-3">
+                  <div className="text-xs text-muted-foreground">Occurrences</div>
+                  <div className="font-medium">{selectedAlertDetail.occurrenceCount}</div>
+                </div>
               </div>
               {selectedAlertDetail.resolvedAt ? (
                 <div className="rounded-lg border p-3">
@@ -4513,6 +4518,7 @@ function AlertsSection({
                     <div className="font-medium">{alert.title}</div>
                     <div className="mt-1 text-xs text-muted-foreground">
                       {alert.nodeLabel ?? "Project"} / {alert.source} / {alert.severity} / {alert.resolvedAt ? "Resolved" : "Active"}
+                      {alert.occurrenceCount > 1 ? ` / ${alert.occurrenceCount} occurrences` : ""}
                     </div>
                     <div className="mt-2 text-xs text-muted-foreground">{alert.message}</div>
                   </button>
@@ -6502,6 +6508,7 @@ function NodeInspector({
   const [anomalyDirection, setAnomalyDirection] = useState<AnomalyDirection>(firstAlertRule?.anomalyDirection ?? anomalyDefaults.direction)
   const [runMetric, setRunMetric] = useState<RunAlertMetric>(firstAlertRule?.runMetric ?? "status")
   const [windowRuns, setWindowRuns] = useState(String(firstAlertRule?.windowRuns ?? 1))
+  const [suppressionMinutes, setSuppressionMinutes] = useState(String(firstAlertRule?.suppressionMinutes ?? DEFAULT_ALERT_SUPPRESSION_MINUTES))
   const [ruleSeverity, setRuleSeverity] = useState(nodeAlertRules[0]?.severity ?? "WARNING")
   const [ruleEnabled, setRuleEnabled] = useState(nodeAlertRules[0]?.enabled ?? true)
   const [ruleMessage, setRuleMessage] = useState("")
@@ -6603,6 +6610,7 @@ function NodeInspector({
     setRuleMode("threshold")
     setAnomalyDirection(anomalyDefaults.direction)
     setRuleSeverity("WARNING")
+    setSuppressionMinutes(String(DEFAULT_ALERT_SUPPRESSION_MINUTES))
     setRuleEnabled(true)
     setApiMessage("Demo metric loaded. Test and save the API setup, then save the alert rule.")
   }
@@ -6800,6 +6808,7 @@ function NodeInspector({
         minSamples: anomalyDefaults.minSamples,
         runMetric: ruleSource === "run" ? runMetric : undefined,
         windowRuns: ruleSource === "run" ? Number(windowRuns) : undefined,
+        suppressionMinutes: Number(suppressionMinutes),
         severity: ruleSeverity,
         enabled: ruleEnabled,
       }),
@@ -6825,6 +6834,7 @@ function NodeInspector({
       anomalyMinSamples: ruleSource === "metric" && ruleMode === "anomaly" ? anomalyDefaults.minSamples : null,
       runMetric: ruleSource === "run" ? runMetric : null,
       windowRuns: ruleSource === "run" ? Number(windowRuns) : null,
+      suppressionMinutes: Number(suppressionMinutes),
     } as ProjectAlertRule
     setRuleId(savedRule.id)
     onRuleSaved(savedRule)
@@ -7708,6 +7718,21 @@ function NodeInspector({
                               <option value="CRITICAL">Critical</option>
                             </select>
                           </div>
+                          <label className="grid gap-1 text-sm">
+                            Repeat suppression
+                            <Input
+                              min={0}
+                              max={1440}
+                              type="number"
+                              value={suppressionMinutes}
+                              onChange={(event) => setSuppressionMinutes(event.target.value)}
+                              aria-label="Alert repeat suppression minutes"
+                              disabled={!canEditProject}
+                            />
+                            <span className="text-xs text-muted-foreground">
+                              {buildAlertSuppressionSummary(Number(suppressionMinutes || DEFAULT_ALERT_SUPPRESSION_MINUTES))}. Repeated breaches are grouped on the same incident during this window.
+                            </span>
+                          </label>
                           {ruleSource === "metric" && ruleMode === "anomaly" ? (
                             <div className="grid gap-2 rounded-lg border border-dashed bg-background/80 p-3 text-xs text-muted-foreground">
                               <div>
@@ -7774,6 +7799,9 @@ function NodeInspector({
                                     : rule.mode === "anomaly"
                                     ? `${rule.mappingLabel ?? "Mapping"} / ${getAnomalyDirectionLabel((rule.anomalyDirection ?? "high") as AnomalyDirection)} / ${rule.anomalySigma ?? anomalyDefaults.sigma}σ / ${rule.anomalyWindowDays ?? anomalyDefaults.windowDays}d / ${rule.anomalyMinSamples ?? anomalyDefaults.minSamples} samples`
                                     : `${rule.mappingLabel ?? "Mapping"} ${rule.expression}`}
+                                </div>
+                                <div className="mt-1 text-muted-foreground">
+                                  {buildAlertSuppressionSummary(rule.suppressionMinutes ?? DEFAULT_ALERT_SUPPRESSION_MINUTES)}
                                 </div>
                               </div>
                             ))

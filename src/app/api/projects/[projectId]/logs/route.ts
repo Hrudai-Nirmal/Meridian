@@ -222,8 +222,15 @@ export async function GET(request: Request, context: { params: Promise<{ project
       entity: "alert",
       entityId: event.id,
       nodeLabel: event.node?.label ?? null,
-      metadata: { severity: event.severity, rule: event.rule?.name ?? null, resolvedAt: event.resolvedAt?.toISOString() ?? null },
-      createdAt: event.createdAt.toISOString(),
+      metadata: {
+        severity: event.severity,
+        rule: event.rule?.name ?? null,
+        firstSeenAt: event.createdAt.toISOString(),
+        lastSeenAt: event.lastSeenAt.toISOString(),
+        occurrenceCount: event.occurrenceCount,
+        resolvedAt: event.resolvedAt?.toISOString() ?? null,
+      },
+      createdAt: event.lastSeenAt.toISOString(),
     })),
     ...deliveries.map((delivery) => ({
       id: `delivery-${delivery.id}`,

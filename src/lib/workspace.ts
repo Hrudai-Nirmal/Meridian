@@ -48,6 +48,8 @@ type DbNode = EndpointNode & {
     nodeId: string | null
     ruleId: string | null
     createdAt: Date
+    lastSeenAt: Date
+    occurrenceCount: number
     resolvedAt: Date | null
     node: { label: string } | null
     deliveries: {
@@ -91,6 +93,8 @@ type DbProject = Project & {
       nodeId: string | null
       ruleId: string | null
       createdAt: Date
+      lastSeenAt: Date
+      occurrenceCount: number
       resolvedAt: Date | null
       node: { label: string } | null
       deliveries: {
@@ -152,6 +156,7 @@ export type WorkspacePayload = {
     source: string
     firstSeen: string
     lastSeen: string
+    occurrenceCount: number
     deliveryStatus: string | null
     deliveryProvider: string | null
     deliveryAttemptedAt: string | null
@@ -187,6 +192,7 @@ export type WorkspacePayload = {
     anomalyMinSamples: number | null
     runMetric: RunAlertMetric | null
     windowRuns: number | null
+    suppressionMinutes: number
     createdAt: string
     updatedAt: string
   }[]
@@ -505,7 +511,8 @@ function projectToWorkspace(
         nodeLabel: event.node?.label ?? null,
         source: ruleMode === "anomaly" ? "Anomaly baseline" : rule ? normalizeAlertRuleMetadata(rule.metadata).source === "run" ? "Workflow run rule" : "Threshold rule" : event.nodeId ? "Endpoint polling" : "Project",
         firstSeen: event.createdAt.toISOString(),
-        lastSeen: event.createdAt.toISOString(),
+        lastSeen: event.lastSeenAt.toISOString(),
+        occurrenceCount: event.occurrenceCount,
         deliveryStatus: latestEmailDelivery?.status ?? null,
         deliveryProvider: latestEmailDelivery?.provider ?? null,
         deliveryAttemptedAt: latestEmailDelivery?.attemptedAt.toISOString() ?? null,
@@ -548,6 +555,7 @@ function projectToWorkspace(
         anomalyMinSamples: metadata.anomaly?.minSamples ?? null,
         runMetric: metadata.run?.metric ?? null,
         windowRuns: metadata.run?.windowRuns ?? null,
+        suppressionMinutes: metadata.suppressionMinutes,
         createdAt: rule.createdAt.toISOString(),
         updatedAt: rule.updatedAt.toISOString(),
       }

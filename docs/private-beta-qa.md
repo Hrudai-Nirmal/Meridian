@@ -88,6 +88,8 @@ Use this checklist for production validation on `https://meridian.hrudainirmal.i
 - Run manual poll from Testing.
 - Confirm the selected node shows the deterministic `95 score` sample and trend/freshness details.
 - Confirm a matching threshold alert opens once and does not duplicate while unresolved.
+- Set Repeat suppression to `1`, trigger the same breach twice inside a minute, and confirm the existing incident shows a higher occurrence count and newer last-seen time instead of a duplicate row.
+- Trigger the same breach after the suppression window and confirm Meridian still keeps one grouped incident while allowing a repeat notification/job.
 - In the selected node Alert Rule dialog, apply a metric threshold template and confirm the mapping, threshold, severity, and enabled state are prefilled.
 - Apply metric anomaly templates for high, low, and both directions; confirm sample-history preview still shows baseline/wait-state details.
 - Apply a workflow-run template such as failed/degraded run, run duration, cost, tokens, failure rate, or average latency.
@@ -108,6 +110,7 @@ Use this checklist for production validation on `https://meridian.hrudainirmal.i
 - Create a report link and open it in a signed-out/private browser.
 - Confirm the public report header shows the uploaded brand image when present.
 - Confirm the public report shows the period label, comparison notes when enabled, and an active/resolved incident timeline.
+- Confirm repeated incidents show occurrence count and last-seen evidence in public report incident timelines.
 - Confirm comparison badges clearly show direction and tone for runs, success rate, score, spend, and tokens.
 - Click `Copy client summary` and confirm the copied text is readable, client-safe, and contains no secrets.
 - Filter the public incident timeline by All, Active only, and Resolved only.
