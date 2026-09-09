@@ -16,7 +16,8 @@ const handlers = serve({
 })
 
 function isProductionWorkerConfigured() {
-  return canRunBackgroundJobs() && (process.env.INNGEST_DEV === "1" || Boolean(process.env.INNGEST_SIGNING_KEY))
+  const runtime = getRuntimeEnvironment()
+  return runtime.jobBackend === "inngest" && canRunBackgroundJobs() && (process.env.INNGEST_DEV === "1" || Boolean(process.env.INNGEST_SIGNING_KEY))
 }
 
 function getUnconfiguredWorkerResponse() {

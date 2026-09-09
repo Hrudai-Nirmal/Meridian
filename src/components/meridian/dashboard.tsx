@@ -3991,6 +3991,7 @@ export function MeridianDashboard({
         ) : activeSection === "billing" ? (
           <BillingSection
             project={initialWorkspace.project}
+            runtime={initialWorkspace.diagnostics.runtime}
             currentUser={currentUser}
             nodes={endpointNodes}
             projectUsage={projectUsage}
@@ -4673,11 +4674,19 @@ function RuntimeSafetyCard({ diagnostics }: { diagnostics: WorkspacePayload["dia
       </div>
       <div className="grid gap-2 sm:grid-cols-2">
         <div>
+          <div className="font-medium text-foreground">Runtime mode</div>
+          <div>{runtime.runtimeLabel}</div>
+          <div className="mt-1">Deployment: {runtime.deploymentMode.replaceAll("_", " ")}</div>
+          <div>Edition: {runtime.edition}</div>
+        </div>
+        <div>
           <div className="font-medium text-foreground">Deployment URL</div>
           <div className="break-all">{runtime.deploymentUrl}</div>
         </div>
         <div>
           <div className="font-medium text-foreground">Side-effect Policy</div>
+          <div>Billing: {runtime.billingMode === "disabled" ? "disabled" : runtime.billingMode}</div>
+          <div>Job backend: {runtime.jobBackend.replaceAll("_", " ")}</div>
           <div>Email/Slack/webhooks/polling: {runtime.externalSideEffectsEnabled ? "enabled" : "disabled"}</div>
           <div>Background jobs: {runtime.backgroundJobsEnabled ? "enabled" : "disabled"}</div>
           <div>Cron polling: {runtime.cronEnabled ? "enabled" : "disabled"}</div>
@@ -7346,6 +7355,7 @@ function loadPaddleCheckoutScript() {
 
 function BillingSection({
   project,
+  runtime,
   currentUser,
   nodes,
   projectUsage,
@@ -7362,6 +7372,7 @@ function BillingSection({
   onSaveOperationsPolicy,
 }: {
   project: WorkspacePayload["project"]
+  runtime: WorkspacePayload["diagnostics"]["runtime"]
   currentUser: NonNullable<Session["user"]>
   nodes: EndpointNodeData[]
   projectUsage: ProjectUsageSnapshot | null
@@ -7390,6 +7401,7 @@ function BillingSection({
   const billingWarnings = billingStatus?.warnings ?? []
   const billingAccessLabel = entitlement?.plan.isProvisional ? `Provisional ${entitlement.plan.name}` : billingStatus?.subscription.access.label ?? "Not loaded"
   const billingAccessTone = entitlement?.plan.isProvisional ? "warn" : billingStatus?.subscription.access.tone ?? "muted"
+  const isHostedBillingEnabled = runtime.billingMode === "paddle"
   const paddleClientToken = process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN ?? ""
   const paddleEnvironment = normalizePaddleEnvironment(process.env.NEXT_PUBLIC_PADDLE_ENVIRONMENT)
   const paddlePriceIdsByCheckoutId: Record<string, string> = {
@@ -7426,6 +7438,11 @@ function BillingSection({
     checkoutId: string
     description: string
   }) => {
+    if (!isHostedBillingEnabled) {
+      setCheckoutMessage("Hosted checkout is disabled in this runtime.")
+      return
+    }
+
     const priceId = paddlePriceIdsByCheckoutId[checkoutId] ?? ""
     const unavailableReason = getPaddleCheckoutUnavailableReason({ clientToken: paddleClientToken, priceId })
     if (unavailableReason) {
@@ -7501,9 +7518,16 @@ function BillingSection({
                 <Badge variant={billingAccessTone === "good" ? "secondary" : billingAccessTone === "warn" ? "destructive" : "outline"}>
                   {billingAccessLabel}
                 </Badge>
+                <Badge variant={runtime.isSelfHosted ? "secondary" : "outline"}>{runtime.runtimeLabel}</Badge>
                 <Badge variant="outline">{billingStatus?.environment ?? paddleEnvironment}</Badge>
-                {billingStatus?.webhookConfigured ? <Badge variant="secondary">Webhook configured</Badge> : <Badge variant="outline">Webhook missing</Badge>}
-                {billingStatus?.serverConfigured ? <Badge variant="secondary">Portal ready</Badge> : <Badge variant="outline">Server key missing</Badge>}
+                {isHostedBillingEnabled ? (
+                  <>
+                    {billingStatus?.webhookConfigured ? <Badge variant="secondary">Webhook configured</Badge> : <Badge variant="outline">Webhook missing</Badge>}
+                    {billingStatus?.serverConfigured ? <Badge variant="secondary">Portal ready</Badge> : <Badge variant="outline">Server key missing</Badge>}
+                  </>
+                ) : (
+                  <Badge variant="outline">Hosted billing disabled</Badge>
+                )}
               </div>
               <div className="mt-3 grid gap-1 text-sm">
                 <div className="font-medium">
@@ -7638,11 +7662,17 @@ function BillingSection({
                 <div>
                   <div className="font-medium">Secure billing checkout</div>
                   <div className="mt-1 text-xs text-muted-foreground">
-                    Monthly plans renew automatically until canceled. Credit packs are one-time top-ups that do not expire. Successful payments update this page through signed billing confirmations.
-                    {!paddleClientToken ? " Checkout is not configured yet." : ` Checkout environment: ${paddleEnvironment}.`}
+                    {isHostedBillingEnabled
+                      ? "Monthly plans renew automatically until canceled. Credit packs are one-time top-ups that do not expire. Successful payments update this page through signed billing confirmations."
+                      : "Community self-hosted mode disables hosted checkout. The future license path will live here without requiring Paddle billing."}
+                    {isHostedBillingEnabled
+                      ? !paddleClientToken ? " Checkout is not configured yet." : ` Checkout environment: ${paddleEnvironment}.`
+                      : " Hosted checkout is disabled in this runtime."}
                   </div>
                 </div>
-                <Badge variant={paddleClientToken ? "secondary" : "outline"}>{paddleClientToken ? "Checkout ready" : "Configure checkout"}</Badge>
+                <Badge variant={isHostedBillingEnabled && paddleClientToken ? "secondary" : "outline"}>
+                  {!isHostedBillingEnabled ? "Community self-hosted" : paddleClientToken ? "Checkout ready" : "Configure checkout"}
+                </Badge>
               </div>
               {checkoutMessage ? <div className="mt-2 text-xs text-muted-foreground">{checkoutMessage}</div> : null}
             </div>
@@ -7671,12 +7701,15 @@ function BillingSection({
                   })}
                   disabled={
                     plan.monthlyInr === 0 ||
+                    !isHostedBillingEnabled ||
                     checkoutLoadingId === `plan-${plan.id}` ||
                     !isPaddleCheckoutReady({ clientToken: paddleClientToken, priceId: paddlePriceIdsByCheckoutId[`plan-${plan.id}`] })
                   }
                 >
                   {plan.monthlyInr === 0
                     ? "Current free plan"
+                    : !isHostedBillingEnabled
+                    ? "Hosted billing disabled"
                     : !paddlePriceIdsByCheckoutId[`plan-${plan.id}`]
                     ? "Configure price"
                     : checkoutLoadingId === `plan-${plan.id}`
@@ -7708,11 +7741,14 @@ function BillingSection({
                     description: `${formatBillingNumber(pack.credits)} Meridian credits`,
                   })}
                   disabled={
+                    !isHostedBillingEnabled ||
                     checkoutLoadingId === `credits-${pack.credits}` ||
                     !isPaddleCheckoutReady({ clientToken: paddleClientToken, priceId: paddlePriceIdsByCheckoutId[`credits-${pack.credits}`] })
                   }
                 >
-                  {!paddlePriceIdsByCheckoutId[`credits-${pack.credits}`]
+                  {!isHostedBillingEnabled
+                    ? "Hosted billing disabled"
+                    : !paddlePriceIdsByCheckoutId[`credits-${pack.credits}`]
                     ? "Configure price"
                     : checkoutLoadingId === `credits-${pack.credits}`
                     ? "Opening checkout..."

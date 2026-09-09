@@ -57,6 +57,11 @@ export type ReadinessStatus = {
 export async function getReadinessStatus(): Promise<ReadinessStatus> {
   const databaseConfigured = hasDatabaseConfig()
   const runtime = getRuntimeEnvironment()
+  const jobsConfigured = runtime.jobBackend === "manual"
+    ? true
+    : runtime.jobBackend === "self_hosted"
+      ? Boolean(process.env.MERIDIAN_SELF_HOSTED_WORKER_URL && process.env.MERIDIAN_SELF_HOSTED_WORKER_SECRET)
+      : Boolean(process.env.INNGEST_EVENT_KEY && process.env.INNGEST_SIGNING_KEY)
   const checks = {
     database: false,
     schema: false,
@@ -64,7 +69,7 @@ export async function getReadinessStatus(): Promise<ReadinessStatus> {
     encryption: Boolean(process.env.ENCRYPTION_KEY),
     cron: Boolean(process.env.CRON_SECRET),
     email: isEmailConfigured(),
-    jobs: Boolean(process.env.INNGEST_EVENT_KEY && process.env.INNGEST_SIGNING_KEY),
+    jobs: jobsConfigured,
   }
   let latestPoll: ReadinessStatus["latestPoll"] = null
   let latestEmail: ReadinessStatus["latestEmail"] = null
@@ -159,12 +164,21 @@ export async function getReadinessStatus(): Promise<ReadinessStatus> {
   }
 
   if (!checks.jobs) {
-    issues.push({
-      code: "DURABLE_JOBS_NOT_CONFIGURED",
-      component: "health",
-      message: "Inngest event and signing keys are not configured.",
-      incidentId: null,
-    })
+    if (runtime.jobBackend === "self_hosted") {
+      issues.push({
+        code: "SELF_HOSTED_WORKER_NOT_CONFIGURED",
+        component: "health",
+        message: "Self-hosted job backend is selected, but the worker URL and shared worker secret are not configured.",
+        incidentId: null,
+      })
+    } else {
+      issues.push({
+        code: "DURABLE_JOBS_NOT_CONFIGURED",
+        component: "health",
+        message: "Inngest event and signing keys are not configured.",
+        incidentId: null,
+      })
+    }
   }
 
   if (!runtime.isProduction && databaseConfigured) {

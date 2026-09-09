@@ -27,7 +27,7 @@ function isMeridianJobBackend(value: string | undefined | null): value is Meridi
 }
 
 function getDefaultJobBackend() {
-  const configuredBackend = process.env.MERIDIAN_DEFAULT_JOB_BACKEND
+  const configuredBackend = process.env.MERIDIAN_JOB_BACKEND || process.env.MERIDIAN_DEFAULT_JOB_BACKEND
   return isMeridianJobBackend(configuredBackend) ? configuredBackend : "inngest"
 }
 

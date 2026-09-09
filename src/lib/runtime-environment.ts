@@ -3,11 +3,24 @@
  */
 import "server-only"
 
+import { getMeridianRuntimeConfig } from "@/lib/runtime-config.mjs"
+
 export type RuntimeEnvironmentName = "production" | "preview" | "development"
+type MeridianDeploymentMode = "cloud" | "self_hosted"
+type MeridianEdition = "cloud" | "community" | "enterprise"
+type MeridianBillingMode = "paddle" | "disabled" | "license"
+type MeridianJobBackend = "inngest" | "self_hosted" | "manual"
 
 export type RuntimeEnvironment = {
   environment: RuntimeEnvironmentName
   label: string
+  deploymentMode: MeridianDeploymentMode
+  edition: MeridianEdition
+  billingMode: MeridianBillingMode
+  jobBackend: MeridianJobBackend
+  runtimeLabel: string
+  isSelfHosted: boolean
+  billingEnabled: boolean
   deploymentUrl: string
   isProduction: boolean
   isPreview: boolean
@@ -38,15 +51,27 @@ function hasOptInFlag(name: string) {
  */
 export function getRuntimeEnvironment(): RuntimeEnvironment {
   const environment = getRuntimeName()
+  const runtimeConfig = getMeridianRuntimeConfig()
   const isProduction = environment === "production"
   const isPreview = environment === "preview"
   const isLocal = environment === "development" && !process.env.VERCEL
-  const externalSideEffectsEnabled = isProduction || hasOptInFlag("MERIDIAN_ALLOW_EXTERNAL_EFFECTS")
-  const backgroundJobsEnabled = isProduction || hasOptInFlag("MERIDIAN_ALLOW_BACKGROUND_JOBS") || process.env.INNGEST_DEV === "1"
+  const externalSideEffectsEnabled = runtimeConfig.isSelfHosted || isProduction || hasOptInFlag("MERIDIAN_ALLOW_EXTERNAL_EFFECTS")
+  const backgroundJobsEnabled = runtimeConfig.jobBackend === "manual"
+    ? false
+    : runtimeConfig.jobBackend === "self_hosted"
+      ? runtimeConfig.isSelfHosted
+      : isProduction || hasOptInFlag("MERIDIAN_ALLOW_BACKGROUND_JOBS") || process.env.INNGEST_DEV === "1"
 
   return {
     environment,
     label: environment === "production" ? "Production" : environment === "preview" ? "Preview" : "Local development",
+    deploymentMode: runtimeConfig.deploymentMode,
+    edition: runtimeConfig.edition,
+    billingMode: runtimeConfig.billingMode,
+    jobBackend: runtimeConfig.jobBackend,
+    runtimeLabel: runtimeConfig.label,
+    isSelfHosted: runtimeConfig.isSelfHosted,
+    billingEnabled: runtimeConfig.billingEnabled,
     deploymentUrl: getDeploymentUrl(),
     isProduction,
     isPreview,

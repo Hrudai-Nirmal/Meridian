@@ -248,6 +248,19 @@ Meridian uses GitHub Actions as the first enterprise-readiness gate. CI runs on 
 
 Meridian currently uses a minimum-safe environment model: Production is the only live runtime, and even Production defaults to zero idle scheduled work. Preview deployments and local development may render the app and readiness state, but external side effects are disabled by default outside Production. That means cron polling, manual endpoint polling, Resend email sends, Slack incoming-webhook sends, generic webhook sends, and Inngest cloud worker execution are blocked or skipped unless an explicit operator opt-in is configured. `/api/health` and Testing -> Deployment readiness show the runtime label, deployment URL, side-effect policy, background-job policy, cron policy, and safe warnings. Testing -> Idle posture shows whether scheduled recovery, retention cleanup, external polling, and live refresh are manual or explicitly enabled. The optional escape hatches `MERIDIAN_ALLOW_EXTERNAL_EFFECTS=1` and `MERIDIAN_ALLOW_BACKGROUND_JOBS=1` are reserved for deliberate isolated Preview/dev testing, not for shared production data.
 
+### Self-Hosted Runtime Foundation
+
+Self-Hosted Runtime Foundation v1 adds explicit deployment-mode switches while keeping hosted Meridian as the default Cloud posture:
+
+```env
+MERIDIAN_DEPLOYMENT_MODE=cloud | self_hosted
+MERIDIAN_EDITION=cloud | community | enterprise
+MERIDIAN_BILLING_MODE=paddle | disabled | license
+MERIDIAN_JOB_BACKEND=inngest | self_hosted | manual
+```
+
+`MERIDIAN_JOB_BACKEND` is the preferred job-backend switch; existing `MERIDIAN_DEFAULT_JOB_BACKEND` deployments continue to work as a fallback. When `MERIDIAN_DEPLOYMENT_MODE=self_hosted`, missing billing and job-backend env values default to `disabled` billing and `self_hosted` jobs. Testing -> Deployment readiness shows the runtime mode, edition, billing mode, job backend, and side-effect posture. Billing disables hosted checkout in self-hosted/community mode and shows `Community self-hosted` instead of asking for Paddle setup. The self-hosted notification bridge expects `MERIDIAN_SELF_HOSTED_WORKER_URL` and `MERIDIAN_SELF_HOSTED_WORKER_SECRET`; Docker Compose packaging for the local worker is the next self-hosting slice.
+
 Full Preview isolation with a separate Neon database and separate Inngest environment is deferred until Preview is used for mutation QA. Until then, do not point Preview at production data for active testing.
 
 Release notes start in `CHANGELOG.md`. Keep `package.json` semver and the changelog aligned for production-facing changes.
