@@ -1,0 +1,190 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1200" viewBox="0 0 1800 1200" role="img" aria-labelledby="title desc">
+  <title id="title">Meridian Low Level Architecture</title>
+  <desc id="desc">Low level Meridian architecture showing route handlers, service modules, Prisma models, durable jobs, notification delivery, reporting, billing, and runtime safety controls.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#08070d"/>
+      <stop offset="50%" stop-color="#12101a"/>
+      <stop offset="100%" stop-color="#0d0b13"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000000" flood-opacity="0.32"/>
+    </filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#c4b5fd"/>
+    </marker>
+    <style>
+      .title { fill: #f8fafc; font: 800 40px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .subtitle { fill: #cbd5e1; font: 500 17px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .lane { fill: rgba(255,255,255,0.035); stroke: rgba(148,163,184,0.18); stroke-width: 1.2; rx: 28; }
+      .box { fill: rgba(15,23,42,0.86); stroke: rgba(196,181,253,0.38); stroke-width: 1.4; rx: 20; filter: url(#shadow); }
+      .core { fill: rgba(124,58,237,0.19); stroke: #c4b5fd; stroke-width: 1.8; rx: 22; filter: url(#shadow); }
+      .data { fill: rgba(20,83,45,0.25); stroke: rgba(134,239,172,0.55); stroke-width: 1.3; rx: 18; }
+      .warn { fill: rgba(120,53,15,0.28); stroke: rgba(253,186,116,0.55); stroke-width: 1.3; rx: 18; }
+      .heading { fill: #f8fafc; font: 750 22px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .label { fill: #f5f3ff; font: 700 15px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .small { fill: #cbd5e1; font: 500 13px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .tiny { fill: #94a3b8; font: 500 12px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .line { stroke: #c4b5fd; stroke-width: 2; fill: none; marker-end: url(#arrow); opacity: 0.88; }
+      .line-soft { stroke: #64748b; stroke-width: 1.6; fill: none; marker-end: url(#arrow); opacity: 0.7; }
+      .line-green { stroke: #86efac; stroke-width: 1.8; fill: none; marker-end: url(#arrow); opacity: 0.85; }
+    </style>
+  </defs>
+
+  <rect width="1800" height="1200" fill="url(#bg)"/>
+  <circle cx="1520" cy="170" r="280" fill="#7c3aed" opacity="0.08"/>
+  <circle cx="320" cy="1080" r="360" fill="#22c55e" opacity="0.06"/>
+
+  <text x="70" y="78" class="title">Meridian Low-Level Architecture</text>
+  <text x="72" y="114" class="subtitle">Request-driven app, Postgres source of truth, durable notification outbox, and explicit zero-idle runtime controls.</text>
+
+  <rect x="55" y="155" width="360" height="945" class="lane"/>
+  <text x="85" y="195" class="heading">Inputs</text>
+
+  <rect x="90" y="235" width="290" height="105" class="box"/>
+  <text x="115" y="268" class="label">Browser Dashboard</text>
+  <text x="115" y="294" class="small">Homepage, dashboard, map, reports</text>
+  <text x="115" y="318" class="tiny">Auth.js session + RBAC routes</text>
+
+  <rect x="90" y="380" width="290" height="125" class="box"/>
+  <text x="115" y="413" class="label">Workflow Telemetry</text>
+  <text x="115" y="439" class="small">Dify, n8n, GitHub Actions</text>
+  <text x="115" y="463" class="small">SDKs and raw REST</text>
+  <text x="115" y="487" class="tiny">Bearer ingestion token</text>
+
+  <rect x="90" y="545" width="290" height="125" class="box"/>
+  <text x="115" y="578" class="label">REST Metric Endpoints</text>
+  <text x="115" y="604" class="small">Customer APIs</text>
+  <text x="115" y="628" class="small">JSONPath mappings</text>
+  <text x="115" y="652" class="tiny">Manual or explicit scheduler</text>
+
+  <rect x="90" y="710" width="290" height="125" class="box"/>
+  <text x="115" y="743" class="label">Provider Webhooks</text>
+  <text x="115" y="769" class="small">Paddle signed events</text>
+  <text x="115" y="793" class="small">Inngest function calls</text>
+  <text x="115" y="817" class="tiny">Signature verification</text>
+
+  <rect x="90" y="875" width="290" height="125" class="box"/>
+  <text x="115" y="908" class="label">Operator Actions</text>
+  <text x="115" y="934" class="small">Manual poll, test delivery</text>
+  <text x="115" y="958" class="small">Recover jobs, cleanup data</text>
+  <text x="115" y="982" class="tiny">Testing section controls</text>
+
+  <rect x="455" y="155" width="400" height="945" class="lane"/>
+  <text x="485" y="195" class="heading">Next.js Route Handlers</text>
+
+  <rect x="495" y="235" width="320" height="85" class="core"/>
+  <text x="520" y="268" class="label">/api/workspace + /api/projects</text>
+  <text x="520" y="294" class="tiny">Bootstrap, project CRUD, graph payload</text>
+
+  <rect x="495" y="350" width="320" height="85" class="core"/>
+  <text x="520" y="383" class="label">/api/ingest/runs</text>
+  <text x="520" y="409" class="tiny">Token auth, rate limit, entitlement, run persistence</text>
+
+  <rect x="495" y="465" width="320" height="85" class="core"/>
+  <text x="520" y="498" class="label">/api/cron/poll + poll/run</text>
+  <text x="520" y="524" class="tiny">Due-work metric polling, manual project poll</text>
+
+  <rect x="495" y="580" width="320" height="85" class="core"/>
+  <text x="520" y="613" class="label">Reports, Exports, Logs</text>
+  <text x="520" y="639" class="tiny">Client proof, bounded CSV, safe timeline</text>
+
+  <rect x="495" y="695" width="320" height="85" class="core"/>
+  <text x="520" y="728" class="label">Integrations</text>
+  <text x="520" y="754" class="tiny">Slack, webhooks, remediation, API setup</text>
+
+  <rect x="495" y="810" width="320" height="85" class="core"/>
+  <text x="520" y="843" class="label">Billing + Paddle Webhook</text>
+  <text x="520" y="869" class="tiny">Checkout, subscriptions, credits, invoices</text>
+
+  <rect x="495" y="925" width="320" height="85" class="core"/>
+  <text x="520" y="958" class="label">/api/inngest + worker execute</text>
+  <text x="520" y="984" class="tiny">Cloud worker endpoint and self-hosted bridge</text>
+
+  <rect x="895" y="155" width="420" height="945" class="lane"/>
+  <text x="925" y="195" class="heading">Domain Services</text>
+
+  <rect x="935" y="235" width="340" height="95" class="box"/>
+  <text x="960" y="268" class="label">Access + Runtime Safety</text>
+  <text x="960" y="294" class="tiny">RBAC, runtime mode, zero-idle side-effect policy</text>
+
+  <rect x="935" y="360" width="340" height="95" class="box"/>
+  <text x="960" y="393" class="label">Telemetry Pipeline</text>
+  <text x="960" y="419" class="tiny">Token hashing, fixed-window buckets, credit usage</text>
+
+  <rect x="935" y="485" width="340" height="95" class="box"/>
+  <text x="960" y="518" class="label">Metric Polling + Mapping</text>
+  <text x="960" y="544" class="tiny">Encrypted API config, JSONPath, samples, rollups</text>
+
+  <rect x="935" y="610" width="340" height="95" class="box"/>
+  <text x="960" y="643" class="label">Alert Intelligence</text>
+  <text x="960" y="669" class="tiny">Metric/run rules, anomaly baselines, grouped incidents</text>
+
+  <rect x="935" y="735" width="340" height="95" class="box"/>
+  <text x="960" y="768" class="label">Notification Outbox</text>
+  <text x="960" y="794" class="tiny">NotificationJob, generation fencing, retry/cancel/recover</text>
+
+  <rect x="935" y="860" width="340" height="95" class="box"/>
+  <text x="960" y="893" class="label">Client Proof + Billing</text>
+  <text x="960" y="919" class="tiny">Reports, periods, presets, Paddle mirror, credits</text>
+
+  <rect x="935" y="985" width="340" height="80" class="box"/>
+  <text x="960" y="1018" class="label">Secret-Safe Evidence</text>
+  <text x="960" y="1044" class="tiny">Audit logs, support packets, redaction, public no-store pages</text>
+
+  <rect x="1355" y="155" width="390" height="945" class="lane"/>
+  <text x="1385" y="195" class="heading">Postgres Models</text>
+
+  <rect x="1395" y="235" width="310" height="95" class="data"/>
+  <text x="1420" y="268" class="label">Identity + RBAC</text>
+  <text x="1420" y="294" class="tiny">User, Account, Session, Organization, Membership, TeamInvitation</text>
+
+  <rect x="1395" y="360" width="310" height="95" class="data"/>
+  <text x="1420" y="393" class="label">Project Graph</text>
+  <text x="1420" y="419" class="tiny">Project, EndpointNode, GraphEdge, NodeIcon, ApiEndpointConfig</text>
+
+  <rect x="1395" y="485" width="310" height="95" class="data"/>
+  <text x="1420" y="518" class="label">Telemetry + Metrics</text>
+  <text x="1420" y="544" class="tiny">IngestionToken, RateLimitBucket, WorkflowRun, WorkflowStep, MetricSample</text>
+
+  <rect x="1395" y="610" width="310" height="95" class="data"/>
+  <text x="1420" y="643" class="label">Alerts + Jobs</text>
+  <text x="1420" y="669" class="tiny">AlertRule, AlertEvent, NotificationJob, AlertNotificationDelivery</text>
+
+  <rect x="1395" y="735" width="310" height="95" class="data"/>
+  <text x="1420" y="768" class="label">Integrations</text>
+  <text x="1420" y="794" class="tiny">WebhookDestination, SlackDestination, RemediationAction, ActionAttempt</text>
+
+  <rect x="1395" y="860" width="310" height="95" class="data"/>
+  <text x="1420" y="893" class="label">Reports + Billing</text>
+  <text x="1420" y="919" class="tiny">ReportShare, ReportPreset, Paddle*, CreditLedger, AuditLog</text>
+
+  <rect x="1395" y="985" width="310" height="80" class="warn"/>
+  <text x="1420" y="1018" class="label">Runtime Settings</text>
+  <text x="1420" y="1044" class="tiny">RuntimeSetting selects inngest, self_hosted, or manual jobs</text>
+
+  <path d="M380 285 C425 285 440 275 495 275" class="line"/>
+  <path d="M380 445 C425 445 440 392 495 392" class="line"/>
+  <path d="M380 605 C425 605 440 507 495 507" class="line"/>
+  <path d="M380 770 C425 770 440 852 495 852" class="line"/>
+  <path d="M380 940 C425 940 440 967 495 967" class="line-soft"/>
+
+  <path d="M815 277 C860 277 880 282 935 282" class="line"/>
+  <path d="M815 392 C860 392 880 407 935 407" class="line"/>
+  <path d="M815 507 C860 507 880 532 935 532" class="line"/>
+  <path d="M815 622 C860 622 880 657 935 657" class="line"/>
+  <path d="M815 737 C860 737 880 782 935 782" class="line"/>
+  <path d="M815 852 C860 852 880 907 935 907" class="line"/>
+  <path d="M815 967 C860 967 880 1025 935 1025" class="line"/>
+
+  <path d="M1275 282 C1325 282 1340 282 1395 282" class="line-green"/>
+  <path d="M1275 407 C1325 407 1340 532 1395 532" class="line-green"/>
+  <path d="M1275 532 C1325 532 1340 532 1395 532" class="line-green"/>
+  <path d="M1275 657 C1325 657 1340 657 1395 657" class="line-green"/>
+  <path d="M1275 782 C1325 782 1340 657 1395 657" class="line-green"/>
+  <path d="M1275 907 C1325 907 1340 907 1395 907" class="line-green"/>
+  <path d="M1275 1025 C1325 1025 1340 1025 1395 1025" class="line-green"/>
+
+  <rect x="70" y="1125" width="1660" height="44" class="lane"/>
+  <text x="100" y="1153" class="tiny">Design principle: every external side effect is either user-triggered, telemetry-triggered, or explicitly scheduled. The database stores enough evidence to retry safely and support users without exposing secrets.</text>
+</svg>

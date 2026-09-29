@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title desc">
+  <title id="title">Meridian High Level Architecture</title>
+  <desc id="desc">High level system architecture for Meridian, showing users, external automations, the Next.js app, Postgres, workers, notification providers, billing, and client reports.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f0b16"/>
+      <stop offset="55%" stop-color="#14111d"/>
+      <stop offset="100%" stop-color="#0a0910"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#c4b5fd"/>
+      <stop offset="50%" stop-color="#a78bfa"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#a78bfa"/>
+    </marker>
+    <style>
+      .title { fill: #f8fafc; font: 800 42px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .subtitle { fill: #cbd5e1; font: 500 18px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .box { fill: rgba(255,255,255,0.055); stroke: rgba(196,181,253,0.45); stroke-width: 1.5; rx: 28; filter: url(#shadow); }
+      .core { fill: rgba(124,58,237,0.18); stroke: #c4b5fd; stroke-width: 2; rx: 32; filter: url(#shadow); }
+      .provider { fill: rgba(15,23,42,0.82); stroke: rgba(148,163,184,0.45); stroke-width: 1.3; rx: 22; }
+      .heading { fill: #f8fafc; font: 750 24px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .small { fill: #cbd5e1; font: 500 15px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .tiny { fill: #94a3b8; font: 500 13px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .label { fill: #ddd6fe; font: 700 14px Inter, ui-sans-serif, system-ui, sans-serif; }
+      .line { stroke: #a78bfa; stroke-width: 2.3; fill: none; marker-end: url(#arrow); opacity: 0.9; }
+      .line-muted { stroke: #64748b; stroke-width: 1.8; fill: none; marker-end: url(#arrow); opacity: 0.7; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="1000" fill="url(#bg)"/>
+  <circle cx="1320" cy="140" r="260" fill="#7c3aed" opacity="0.1"/>
+  <circle cx="220" cy="830" r="300" fill="#a78bfa" opacity="0.09"/>
+
+  <text x="80" y="86" class="title">Meridian High-Level Architecture</text>
+  <text x="82" y="124" class="subtitle">AI automation control room: collect telemetry, evaluate health, trigger reliable actions, and produce client proof.</text>
+
+  <rect x="70" y="190" width="300" height="240" class="box"/>
+  <text x="105" y="235" class="heading">Users</text>
+  <text x="105" y="275" class="small">Agency operators</text>
+  <text x="105" y="305" class="small">Internal AI ops teams</text>
+  <text x="105" y="335" class="small">Client stakeholders</text>
+  <text x="105" y="380" class="tiny">Dashboard, reports, billing, team, setup</text>
+
+  <rect x="70" y="520" width="300" height="290" class="box"/>
+  <text x="105" y="565" class="heading">External Workflows</text>
+  <text x="105" y="605" class="small">Dify apps</text>
+  <text x="105" y="635" class="small">n8n workflows</text>
+  <text x="105" y="665" class="small">GitHub Actions</text>
+  <text x="105" y="695" class="small">JavaScript/Python SDKs</text>
+  <text x="105" y="725" class="small">Custom REST integrations</text>
+  <text x="105" y="770" class="tiny">Workflow runs and REST metric samples</text>
+
+  <rect x="490" y="170" width="550" height="660" class="core"/>
+  <text x="540" y="225" class="heading">Meridian Application</text>
+  <text x="540" y="262" class="small">Next.js App Router on Vercel or self-hosted Node runtime</text>
+
+  <rect x="540" y="305" width="450" height="90" class="provider"/>
+  <text x="570" y="340" class="label">Signed-out Homepage &amp; Authenticated Dashboard</text>
+  <text x="570" y="368" class="tiny">Automation Map, Runs, Alerts, Reports, Integrations, Testing, Logs, Billing</text>
+
+  <rect x="540" y="425" width="450" height="90" class="provider"/>
+  <text x="570" y="460" class="label">API Route Handlers</text>
+  <text x="570" y="488" class="tiny">Ingest runs, poll metrics, manage graph, reports, alerts, billing, webhooks</text>
+
+  <rect x="540" y="545" width="450" height="90" class="provider"/>
+  <text x="570" y="580" class="label">Domain Services</text>
+  <text x="570" y="608" class="tiny">RBAC, tokens, alert evaluation, outbox jobs, reports, entitlements, logs</text>
+
+  <rect x="540" y="665" width="450" height="90" class="provider"/>
+  <text x="570" y="700" class="label">Runtime Modes</text>
+  <text x="570" y="728" class="tiny">Cloud, community self-hosted, enterprise self-hosted; Inngest/self-host/manual jobs</text>
+
+  <rect x="1160" y="170" width="330" height="170" class="box"/>
+  <text x="1195" y="215" class="heading">Postgres</text>
+  <text x="1195" y="255" class="small">Neon in hosted mode</text>
+  <text x="1195" y="285" class="small">Self-hostable later</text>
+  <text x="1195" y="315" class="tiny">Source of truth for projects, telemetry, alerts, jobs, billing, logs</text>
+
+  <rect x="1160" y="390" width="330" height="170" class="box"/>
+  <text x="1195" y="435" class="heading">Durable Workers</text>
+  <text x="1195" y="475" class="small">Inngest cloud</text>
+  <text x="1195" y="505" class="small">Self-hosted worker bridge</text>
+  <text x="1195" y="535" class="tiny">Processes NotificationJob references with retries and generation fencing</text>
+
+  <rect x="1160" y="610" width="330" height="220" class="box"/>
+  <text x="1195" y="655" class="heading">External Providers</text>
+  <text x="1195" y="695" class="small">Resend email</text>
+  <text x="1195" y="725" class="small">Slack incoming webhooks</text>
+  <text x="1195" y="755" class="small">Customer webhooks</text>
+  <text x="1195" y="785" class="small">Paddle billing</text>
+
+  <rect x="490" y="875" width="1000" height="70" class="box"/>
+  <text x="535" y="918" class="small">Zero-idle posture: cron off by default, SSE manual, recovery manual/opt-in, due-work polling, bounded exports, safe logs.</text>
+
+  <path d="M370 290 C430 290 430 350 490 350" class="line"/>
+  <text x="394" y="276" class="tiny">browser requests</text>
+
+  <path d="M370 650 C430 650 430 470 490 470" class="line"/>
+  <text x="390" y="630" class="tiny">telemetry ingest</text>
+
+  <path d="M1040 470 C1090 470 1105 255 1160 255" class="line"/>
+  <text x="1065" y="355" class="tiny">Prisma reads/writes</text>
+
+  <path d="M1040 590 C1095 590 1105 475 1160 475" class="line"/>
+  <text x="1065" y="548" class="tiny">job id + generation</text>
+
+  <path d="M1325 560 C1325 585 1325 585 1325 610" class="line"/>
+  <text x="1345" y="590" class="tiny">provider delivery</text>
+
+  <path d="M1160 725 C1095 725 1090 620 1040 620" class="line-muted"/>
+  <text x="1048" y="762" class="tiny">webhook/billing confirmations</text>
+
+  <path d="M765 830 C765 860 780 860 800 875" class="line-muted"/>
+  <text x="815" y="858" class="tiny">safe operational evidence</text>
+</svg>
